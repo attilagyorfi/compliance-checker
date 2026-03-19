@@ -5,6 +5,7 @@ import {
   FileText, Settings2, History, Send, RefreshCw, Copy, Check, Globe
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -239,6 +240,7 @@ export default function StandardsSearchPage() {
   const [result, setResult] = useState<SearchResult | null>(null);
   const [showExtended, setShowExtended] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [urlInput, setUrlInput] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const searchMutation = trpc.standardsSearch.search.useMutation({
@@ -254,10 +256,19 @@ export default function StandardsSearchPage() {
     onError: (err) => toast.error(`Hiba a bővítés során: ${err.message}`),
   });
 
+  const isWebMode = searchMode === "web" || searchMode === "combined_with_web";
+
   const handleSearch = () => {
     if (!question.trim()) return;
+    if (isWebMode && !urlInput.trim()) {
+      toast.error("Internetes kereséshez adjon meg legalább egy URL-t");
+      return;
+    }
     setResult(null);
-    searchMutation.mutate({ question: question.trim(), searchMode, answerLength, operationMode });
+    const urls = urlInput.trim()
+      ? urlInput.split(/[\n,]+/).map(u => u.trim()).filter(u => u.startsWith("http"))
+      : undefined;
+    searchMutation.mutate({ question: question.trim(), searchMode, answerLength, operationMode, urls });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -320,22 +331,45 @@ export default function StandardsSearchPage() {
               </label>
               <Textarea
                 ref={textareaRef}
-                placeholder="pl. Mekkora minimális belmagasság szükséges ipari épületnél?"
+                placeholder="pl. Mekkora minimális belmagasság szükséges ipari épülelnél?"
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
                 onKeyDown={handleKeyDown}
                 className="min-h-[100px] border-gray-200 focus-visible:ring-[#7CA9D3] resize-none text-sm"
               />
+
+              {/* URL input – only shown in web / combined_with_web mode */}
+              {isWebMode && (
+                <div className="mt-3 space-y-1.5">
+                  <label className="text-xs font-semibold text-gray-600 flex items-center gap-1.5">
+                    <Globe size={12} style={{ color: "#4caf50" }} />
+                    URL-ek (soronként vagy vesszővel elválasztva)
+                    <span className="text-red-500">*</span>
+                  </label>
+                  <Textarea
+                    placeholder="https://njt.hu/jogszabaly/2014-54-20-22&#10;https://net.jogtar.hu/jogszabaly?docid=A1400054.TV"
+                    value={urlInput}
+                    onChange={(e) => setUrlInput(e.target.value)}
+                    className="min-h-[72px] border-green-200 focus-visible:ring-green-400 resize-none text-xs font-mono"
+                  />
+                  <p className="text-xs text-gray-400">
+                    A rendszer letölti az oldalak tartalomát és a kérdés alapján választ generál.
+                  </p>
+                </div>
+              )}
+
               <div className="flex items-center justify-between mt-3">
                 <p className="text-xs text-gray-400">Ctrl+Enter a kereséshez</p>
                 <Button
                   onClick={handleSearch}
-                  disabled={!question.trim() || searchMutation.isPending}
+                  disabled={!question.trim() || (isWebMode && !urlInput.trim()) || searchMutation.isPending}
                   className="gap-2 text-white"
-                  style={{ backgroundColor: "#7CA9D3" }}
+                  style={{ backgroundColor: isWebMode ? "#4caf50" : "#7CA9D3" }}
                 >
                   {searchMutation.isPending ? (
                     <Loader2 size={15} className="animate-spin" />
+                  ) : isWebMode ? (
+                    <Globe size={15} />
                   ) : (
                     <Send size={15} />
                   )}

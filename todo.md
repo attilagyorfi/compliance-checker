@@ -135,3 +135,17 @@
 
 ### Tesztek
 - [x] Vitest: 18/18 sikeres (meglévő tesztek változatlanul zöldek)
+
+## Javítások V5
+
+- [ ] Ellenőrzés menüpont törlése (Header + App.tsx)
+- [ ] Platformok menüpont törlése (Header + App.tsx)
+- [ ] Tudástár menüpont hozzáadása (Header + App.tsx + új oldal)
+- [ ] Főoldal "Elemzés indítása" CTA → /search átirányítás
+- [ ] Tudástár oldal: dokumentum feltöltés, lista, törlés
+- [ ] Tudástár backend: tRPC router + DB tábla
+- [ ] Szabványkereső: URL beviteli mező internetes keresés módhoz
+- [ ] Szabványkereső: URL-alapú tartalom letöltés + keresés
+- [ ] Jogszabályok oldal: csak feltöltött dokumentumok, AI kategória-felismerés
+- [ ] Jogszabályok backend: dokumentum kategória AI elemzés
+- [ ] Lábléc: 2025 → 2026 javítás

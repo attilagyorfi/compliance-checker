@@ -19,7 +19,7 @@ import { getDb } from "../db";
 import { searchQueries, regulationSources } from "../../drizzle/schema";
 import type { SearchSource } from "../../drizzle/schema";
 import { desc, eq, like, or } from "drizzle-orm";
-import { webSearchStandards } from "../webSearch";
+import { webSearchStandards, fetchUrlSources } from "../webSearch";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -338,10 +338,11 @@ export const standardsSearchRouter = router({
         answerLength: z.enum(["short", "standard", "detailed"]).default("standard"),
         operationMode: z.enum(["fast", "accurate"]).default("accurate"),
         projectName: z.string().optional(),
+        urls: z.array(z.string().url()).optional(),
       })
     )
     .mutation(async ({ input }) => {
-      const { question, searchMode, answerLength, operationMode, projectName } = input;
+      const { question, searchMode, answerLength, operationMode, projectName, urls } = input;
 
       // Step 1: Rewrite query
       const rewrittenQuestion = operationMode === "accurate"
@@ -352,17 +353,21 @@ export const standardsSearchRouter = router({
       let sources: SearchSource[] = [];
 
       if (searchMode === "web") {
-        // Internet-only search
-        sources = await webSearchStandards(rewrittenQuestion, true);
+        // Internet-only search: use provided URLs if given, else DuckDuckGo
+        if (urls && urls.length > 0) {
+          sources = await fetchUrlSources(urls, rewrittenQuestion);
+        } else {
+          sources = await webSearchStandards(rewrittenQuestion, true);
+        }
       } else if (searchMode === "combined_with_web") {
         // Library + internet combined
-        const [libSources, webSources] = await Promise.all([
-          keywordSearch(rewrittenQuestion, "combined"),
-          webSearchStandards(rewrittenQuestion, true),
-        ]);
+        const webSources = urls && urls.length > 0
+          ? await fetchUrlSources(urls, rewrittenQuestion)
+          : await webSearchStandards(rewrittenQuestion, true);
+        const libSources = await keywordSearch(rewrittenQuestion, "combined");
         // Merge: library sources first, then web sources (deduplicate by URL)
-        const seenUrls = new Set(libSources.map((s) => s.url).filter(Boolean));
-        const dedupedWeb = webSources.filter((s) => !s.url || !seenUrls.has(s.url));
+        const seenUrls = new Set(libSources.map((s: SearchSource) => s.url).filter(Boolean));
+        const dedupedWeb = webSources.filter((s: SearchSource) => !s.url || !seenUrls.has(s.url));
         sources = [...libSources, ...dedupedWeb].slice(0, 10);
       } else {
         // mszt / internal / combined – library only

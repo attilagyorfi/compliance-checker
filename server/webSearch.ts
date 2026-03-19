@@ -302,3 +302,63 @@ export async function webSearchStandards(
 
   return sources;
 }
+
+/**
+ * Fetch content from a list of explicit URLs and return as SearchSource[].
+ * Used when the user provides specific URLs instead of a DuckDuckGo search.
+ */
+export async function fetchUrlSources(
+  urls: string[],
+  query: string
+): Promise<SearchSource[]> {
+  const keywords = query.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+  const sources: SearchSource[] = [];
+
+  for (const url of urls.slice(0, MAX_RESULTS)) {
+    try {
+      const fullText = await fetchPageText(url);
+      if (!fullText || fullText.length < 50) continue;
+
+      // Find the most relevant excerpt
+      const textLower = fullText.toLowerCase();
+      let bestPos = 0;
+      let bestScore = 0;
+
+      for (const kw of keywords) {
+        const pos = textLower.indexOf(kw);
+        if (pos !== -1) {
+          const localScore = keywords.filter((k) => textLower.includes(k)).length;
+          if (localScore > bestScore) {
+            bestScore = localScore;
+            bestPos = pos;
+          }
+        }
+      }
+
+      const start = Math.max(0, bestPos - 150);
+      const end = Math.min(fullText.length, bestPos + 600);
+      const excerpt = fullText.slice(start, end).replace(/\s+/g, " ").trim();
+
+      // Try to get a nice title from the URL
+      let title = url;
+      try {
+        const u = new URL(url);
+        title = u.hostname.replace("www.", "") + u.pathname;
+      } catch {
+        // keep url as title
+      }
+
+      sources.push({
+        documentName: title,
+        url,
+        excerpt: excerpt || fullText.slice(0, 500),
+        relevanceScore: Math.min(1, (bestScore + 1) / (keywords.length + 1)),
+        sourceType: "web",
+      });
+    } catch (err) {
+      console.warn(`[WebSearch] Failed to fetch URL ${url}:`, (err as Error).message);
+    }
+  }
+
+  return sources;
+}

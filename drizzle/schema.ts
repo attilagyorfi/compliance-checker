@@ -195,3 +195,23 @@ export type SearchSource = {
   /** 'web' = internet search result, undefined/other = internal library source */
   sourceType?: "web" | "library" | "mszt" | "njt" | "netjogtar" | "eurlex";
 };
+
+// ─── Knowledge base documents (Tudástár) ─────────────────────────────────────
+
+export const knowledgeBaseDocuments = mysqlTable("knowledge_base_documents", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 512 }).notNull(),
+  originalName: varchar("originalName", { length: 512 }).notNull(),
+  fileType: varchar("fileType", { length: 32 }).notNull(),
+  fileSize: int("fileSize").notNull(),
+  s3Url: text("s3Url").notNull(),
+  s3Key: varchar("s3Key", { length: 512 }).notNull(),
+  extractedText: text("extractedText"),
+  description: text("description"),
+  tags: text("tags"),
+  uploadedAt: timestamp("uploadedAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type KnowledgeBaseDocument = typeof knowledgeBaseDocuments.$inferSelect;
+export type InsertKnowledgeBaseDocument = typeof knowledgeBaseDocuments.$inferInsert;

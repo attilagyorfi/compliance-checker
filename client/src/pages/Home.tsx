@@ -58,7 +58,7 @@ export default function Home() {
               Töltse fel tervdokumentumát és a vonatkozó jogszabályokat — az AI elvégzi az összevetést, és strukturált megfelelőségi riportot generál.
             </p>
             <div className="flex flex-wrap gap-4">
-              <Link href="/analysis">
+              <Link href="/search">
                 <Button
                   size="lg"
                   className="gap-2 font-semibold text-white"
@@ -156,7 +156,7 @@ export default function Home() {
           <p className="text-gray-400 mb-8 max-w-md mx-auto">
             Töltse fel dokumentumait és kapjon részletes megfelelőségi riportot percek alatt.
           </p>
-          <Link href="/analysis">
+          <Link href="/search">
             <Button
               size="lg"
               className="gap-2 font-semibold text-white"
@@ -174,7 +174,7 @@ export default function Home() {
       <footer className="py-8 border-t" style={{ borderColor: "#e5e7eb" }}>
         <div className="container flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="text-sm text-gray-400">
-            © 2024 M Mérnöki Iroda Kft. — Tervmegfelelőség-ellenőrző Pilot
+            © 2026 M Mérnöki Iroda Kft. — Tervmegfelelőség-ellenőrző Pilot
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-400">
             <CheckCircle2 size={14} style={{ color: "#7CA9D3" }} />
