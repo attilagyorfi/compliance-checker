@@ -232,10 +232,10 @@ export default function ResultPage() {
                 </h1>
               </div>
               <div className="ml-11 flex flex-wrap gap-3 text-xs text-gray-500">
-                {analysis.planDocumentName && (
+                {(analysis.planDocuments as any)?.[0]?.name && (
                   <span className="flex items-center gap-1">
                     <FileText size={12} />
-                    {analysis.planDocumentName}
+                    {(analysis.planDocuments as any)?.[0]?.name}
                   </span>
                 )}
                 <span>{new Date(analysis.createdAt).toLocaleDateString("hu-HU", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>

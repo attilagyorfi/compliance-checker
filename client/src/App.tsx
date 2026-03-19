@@ -8,6 +8,8 @@ import Home from "./pages/Home";
 import AnalysisPage from "./pages/AnalysisPage";
 import ReportsPage from "./pages/ReportsPage";
 import ResultPage from "./pages/ResultPage";
+import RegulationLibraryPage from "./pages/RegulationLibraryPage";
+import PlatformConnectionsPage from "./pages/PlatformConnectionsPage";
 
 function Router() {
   return (
@@ -16,6 +18,8 @@ function Router() {
       <Route path="/analysis" component={AnalysisPage} />
       <Route path="/reports" component={ReportsPage} />
       <Route path="/result/:id" component={ResultPage} />
+      <Route path="/regulations" component={RegulationLibraryPage} />
+      <Route path="/platforms" component={PlatformConnectionsPage} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

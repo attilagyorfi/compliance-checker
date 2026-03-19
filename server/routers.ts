@@ -1,6 +1,8 @@
 import { COOKIE_NAME } from "@shared/const";
 import { complianceRouter } from "./routers/compliance";
 import { pdfExportRouter } from "./routers/pdfExport";
+import { regulationSourcesRouter } from "./routers/regulationSources";
+import { platformCredentialsRouter } from "./routers/platformCredentials";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
@@ -21,6 +23,8 @@ export const appRouter = router({
 
   compliance: complianceRouter,
   pdf: pdfExportRouter,
+  regulationSources: regulationSourcesRouter,
+  platformCredentials: platformCredentialsRouter,
 
   // TODO: add feature routers here, e.g.
   // todo: router({

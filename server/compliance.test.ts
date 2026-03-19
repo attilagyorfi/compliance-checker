@@ -8,10 +8,10 @@ vi.mock("./db", () => ({
     id: 42,
     title: "Test Analysis",
     status: "completed",
-    planDocumentKey: "test-key",
-    planDocumentName: "test-plan.pdf",
+    planDocuments: [{ key: "test-key", name: "test-plan.pdf", fileType: "pdf" }],
     regulationDocumentKeys: [],
     regulationDocumentNames: ["test-reg.pdf"],
+    regulationSourceIds: [],
     results: [
       {
         id: "r1",
@@ -63,6 +63,45 @@ vi.mock("./storage", () => ({
   storagePut: vi.fn().mockResolvedValue({ key: "test-key", url: "https://cdn.example.com/test.pdf" }),
 }));
 
+// ── Mock drizzle DB for regulation sources / platform credentials ─────────────
+const mockRegSources = [
+  {
+    id: 1,
+    name: "TÉKA – 280/2024. Korm. rendelet",
+    shortCode: "TEKA_2024",
+    discipline: "epiteszet",
+    sourceType: "njt",
+    sourceUrl: "https://njt.hu/jogszabaly/2024-280-20-22",
+    content: "Jogszabály szövege...",
+    contentFetchedAt: new Date("2024-01-01"),
+    s3Key: null,
+    isActive: true,
+    createdAt: new Date("2024-01-01"),
+    updatedAt: new Date("2024-01-01"),
+  },
+];
+
+const mockPlatformCreds = [
+  {
+    id: 1,
+    platform: "mszt",
+    displayName: "MSZT fiók",
+    username: "test@example.com",
+    encryptedPassword: "dGVzdA==",
+    status: "connected",
+    lastConnectedAt: new Date("2024-01-01"),
+    lastError: null,
+    createdAt: new Date("2024-01-01"),
+    updatedAt: new Date("2024-01-01"),
+  },
+];
+
+// Mock drizzle ORM for regulation sources
+vi.mock("../drizzle/schema", async () => {
+  const actual = await vi.importActual("../drizzle/schema");
+  return actual;
+});
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function createPublicContext(): TrpcContext {
   return {
@@ -72,7 +111,7 @@ function createPublicContext(): TrpcContext {
   };
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// ── Compliance router tests ───────────────────────────────────────────────────
 describe("compliance router", () => {
   it("getAnalysis returns analysis by id", async () => {
     const { appRouter } = await import("./routers");
@@ -103,7 +142,6 @@ describe("compliance router", () => {
     const { appRouter } = await import("./routers");
     const caller = appRouter.createCaller(createPublicContext());
 
-    // Minimal valid base64 for a tiny "PDF"
     const fakeBase64 = Buffer.from("%PDF-1.4 fake content").toString("base64");
 
     const result = await caller.compliance.startAnalysis({
@@ -114,8 +152,41 @@ describe("compliance router", () => {
 
     expect(result.analysisId).toBe(42);
   });
+
+  it("startAnalysis accepts multiple plan documents and library source IDs", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+
+    const fakeBase64 = Buffer.from("%PDF-1.4 fake content").toString("base64");
+
+    const result = await caller.compliance.startAnalysis({
+      title: "Multi-doc Elemzés",
+      planDocument: { key: "", name: "plan1.pdf", base64: fakeBase64 },
+      regulationDocuments: [],
+      planDocumentNames: ["plan1.pdf", "plan2.dwg", "plan3.xlsx"],
+      regulationSourceIds: [1, 2, 3],
+    });
+
+    expect(result.analysisId).toBe(42);
+  });
+
+  it("startAnalysis accepts xlsx and dwg file types", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+
+    const fakeBase64 = Buffer.from("fake xlsx content").toString("base64");
+
+    const result = await caller.compliance.startAnalysis({
+      title: "XLSX Elemzés",
+      planDocument: { key: "", name: "plan.xlsx", base64: fakeBase64 },
+      regulationDocuments: [{ name: "regulation.docx", base64: fakeBase64 }],
+    });
+
+    expect(result.analysisId).toBe(42);
+  });
 });
 
+// ── PDF export router tests ───────────────────────────────────────────────────
 describe("pdf export router", () => {
   it("exportPdf returns base64 and filename for completed analysis", async () => {
     const { appRouter } = await import("./routers");
@@ -140,10 +211,10 @@ describe("pdf export router", () => {
       id: 1,
       title: "Pending",
       status: "processing",
-      planDocumentKey: null,
-      planDocumentName: null,
+      planDocuments: [],
       regulationDocumentKeys: [],
       regulationDocumentNames: [],
+      regulationSourceIds: [],
       results: null,
       summary: null,
       errorMessage: null,
@@ -154,5 +225,37 @@ describe("pdf export router", () => {
     const { appRouter } = await import("./routers");
     const caller = appRouter.createCaller(createPublicContext());
     await expect(caller.pdf.exportPdf({ id: 1 })).rejects.toThrow("Az elemzés még nem fejeződött be");
+  });
+});
+
+// ── Regulation scraper unit tests ─────────────────────────────────────────────
+describe("regulation scraper", () => {
+  it("encryptPassword and decryptPassword are inverse operations", async () => {
+    const { encryptPassword, decryptPassword } = await import("./regulationScraper");
+    const original = "my-secret-password-123!";
+    const encrypted = encryptPassword(original);
+    expect(encrypted).not.toBe(original);
+    const decrypted = decryptPassword(encrypted);
+    expect(decrypted).toBe(original);
+  });
+
+  it("encryptPassword produces different output for different inputs", async () => {
+    const { encryptPassword } = await import("./regulationScraper");
+    const enc1 = encryptPassword("password1");
+    const enc2 = encryptPassword("password2");
+    expect(enc1).not.toBe(enc2);
+  });
+
+  it("fetchRegulationText returns warning for paid platform without credentials", async () => {
+    const { fetchRegulationText } = await import("./regulationScraper");
+    const result = await fetchRegulationText("mszt", "https://szabvanykonyvtar.mszt.hu/test");
+    expect(result.warning).toBeTruthy();
+    expect(result.text).toBe("");
+  });
+
+  it("fetchRegulationText returns warning for pdf type", async () => {
+    const { fetchRegulationText } = await import("./regulationScraper");
+    const result = await fetchRegulationText("pdf", "https://example.com/test.pdf");
+    expect(result.warning).toBeTruthy();
   });
 });

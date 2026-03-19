@@ -91,7 +91,7 @@ export function generatePdfReport(analysis: Analysis): Promise<Buffer> {
     .fontSize(9)
     .font("Helvetica")
     .text(
-      `Tervdokumentum: ${analysis.planDocumentName || "–"}   ·   Elemzés dátuma: ${new Date(analysis.createdAt).toLocaleDateString("hu-HU")}`,
+      `Tervdokumentum: ${(analysis.planDocuments as any)?.[0]?.name || "–"}   ·   Elemzés dátuma: ${new Date(analysis.createdAt).toLocaleDateString("hu-HU")}`,
       60,
       170
     );

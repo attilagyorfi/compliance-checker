@@ -191,17 +191,30 @@ export const complianceRouter = router({
             key: z.string().optional(),
             name: z.string(),
             base64: z.string(),
+            sourceId: z.number().optional(), // reference to regulation_sources table
           })
-        ).min(1),
+        ).min(0).default([]),
+        // Additional plan document names for multi-doc support
+        planDocumentNames: z.array(z.string()).optional(),
+        // Library regulation source IDs
+        regulationSourceIds: z.array(z.number()).optional(),
       })
     )
     .mutation(async ({ input }) => {
       // 1. Create analysis record
+      const allRegNames = input.regulationDocuments
+        .filter((d) => !d.name.startsWith("__lib_source_"))
+        .map((d) => d.name);
       const analysisId = await createAnalysis({
         title: input.title,
         status: "processing",
-        planDocumentName: input.planDocument.name,
-        regulationDocumentNames: input.regulationDocuments.map((d) => d.name),
+        planDocuments: (input.planDocumentNames ?? [input.planDocument.name]).map((name) => ({
+          key: "",
+          name,
+          fileType: "pdf" as const,
+        })),
+        regulationDocumentNames: allRegNames,
+        regulationSourceIds: input.regulationSourceIds ?? [],
       });
 
       // 2. Process asynchronously (fire and forget)
@@ -243,21 +256,79 @@ async function processAnalysis(
   input: {
     title: string;
     planDocument: { key: string; name: string; base64: string };
-    regulationDocuments: Array<{ key?: string; name: string; base64: string }>;
+    regulationDocuments: Array<{ key?: string; name: string; base64: string; sourceId?: number }>;
+    planDocumentNames?: string[];
+    regulationSourceIds?: number[];
   }
 ): Promise<void> {
   try {
-    // Extract text from plan PDF
+    // Extract text from plan PDF (primary document)
     const planBuffer = Buffer.from(input.planDocument.base64, "base64");
-    const planText = await extractTextFromPdf(planBuffer);
+    const planText = await extractTextFromDocument(planBuffer, input.planDocument.name);
 
-    // Extract text from all regulation PDFs
+    // Extract text from uploaded regulation documents
     const regulationTexts: string[] = [];
+    const regulationNames: string[] = [];
+
     for (const doc of input.regulationDocuments) {
+      // Skip library source placeholders
+      if (doc.name.startsWith("__lib_source_")) continue;
+      if (!doc.base64) continue;
       const buf = Buffer.from(doc.base64, "base64");
-      const text = await extractTextFromPdf(buf);
+      const text = await extractTextFromDocument(buf, doc.name);
       regulationTexts.push(`=== ${doc.name} ===\n${text}`);
+      regulationNames.push(doc.name);
     }
+
+    // Fetch text from library regulation sources
+    if (input.regulationSourceIds && input.regulationSourceIds.length > 0) {
+      try {
+        const { getDb } = await import("../db");
+        const { regulationSources } = await import("../../drizzle/schema");
+        const { inArray } = await import("drizzle-orm");
+        const db = await getDb();
+        if (db) {
+          const sources = await db
+            .select()
+            .from(regulationSources)
+            .where(inArray(regulationSources.id, input.regulationSourceIds));
+          for (const src of sources) {
+            if (src.content) {
+              regulationTexts.push(`=== ${src.name} ===\n${src.content}`);
+              regulationNames.push(src.name);
+            } else {
+              // Try to fetch on-the-fly for free sources
+              if (["njt", "netjogtar", "url"].includes(src.sourceType) && src.sourceUrl) {
+                try {
+                  const { fetchRegulationText } = await import("../regulationScraper");
+                  const fetched = await fetchRegulationText(src.sourceType as any, src.sourceUrl);
+                  if (fetched.text) {
+                    regulationTexts.push(`=== ${src.name} ===\n${fetched.text}`);
+                    regulationNames.push(src.name);
+                    // Cache it
+                    const { eq } = await import("drizzle-orm");
+                    await db.update(regulationSources).set({
+                      content: fetched.text.slice(0, 65000),
+                      contentFetchedAt: fetched.fetchedAt,
+                    }).where(eq(regulationSources.id, src.id));
+                  }
+                } catch (fetchErr) {
+                  console.warn(`[Analysis ${analysisId}] Could not fetch source ${src.id}:`, fetchErr);
+                  regulationTexts.push(`=== ${src.name} ===\n[Tartalom nem elérhető – bejelentkezés szükséges]`);
+                  regulationNames.push(src.name);
+                }
+              } else {
+                regulationTexts.push(`=== ${src.name} ===\n[Tartalom nem elérhető – kérjük töltse le a jogszabály könyvtárban]`);
+                regulationNames.push(src.name);
+              }
+            }
+          }
+        }
+      } catch (dbErr) {
+        console.warn(`[Analysis ${analysisId}] DB error fetching library sources:`, dbErr);
+      }
+    }
+
     const combinedRegulationText = regulationTexts.join("\n\n");
 
     // Run AI analysis
@@ -265,7 +336,7 @@ async function processAnalysis(
       planText,
       combinedRegulationText,
       input.planDocument.name,
-      input.regulationDocuments.map((d) => d.name)
+      regulationNames
     );
 
     // Update analysis with results
@@ -276,4 +347,76 @@ async function processAnalysis(
     });
     throw err;
   }
+}
+
+/**
+ * Extract text from a document buffer, supporting multiple file types.
+ */
+async function extractTextFromDocument(buffer: Buffer, filename: string): Promise<string> {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  
+  if (ext === "pdf") {
+    return extractTextFromPdf(buffer);
+  }
+  
+  if (["docx", "doc"].includes(ext)) {
+    try {
+      const mammoth = await import("mammoth");
+      const result = await mammoth.extractRawText({ buffer });
+      return result.value || "";
+    } catch {
+      return buffer.toString("utf8").replace(/[^\x20-\x7E\n\r\t\u00C0-\u024F]/g, " ").slice(0, 50000);
+    }
+  }
+  
+  if (["xlsx", "xls"].includes(ext)) {
+    try {
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.read(buffer, { type: "buffer" });
+      const texts: string[] = [];
+      for (const sheetName of workbook.SheetNames) {
+        const sheet = workbook.Sheets[sheetName];
+        if (sheet) {
+          const csv = XLSX.utils.sheet_to_csv(sheet);
+          texts.push(`[Munkalap: ${sheetName}]\n${csv}`);
+        }
+      }
+      return texts.join("\n\n").slice(0, 50000);
+    } catch {
+      return "[Excel fájl – szöveg kinyerés sikertelen]";
+    }
+  }
+  
+  if (["dwg", "dxf"].includes(ext)) {
+    // DWG/DXF: extract text entities from DXF (ASCII format)
+    const text = buffer.toString("utf8", 0, Math.min(buffer.length, 100000));
+    const textEntities: string[] = [];
+    const lines = text.split("\n");
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (lines[i]?.trim() === "1" && lines[i + 1]) {
+        const val = lines[i + 1].trim();
+        if (val.length > 1 && val.length < 500 && !/^[0-9\s\-\.]+$/.test(val)) {
+          textEntities.push(val);
+        }
+      }
+    }
+    return textEntities.length > 0
+      ? `[${ext.toUpperCase()} rajzfájl szöveges elemei:]\n` + textEntities.join("\n")
+      : `[${ext.toUpperCase()} rajzfájl – szöveges tartalom nem kinyerhető automatikusan]`;
+  }
+  
+  if (ext === "ifc") {
+    // IFC is a text-based format (STEP/EXPRESS)
+    const text = buffer.toString("utf8", 0, Math.min(buffer.length, 100000));
+    // Extract IFCSPACE, IFCZONE, IFCBUILDINGSTOREY, property sets
+    const relevant = text
+      .split("\n")
+      .filter((line) => /IFC(SPACE|ZONE|BUILDING|STOREY|PROPERTY|WALL|SLAB|BEAM|COLUMN|DOOR|WINDOW)/i.test(line))
+      .slice(0, 2000)
+      .join("\n");
+    return relevant || `[IFC BIM fájl – ${buffer.length} bájt, szöveges tartalom kinyerve]`;
+  }
+  
+  // Fallback: try UTF-8 text
+  return buffer.toString("utf8").replace(/[^\x20-\x7E\n\r\t\u00C0-\u024F]/g, " ").slice(0, 50000);
 }

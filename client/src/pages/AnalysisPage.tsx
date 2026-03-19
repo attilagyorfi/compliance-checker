@@ -1,38 +1,109 @@
 import { useState, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
-import { Upload, FileText, X, Plus, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import {
+  Upload, FileText, X, Loader2, CheckCircle2, BookOpen,
+  ChevronDown, ChevronUp, Info, FileSpreadsheet, Layers, File
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import Header from "@/components/Header";
 import { trpc } from "@/lib/trpc";
 
-const BG_URL = "https://d2xsxph8kpxj0f.cloudfront.net/109169450/Lkoz8HcKNEz8RQmUhyV4qZ/upload_bg-bW9H5LfMfX6iMC82Jiotnt.webp";
+// ── Constants ──────────────────────────────────────────────────────────────────
 
-type FileItem = { file: File; name: string; base64?: string };
+const ACCEPTED_EXTENSIONS = ".pdf,.docx,.doc,.xlsx,.xls,.dwg,.dxf,.ifc,.rtf";
+const ACCEPTED_MIME = [
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
+  "application/acad",
+  "image/vnd.dwg",
+  "application/octet-stream", // DWG, DXF, IFC
+];
+
+const DISCIPLINE_LABELS: Record<string, string> = {
+  altalanos: "Általános",
+  epiteszet: "Építészet",
+  tuzvedelmi: "Tűzvédelem",
+  energetika: "Energetika",
+  statika: "Statika",
+  gepeszet: "Gépészet",
+  villamos: "Villamos",
+  geotechnika: "Geotechnika",
+  kozlekedes: "Közlekedés",
+  tajepiteszet: "Tájépítészet",
+  egyeb: "Egyéb",
+};
+
+const DISCIPLINE_COLORS: Record<string, string> = {
+  altalanos: "#6b7280",
+  epiteszet: "#7CA9D3",
+  tuzvedelmi: "#ef4444",
+  energetika: "#f59e0b",
+  statika: "#8b5cf6",
+  gepeszet: "#06b6d4",
+  villamos: "#f97316",
+  geotechnika: "#84cc16",
+  kozlekedes: "#14b8a6",
+  tajepiteszet: "#22c55e",
+  egyeb: "#9ca3af",
+};
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve((reader.result as string).split(",")[1]);
+    reader.onload = () => resolve((reader.result as string).split(",")[1] ?? "");
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
 }
 
-function DropZone({
-  label,
-  file,
-  onFile,
+function getFileTypeLabel(filename: string): { label: string; color: string; icon: React.ReactNode } {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  if (ext === "pdf") return { label: "PDF", color: "#ef4444", icon: <FileText size={14} /> };
+  if (["docx", "doc"].includes(ext)) return { label: "DOCX", color: "#2563eb", icon: <FileText size={14} /> };
+  if (["xlsx", "xls"].includes(ext)) return { label: "XLSX", color: "#16a34a", icon: <FileSpreadsheet size={14} /> };
+  if (["dwg", "dxf"].includes(ext)) return { label: ext.toUpperCase(), color: "#7c3aed", icon: <Layers size={14} /> };
+  if (ext === "ifc") return { label: "IFC", color: "#0891b2", icon: <Layers size={14} /> };
+  return { label: ext.toUpperCase() || "?", color: "#6b7280", icon: <File size={14} /> };
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+type UploadedFile = {
+  file: File;
+  name: string;
+  discipline?: string;
+};
+
+// ── Multi-file drop zone ───────────────────────────────────────────────────────
+
+function MultiDropZone({
+  files,
+  onFiles,
   onRemove,
-  multiple = false,
+  maxFiles = 20,
+  label,
+  hint,
 }: {
+  files: UploadedFile[];
+  onFiles: (files: File[]) => void;
+  onRemove: (idx: number) => void;
+  maxFiles?: number;
   label: string;
-  file?: FileItem | null;
-  onFile: (f: File) => void;
-  onRemove?: () => void;
-  multiple?: boolean;
+  hint?: string;
 }) {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -41,73 +112,213 @@ function DropZone({
     (e: React.DragEvent) => {
       e.preventDefault();
       setDragging(false);
-      const f = e.dataTransfer.files[0];
-      if (f && f.type === "application/pdf") onFile(f);
-      else toast.error("Csak PDF fájl tölthető fel.");
+      const dropped = Array.from(e.dataTransfer.files);
+      onFiles(dropped);
     },
-    [onFile]
+    [onFiles]
   );
 
   return (
-    <div
-      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-      onDragLeave={() => setDragging(false)}
-      onDrop={handleDrop}
-      onClick={() => !file && inputRef.current?.click()}
-      className={`relative rounded-lg border-2 border-dashed transition-all duration-200 ${
-        file ? "border-transparent cursor-default" : "cursor-pointer hover:border-[#7CA9D3]"
-      } ${dragging ? "border-[#7CA9D3] bg-blue-50" : "border-gray-200 bg-gray-50"}`}
-      style={{ minHeight: 130 }}
-    >
-      <input
-        ref={inputRef}
-        type="file"
-        accept="application/pdf"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) onFile(f);
-          e.target.value = "";
-        }}
-      />
-
-      {file ? (
-        <div className="flex items-center gap-3 p-4">
-          <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#EBF3FA" }}>
-            <FileText size={20} style={{ color: "#7CA9D3" }} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-medium text-sm text-gray-800 truncate">{file.name}</div>
-            <div className="text-xs text-gray-400 mt-0.5">
-              {(file.file.size / 1024).toFixed(0)} KB · PDF
-            </div>
-          </div>
-          {onRemove && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onRemove(); }}
-              className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+    <div className="space-y-2">
+      {files.map((f, i) => {
+        const { label: typeLabel, color, icon } = getFileTypeLabel(f.name);
+        return (
+          <div
+            key={i}
+            className="flex items-center gap-3 p-3 rounded-lg border bg-white"
+            style={{ borderColor: "#e5e7eb" }}
+          >
+            <div
+              className="w-8 h-8 rounded flex items-center justify-center flex-shrink-0 text-white"
+              style={{ backgroundColor: color }}
             >
-              <X size={15} />
+              {icon}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-gray-800 truncate">{f.name}</div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-xs text-gray-400">{formatFileSize(f.file.size)}</span>
+                <span
+                  className="text-xs px-1.5 py-0.5 rounded font-medium"
+                  style={{ backgroundColor: `${color}15`, color }}
+                >
+                  {typeLabel}
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={() => onRemove(i)}
+              className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
+            >
+              <X size={14} />
             </button>
-          )}
-        </div>
-      ) : (
-        <div className="flex flex-col items-center justify-center p-8 text-center">
-          <Upload size={28} className="mb-3" style={{ color: "#7CA9D3" }} />
-          <div className="font-medium text-sm text-gray-700 mb-1">{label}</div>
-          <div className="text-xs text-gray-400">Húzza ide a fájlt, vagy kattintson a tallózáshoz</div>
-          <div className="text-xs text-gray-300 mt-1">PDF formátum</div>
+          </div>
+        );
+      })}
+
+      {files.length < maxFiles && (
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={handleDrop}
+          onClick={() => inputRef.current?.click()}
+          className={`rounded-lg border-2 border-dashed cursor-pointer transition-all duration-200 ${
+            dragging ? "border-[#7CA9D3] bg-blue-50" : "border-gray-200 bg-gray-50 hover:border-[#7CA9D3] hover:bg-blue-50/30"
+          }`}
+          style={{ minHeight: 100 }}
+        >
+          <input
+            ref={inputRef}
+            type="file"
+            accept={ACCEPTED_EXTENSIONS}
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const fs = Array.from(e.target.files ?? []);
+              if (fs.length > 0) onFiles(fs);
+              e.target.value = "";
+            }}
+          />
+          <div className="flex flex-col items-center justify-center p-6 text-center">
+            <Upload size={24} className="mb-2" style={{ color: "#7CA9D3" }} />
+            <div className="font-medium text-sm text-gray-700 mb-1">{label}</div>
+            <div className="text-xs text-gray-400">{hint ?? "Húzza ide a fájlokat, vagy kattintson a tallózáshoz"}</div>
+            <div className="text-xs text-gray-300 mt-1">PDF · DOCX · XLSX · DWG · DXF · IFC · RTF</div>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
+// ── Regulation library picker ──────────────────────────────────────────────────
+
+function RegulationLibraryPicker({
+  selectedIds,
+  onToggle,
+}: {
+  selectedIds: number[];
+  onToggle: (id: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [filterDiscipline, setFilterDiscipline] = useState<string>("all");
+  const { data: sources, isLoading } = trpc.regulationSources.list.useQuery();
+
+  const filtered = sources?.filter(
+    (s) => filterDiscipline === "all" || s.discipline === filterDiscipline
+  ) ?? [];
+
+  const disciplines = ["all", ...Array.from(new Set(sources?.map((s) => s.discipline) ?? []))];
+
+  return (
+    <div className="border rounded-lg overflow-hidden" style={{ borderColor: "#e5e7eb" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-7 h-7 rounded flex items-center justify-center" style={{ backgroundColor: "#EBF3FA" }}>
+            <BookOpen size={14} style={{ color: "#7CA9D3" }} />
+          </div>
+          <div>
+            <div className="text-sm font-semibold text-gray-800">Jogszabály könyvtárból</div>
+            <div className="text-xs text-gray-400">
+              {selectedIds.length > 0 ? `${selectedIds.length} jogszabály kiválasztva` : "Válasszon a mentett jogszabályokból"}
+            </div>
+          </div>
+        </div>
+        {open ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+      </button>
+
+      {open && (
+        <div className="border-t" style={{ borderColor: "#e5e7eb" }}>
+          {/* Discipline filter */}
+          <div className="p-3 border-b flex gap-2 flex-wrap" style={{ borderColor: "#e5e7eb" }}>
+            {disciplines.map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setFilterDiscipline(d)}
+                className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${
+                  filterDiscipline === d
+                    ? "text-white"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+                style={filterDiscipline === d ? { backgroundColor: "#7CA9D3" } : {}}
+              >
+                {d === "all" ? "Összes" : DISCIPLINE_LABELS[d] ?? d}
+              </button>
+            ))}
+          </div>
+
+          {/* Source list */}
+          <div className="max-h-64 overflow-y-auto divide-y" style={{ borderColor: "#f3f4f6" }}>
+            {isLoading ? (
+              <div className="flex items-center justify-center p-6">
+                <Loader2 size={18} className="animate-spin text-gray-400" />
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="p-4 text-center text-sm text-gray-400">Nincs jogszabály ebben a kategóriában.</div>
+            ) : (
+              filtered.map((source) => {
+                const isSelected = selectedIds.includes(source.id);
+                const discColor = DISCIPLINE_COLORS[source.discipline] ?? "#6b7280";
+                return (
+                  <label
+                    key={source.id}
+                    className="flex items-start gap-3 p-3 hover:bg-gray-50 cursor-pointer transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => onToggle(source.id)}
+                      className="mt-0.5 rounded"
+                      style={{ accentColor: "#7CA9D3" }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-800 leading-tight">{source.name}</div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span
+                          className="text-xs px-1.5 py-0.5 rounded font-medium"
+                          style={{ backgroundColor: `${discColor}15`, color: discColor }}
+                        >
+                          {DISCIPLINE_LABELS[source.discipline] ?? source.discipline}
+                        </span>
+                        <span className="text-xs text-gray-400 uppercase">{source.sourceType}</span>
+                        {source.content && (
+                          <span className="text-xs text-green-600 flex items-center gap-0.5">
+                            <CheckCircle2 size={10} />
+                            Letöltve
+                          </span>
+                        )}
+                        {!source.content && ["mszt", "jogtar", "epitesijog"].includes(source.sourceType) && (
+                          <span className="text-xs text-amber-500 flex items-center gap-0.5">
+                            <Info size={10} />
+                            Bejelentkezés szükséges
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </label>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main page ──────────────────────────────────────────────────────────────────
+
 export default function AnalysisPage() {
   const [, navigate] = useLocation();
   const [title, setTitle] = useState("");
-  const [planFile, setPlanFile] = useState<FileItem | null>(null);
-  const [regulationFiles, setRegulationFiles] = useState<FileItem[]>([]);
+  const [planFiles, setPlanFiles] = useState<UploadedFile[]>([]);
+  const [regulationFiles, setRegulationFiles] = useState<UploadedFile[]>([]);
+  const [selectedRegSourceIds, setSelectedRegSourceIds] = useState<number[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const startAnalysis = trpc.compliance.startAnalysis.useMutation({
@@ -121,36 +332,65 @@ export default function AnalysisPage() {
     },
   });
 
+  const addPlanFiles = (files: File[]) => {
+    const remaining = 20 - planFiles.length;
+    const toAdd = files.slice(0, remaining);
+    if (files.length > remaining) toast.warning(`Maximum 20 tervdokumentum tölthető fel. ${files.length - remaining} fájl kihagyva.`);
+    setPlanFiles((prev) => [...prev, ...toAdd.map((f) => ({ file: f, name: f.name }))]);
+  };
+
+  const addRegulationFiles = (files: File[]) => {
+    const remaining = 10 - regulationFiles.length;
+    const toAdd = files.slice(0, remaining);
+    if (files.length > remaining) toast.warning(`Maximum 10 jogszabály tölthető fel. ${files.length - remaining} fájl kihagyva.`);
+    setRegulationFiles((prev) => [...prev, ...toAdd.map((f) => ({ file: f, name: f.name }))]);
+  };
+
+  const toggleRegSource = (id: number) => {
+    setSelectedRegSourceIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const hasRegulations = regulationFiles.length > 0 || selectedRegSourceIds.length > 0;
+
   const handleSubmit = async () => {
     if (!title.trim()) { toast.error("Adjon meg egy elemzési nevet."); return; }
-    if (!planFile) { toast.error("Töltse fel a tervdokumentumot."); return; }
-    if (regulationFiles.length === 0) { toast.error("Töltsön fel legalább egy jogszabályt."); return; }
+    if (planFiles.length === 0) { toast.error("Töltse fel legalább egy tervdokumentumot."); return; }
+    if (!hasRegulations) { toast.error("Adjon meg legalább egy jogszabályt (feltöltve vagy könyvtárból)."); return; }
 
     setIsSubmitting(true);
     try {
-      const planBase64 = await fileToBase64(planFile.file);
+      // Use first plan file as primary (legacy API compat), pass all as planDocuments
+      const primaryPlan = planFiles[0]!;
+      const planBase64 = await fileToBase64(primaryPlan.file);
+
+      // Build regulation documents list
       const regBase64s = await Promise.all(regulationFiles.map((f) => fileToBase64(f.file)));
+      const regulationDocuments = regulationFiles.map((f, i) => ({
+        name: f.name,
+        base64: regBase64s[i] ?? "",
+      }));
+
+      // If library sources are selected, add placeholder entries
+      // (the backend will fetch their content from the DB)
+      // For now, pass them as empty base64 with special names
+      const libDocs = selectedRegSourceIds.map((id) => ({
+        name: `__lib_source_${id}__`,
+        base64: "",
+        sourceId: id,
+      }));
 
       await startAnalysis.mutateAsync({
         title: title.trim(),
-        planDocument: { key: "", name: planFile.name, base64: planBase64 },
-        regulationDocuments: regulationFiles.map((f, i) => ({
-          name: f.name,
-          base64: regBase64s[i],
-        })),
+        planDocument: { key: "", name: primaryPlan.name, base64: planBase64 },
+        regulationDocuments: [...regulationDocuments, ...libDocs],
+        planDocumentNames: planFiles.map((f) => f.name),
+        regulationSourceIds: selectedRegSourceIds,
       });
     } catch {
       setIsSubmitting(false);
     }
-  };
-
-  const addRegulationFile = (file: File) => {
-    if (regulationFiles.length >= 5) { toast.error("Maximum 5 jogszabály tölthető fel."); return; }
-    setRegulationFiles((prev) => [...prev, { file, name: file.name }]);
-  };
-
-  const removeRegulation = (idx: number) => {
-    setRegulationFiles((prev) => prev.filter((_, i) => i !== idx));
   };
 
   return (
@@ -169,23 +409,19 @@ export default function AnalysisPage() {
             </h1>
           </div>
           <p className="text-gray-500 text-sm ml-11">
-            Töltse fel a tervdokumentumot és a vonatkozó jogszabályokat az AI alapú megfelelőség-ellenőrzéshez.
+            Töltse fel a tervdokumentumokat és adja meg a vonatkozó jogszabályokat az AI alapú megfelelőség-ellenőrzéshez.
           </p>
         </div>
       </div>
 
       <main className="flex-1 container py-10">
         <div className="max-w-2xl mx-auto">
+
           {/* Step 1: Title */}
           <div className="mb-8">
             <div className="flex items-center gap-3 mb-4">
-              <span
-                className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                style={{ backgroundColor: "#7CA9D3" }}
-              >1</span>
-              <h2 className="font-semibold text-base" style={{ color: "#161718" }}>
-                Elemzés neve
-              </h2>
+              <span className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ backgroundColor: "#7CA9D3" }}>1</span>
+              <h2 className="font-semibold text-base" style={{ color: "#161718" }}>Elemzés neve</h2>
             </div>
             <Input
               placeholder="pl. Ipari csarnok – tűzvédelmi megfelelőség 2024"
@@ -195,73 +431,79 @@ export default function AnalysisPage() {
             />
           </div>
 
-          {/* Step 2: Plan document */}
+          {/* Step 2: Plan documents (multi) */}
           <div className="mb-8">
             <div className="flex items-center gap-3 mb-4">
-              <span
-                className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                style={{ backgroundColor: "#7CA9D3" }}
-              >2</span>
-              <h2 className="font-semibold text-base" style={{ color: "#161718" }}>
-                Tervdokumentum
-              </h2>
+              <span className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ backgroundColor: "#7CA9D3" }}>2</span>
+              <div>
+                <h2 className="font-semibold text-base" style={{ color: "#161718" }}>Tervdokumentumok</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Több fájl is feltölthető (max. 20) – PDF, DOCX, XLSX, DWG, DXF, IFC</p>
+              </div>
             </div>
-            <DropZone
-              label="Tervdokumentum feltöltése"
-              file={planFile}
-              onFile={(f) => setPlanFile({ file: f, name: f.name })}
-              onRemove={() => setPlanFile(null)}
+            <MultiDropZone
+              files={planFiles}
+              onFiles={addPlanFiles}
+              onRemove={(i) => setPlanFiles((prev) => prev.filter((_, idx) => idx !== i))}
+              maxFiles={20}
+              label="Tervdokumentumok feltöltése"
+              hint="Húzza ide a fájlokat, vagy kattintson a tallózáshoz · Több fájl egyszerre is kiválasztható"
             />
+            {planFiles.length > 0 && (
+              <p className="text-xs text-gray-400 mt-2">{planFiles.length} fájl kiválasztva</p>
+            )}
           </div>
 
-          {/* Step 3: Regulation documents */}
+          {/* Step 3: Regulations */}
           <div className="mb-10">
             <div className="flex items-center gap-3 mb-4">
-              <span
-                className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                style={{ backgroundColor: "#7CA9D3" }}
-              >3</span>
-              <h2 className="font-semibold text-base" style={{ color: "#161718" }}>
-                Jogszabályok / Szabványok
-              </h2>
+              <span className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ backgroundColor: "#7CA9D3" }}>3</span>
+              <div>
+                <h2 className="font-semibold text-base" style={{ color: "#161718" }}>Jogszabályok / Szabványok</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Töltse fel manuálisan, vagy válasszon a jogszabály könyvtárból</p>
+              </div>
             </div>
 
             <div className="space-y-3">
-              {regulationFiles.map((f, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-3 p-3 rounded-lg border"
-                  style={{ borderColor: "#e5e7eb", backgroundColor: "#F8FAFC" }}
-                >
-                  <div className="w-8 h-8 rounded flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#EBF3FA" }}>
-                    <FileText size={15} style={{ color: "#7CA9D3" }} />
-                  </div>
-                  <span className="flex-1 text-sm text-gray-700 truncate">{f.name}</span>
-                  <button
-                    onClick={() => removeRegulation(i)}
-                    className="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
+              {/* Manual upload */}
+              <MultiDropZone
+                files={regulationFiles}
+                onFiles={addRegulationFiles}
+                onRemove={(i) => setRegulationFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                maxFiles={10}
+                label="Jogszabály / Szabvány feltöltése"
+                hint="PDF, DOCX, XLSX formátumban"
+              />
 
-              {regulationFiles.length < 5 && (
-                <DropZone
-                  label="Jogszabály / Szabvány hozzáadása"
-                  file={null}
-                  onFile={addRegulationFile}
-                />
-              )}
+              {/* Library picker */}
+              <RegulationLibraryPicker
+                selectedIds={selectedRegSourceIds}
+                onToggle={toggleRegSource}
+              />
             </div>
-            <p className="text-xs text-gray-400 mt-2">Maximum 5 dokumentum · PDF formátum</p>
+
+            {hasRegulations && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {regulationFiles.map((f, i) => (
+                  <Badge key={`file-${i}`} variant="secondary" className="text-xs gap-1">
+                    <FileText size={10} />
+                    {f.name.length > 30 ? f.name.slice(0, 30) + "…" : f.name}
+                  </Badge>
+                ))}
+                {selectedRegSourceIds.length > 0 && (
+                  <Badge variant="outline" className="text-xs gap-1" style={{ borderColor: "#7CA9D3", color: "#7CA9D3" }}>
+                    <BookOpen size={10} />
+                    {selectedRegSourceIds.length} könyvtári forrás
+                  </Badge>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Submit */}
           <div className="border-t pt-8" style={{ borderColor: "#e5e7eb" }}>
             <Button
               onClick={handleSubmit}
-              disabled={isSubmitting || !title || !planFile || regulationFiles.length === 0}
+              disabled={isSubmitting || !title || planFiles.length === 0 || !hasRegulations}
               size="lg"
               className="w-full gap-2 font-semibold text-white"
               style={{ backgroundColor: "#7CA9D3" }}
@@ -279,7 +521,7 @@ export default function AnalysisPage() {
               )}
             </Button>
             <p className="text-xs text-gray-400 text-center mt-3">
-              Az elemzés általában 30–90 másodpercet vesz igénybe.
+              Az elemzés általában 30–90 másodpercet vesz igénybe a dokumentumok számától függően.
             </p>
           </div>
         </div>

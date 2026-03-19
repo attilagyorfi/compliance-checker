@@ -52,10 +52,10 @@ function AnalysisCard({ analysis }: { analysis: Analysis }) {
               {analysis.title}
             </h3>
             <div className="flex flex-wrap gap-3 text-xs text-gray-400">
-              {analysis.planDocumentName && (
+              {(analysis.planDocuments as any)?.[0]?.name && (
                 <span className="flex items-center gap-1">
                   <ClipboardList size={11} />
-                  {analysis.planDocumentName}
+                  {(analysis.planDocuments as any)?.[0]?.name}
                 </span>
               )}
               <span>
