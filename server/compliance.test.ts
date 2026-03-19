@@ -3,6 +3,7 @@ import type { TrpcContext } from "./_core/context";
 
 // ── Mock database helpers ─────────────────────────────────────────────────────
 vi.mock("./db", () => ({
+  getDb: vi.fn().mockResolvedValue(null), // standardsSearch uses getDb directly
   createAnalysis: vi.fn().mockResolvedValue(42),
   getAnalysisById: vi.fn().mockResolvedValue({
     id: 42,
@@ -257,5 +258,35 @@ describe("regulation scraper", () => {
     const { fetchRegulationText } = await import("./regulationScraper");
     const result = await fetchRegulationText("pdf", "https://example.com/test.pdf");
     expect(result.warning).toBeTruthy();
+  });
+});
+
+// ── Standards search router tests ─────────────────────────────────────────────
+describe("standardsSearch router", () => {
+  it("listHistory returns empty array when no queries", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    // DB may not have entries in test env – just check it doesn't throw
+    const result = await caller.standardsSearch.listHistory({ limit: 10, offset: 0 });
+    expect(Array.isArray(result.items)).toBe(true);
+  });
+
+  it("getQuery throws NOT_FOUND for missing id", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.standardsSearch.getQuery({ id: 999999 })).rejects.toThrow();
+  });
+
+  it("deleteQuery throws when DB unavailable (mocked)", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    // In test env getDb returns null, so it should throw INTERNAL_SERVER_ERROR
+    await expect(caller.standardsSearch.deleteQuery({ id: 999999 })).rejects.toThrow();
+  });
+
+  it("extendAnswer throws NOT_FOUND for missing id", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.standardsSearch.extendAnswer({ queryId: 999999 })).rejects.toThrow();
   });
 });

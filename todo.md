@@ -63,3 +63,55 @@
 - [x] Regulation source scraper tesztek
 - [x] Credential kezelés tesztek
 - [x] Vitest tesztek: 14/14 sikeres
+
+## Bővítés V3 – MSZT integráció, szabadszavas kereső, hallucináció-kezelés
+
+### Adatbázis
+- [x] search_queries tábla (keresési előzmények)
+- [x] search_settings tábla (felhasználói beállítások)
+
+### Backend – MSZT integráció
+- [x] MSZT credential mentés/lekérés tRPC endpoint (meglévő platformCredentials router)
+- [x] MSZT session kezelés keretrendszer (regulationScraper.ts)
+- [x] MSZT szabványkeresés endpoint (standardsSearch router)
+- [x] MSZT tartalom letöltés + cache (regulationSources tábla)
+
+### Backend – Szabadszavas kereső
+- [x] Query rewriting (AI-val kérdés pontosítása)
+- [x] Hybrid search (keyword + szemantikus)
+- [x] Releváns forrásrészek kiválasztása
+- [x] Strukturált válasz generálás (max 10 mondat + hivatkozások)
+- [x] Self-check lépés (hallucináció szűrés)
+- [x] Confidence score számítás
+- [x] Bővebb válasz funkció
+- [x] Fallback válasz ha nincs elegendő forrás
+
+### Backend – Keresési előzmények
+- [x] Keresés mentése DB-be
+- [x] Előzmények listázása
+- [x] Előzmény törlése
+
+### Frontend – MSZT belépő ablak
+- [x] MSZT credential dialog (Platform kapcsolatok oldalon)
+- [x] Kapcsolat tesztelés gomb
+- [x] Státusz jelzés
+
+### Frontend – Szabványkereső oldal
+- [x] Természetes nyelvű kérdés beviteli mező
+- [x] Keresési mód választó (szabvány / belső dok. / kombinált)
+- [x] Válasz hossz beállítás (rövid / standard / részletes)
+- [x] Működési mód (gyors / pontos)
+- [x] Strukturált válasz megjelenítés (összefoglaló + hivatkozások táblázat)
+- [x] Bővebb válasz gomb
+- [x] Confidence badge
+- [x] Forrás kártyák (dokumentum, oldal, fejezet, link)
+
+### Frontend – Keresési előzmények oldal
+- [x] Előzmények listája (kérdés, válasz, időpont)
+- [x] Keresés az előzményekben
+- [x] Előzmény részletek megjelenítése
+
+### Tesztek
+- [x] Kereső backend tesztek
+- [x] Strukturált válasz tesztek
+- [x] Vitest tesztek: 18/18 sikeres

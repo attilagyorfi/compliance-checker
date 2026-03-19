@@ -142,3 +142,54 @@ export type ComplianceResult = {
   category: string;
   discipline?: string;
 };
+
+// ─── Search queries (keresési előzmények) ─────────────────────────────────────
+
+export const searchQueries = mysqlTable("search_queries", {
+  id: int("id").autoincrement().primaryKey(),
+  question: text("question").notNull(),
+  rewrittenQuestion: text("rewritten_question"),
+  searchMode: mysqlEnum("search_mode", ["mszt", "internal", "combined"]).default("combined").notNull(),
+  answerLength: mysqlEnum("answer_length", ["short", "standard", "detailed"]).default("standard").notNull(),
+  operationMode: mysqlEnum("operation_mode", ["fast", "accurate"]).default("accurate").notNull(),
+  answer: text("answer"),
+  extendedAnswer: text("extended_answer"),
+  confidence: mysqlEnum("confidence", ["low", "medium", "high"]),
+  sources: json("sources").$type<SearchSource[]>(),
+  hasSufficientSources: boolean("has_sufficient_sources").default(true).notNull(),
+  selfCheckPassed: boolean("self_check_passed").default(true).notNull(),
+  selfCheckNotes: text("self_check_notes"),
+  userId: int("user_id"),
+  projectName: varchar("project_name", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type SearchQuery = typeof searchQueries.$inferSelect;
+export type InsertSearchQuery = typeof searchQueries.$inferInsert;
+
+// ─── Search settings (felhasználói beállítások) ───────────────────────────────
+
+export const searchSettings = mysqlTable("search_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id"),
+  answerLength: mysqlEnum("answer_length", ["short", "standard", "detailed"]).default("standard").notNull(),
+  operationMode: mysqlEnum("operation_mode", ["fast", "accurate"]).default("accurate").notNull(),
+  searchMode: mysqlEnum("search_mode", ["mszt", "internal", "combined"]).default("combined").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type SearchSetting = typeof searchSettings.$inferSelect;
+export type InsertSearchSetting = typeof searchSettings.$inferInsert;
+
+// ─── Search source type ───────────────────────────────────────────────────────
+
+export type SearchSource = {
+  documentName: string;
+  page?: string;
+  chapter?: string;
+  url?: string;
+  excerpt: string;
+  relevanceScore?: number;
+};

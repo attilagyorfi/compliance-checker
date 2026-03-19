@@ -1,11 +1,12 @@
 import { Link, useLocation } from "wouter";
-import { FileSearch, ClipboardList, Menu, X, BookOpen, Link2 } from "lucide-react";
+import { FileSearch, ClipboardList, Menu, X, BookOpen, Link2, Search, History } from "lucide-react";
 import { useState } from "react";
 
 const LOGO_URL = "https://d2xsxph8kpxj0f.cloudfront.net/109169450/Lkoz8HcKNEz8RQmUhyV4qZ/mmernoki_logo_326d035b.webp";
 
 const navItems = [
   { href: "/analysis", label: "Ellenőrzés", icon: FileSearch },
+  { href: "/search", label: "Szabványkereső", icon: Search },
   { href: "/reports", label: "Riportok", icon: ClipboardList },
   { href: "/regulations", label: "Jogszabályok", icon: BookOpen },
   { href: "/platforms", label: "Platformok", icon: Link2 },
