@@ -115,3 +115,23 @@
 - [x] Kereső backend tesztek
 - [x] Strukturált válasz tesztek
 - [x] Vitest tesztek: 18/18 sikeres
+
+## Bővítés V4 – Internetes keresés a Szabványkeresőben
+
+### Backend
+- [x] Internetes keresés modul (webSearch.ts – DuckDuckGo HTML scraper, domain rangsorolás, tartalom kinyerés)
+- [x] Weboldal tartalom letöltés + szöveg kinyerés (cheerio alapú)
+- [x] Keresési mód bővítése: "web" és "combined_with_web" opciók
+- [x] Webes találatok forrásként való kezelése (dokumentumnév, URL, excerpt)
+- [x] SearchSource típus bővítve sourceType mezővel
+- [x] DB séma: search_mode enum bővítve
+
+### Frontend
+- [x] "Internetes keresés" opció a keresési logika választóban (zöld)
+- [x] "Kombinált + Web" opció (könyvtár + internet, teljes szélességű gomb)
+- [x] Webes forrás kártyák megkülönböztetett megjelenítése (zöld border, Globe ikon, "Internetes forrás" badge)
+- [x] Keresési folyamat jelzése: kontextuális szöveg web módhoz
+- [x] Figyelmeztető info box web módok esetén (hosszabb keresési idő)
+
+### Tesztek
+- [x] Vitest: 18/18 sikeres (meglévő tesztek változatlanul zöldek)

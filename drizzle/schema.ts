@@ -149,7 +149,7 @@ export const searchQueries = mysqlTable("search_queries", {
   id: int("id").autoincrement().primaryKey(),
   question: text("question").notNull(),
   rewrittenQuestion: text("rewritten_question"),
-  searchMode: mysqlEnum("search_mode", ["mszt", "internal", "combined"]).default("combined").notNull(),
+  searchMode: mysqlEnum("search_mode", ["mszt", "internal", "combined", "web", "combined_with_web"]).default("combined").notNull(),
   answerLength: mysqlEnum("answer_length", ["short", "standard", "detailed"]).default("standard").notNull(),
   operationMode: mysqlEnum("operation_mode", ["fast", "accurate"]).default("accurate").notNull(),
   answer: text("answer"),
@@ -175,7 +175,7 @@ export const searchSettings = mysqlTable("search_settings", {
   userId: int("user_id"),
   answerLength: mysqlEnum("answer_length", ["short", "standard", "detailed"]).default("standard").notNull(),
   operationMode: mysqlEnum("operation_mode", ["fast", "accurate"]).default("accurate").notNull(),
-  searchMode: mysqlEnum("search_mode", ["mszt", "internal", "combined"]).default("combined").notNull(),
+  searchMode: mysqlEnum("search_mode", ["mszt", "internal", "combined", "web", "combined_with_web"]).default("combined").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -192,4 +192,6 @@ export type SearchSource = {
   url?: string;
   excerpt: string;
   relevanceScore?: number;
+  /** 'web' = internet search result, undefined/other = internal library source */
+  sourceType?: "web" | "library" | "mszt" | "njt" | "netjogtar" | "eurlex";
 };

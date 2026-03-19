@@ -19,10 +19,11 @@ import { getDb } from "../db";
 import { searchQueries, regulationSources } from "../../drizzle/schema";
 import type { SearchSource } from "../../drizzle/schema";
 import { desc, eq, like, or } from "drizzle-orm";
+import { webSearchStandards } from "../webSearch";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-export type SearchMode = "mszt" | "internal" | "combined";
+export type SearchMode = "mszt" | "internal" | "combined" | "web" | "combined_with_web";
 export type AnswerLength = "short" | "standard" | "detailed";
 export type OperationMode = "fast" | "accurate";
 export type Confidence = "low" | "medium" | "high";
@@ -102,6 +103,9 @@ async function keywordSearch(query: string, mode: SearchMode): Promise<SearchSou
       sources = sources.filter((s) => s.sourceType === "mszt");
     } else if (mode === "internal") {
       sources = sources.filter((s) => s.sourceType !== "mszt");
+    } else if (mode === "web" || mode === "combined_with_web") {
+      // For web-only mode, skip library results entirely
+      if (mode === "web") return [];
     }
 
     // Extract relevant excerpts
@@ -330,7 +334,7 @@ export const standardsSearchRouter = router({
     .input(
       z.object({
         question: z.string().min(3).max(1000),
-        searchMode: z.enum(["mszt", "internal", "combined"]).default("combined"),
+        searchMode: z.enum(["mszt", "internal", "combined", "web", "combined_with_web"]).default("combined"),
         answerLength: z.enum(["short", "standard", "detailed"]).default("standard"),
         operationMode: z.enum(["fast", "accurate"]).default("accurate"),
         projectName: z.string().optional(),
@@ -344,8 +348,26 @@ export const standardsSearchRouter = router({
         ? await rewriteQuery(question)
         : question;
 
-      // Step 2: Hybrid search
-      const sources = await keywordSearch(rewrittenQuestion, searchMode);
+      // Step 2: Hybrid search (library + optional web)
+      let sources: SearchSource[] = [];
+
+      if (searchMode === "web") {
+        // Internet-only search
+        sources = await webSearchStandards(rewrittenQuestion, true);
+      } else if (searchMode === "combined_with_web") {
+        // Library + internet combined
+        const [libSources, webSources] = await Promise.all([
+          keywordSearch(rewrittenQuestion, "combined"),
+          webSearchStandards(rewrittenQuestion, true),
+        ]);
+        // Merge: library sources first, then web sources (deduplicate by URL)
+        const seenUrls = new Set(libSources.map((s) => s.url).filter(Boolean));
+        const dedupedWeb = webSources.filter((s) => !s.url || !seenUrls.has(s.url));
+        sources = [...libSources, ...dedupedWeb].slice(0, 10);
+      } else {
+        // mszt / internal / combined – library only
+        sources = await keywordSearch(rewrittenQuestion, searchMode);
+      }
 
       // Step 3: Generate structured answer
       const result = await generateStructuredAnswer(

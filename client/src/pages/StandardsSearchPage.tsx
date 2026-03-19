@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import {
   Search, Loader2, ChevronDown, ChevronUp, BookOpen, ExternalLink,
   CheckCircle2, AlertTriangle, XCircle, Info, Zap, Target,
-  FileText, Settings2, History, Send, RefreshCw, Copy, Check
+  FileText, Settings2, History, Send, RefreshCw, Copy, Check, Globe
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,7 +20,7 @@ import type { SearchSource } from "../../../drizzle/schema";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-type SearchMode = "mszt" | "internal" | "combined";
+type SearchMode = "mszt" | "internal" | "combined" | "web" | "combined_with_web";
 type AnswerLength = "short" | "standard" | "detailed";
 type OperationMode = "fast" | "accurate";
 type Confidence = "low" | "medium" | "high";
@@ -58,18 +58,22 @@ function ConfidenceBadge({ confidence }: { confidence: Confidence }) {
 
 function SourceCard({ source, index }: { source: SearchSource; index: number }) {
   const [expanded, setExpanded] = useState(false);
+  const isWeb = source.sourceType === "web";
 
   return (
-    <div className="rounded-lg border bg-white" style={{ borderColor: "#e5e7eb" }}>
+    <div
+      className="rounded-lg border bg-white"
+      style={{ borderColor: isWeb ? "#a5d6a7" : "#e5e7eb" }}
+    >
       <div
         className="flex items-start gap-3 p-3 cursor-pointer hover:bg-gray-50 transition-colors"
         onClick={() => setExpanded((v) => !v)}
       >
         <span
           className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white"
-          style={{ backgroundColor: "#7CA9D3" }}
+          style={{ backgroundColor: isWeb ? "#4caf50" : "#7CA9D3" }}
         >
-          {index + 1}
+          {isWeb ? <Globe size={11} /> : index + 1}
         </span>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
@@ -91,6 +95,12 @@ function SourceCard({ source, index }: { source: SearchSource; index: number }) 
             </div>
           </div>
           <div className="flex flex-wrap gap-2 mt-1">
+            {isWeb && (
+              <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-100 flex items-center gap-1">
+                <Globe size={9} />
+                Internetes forrás
+              </span>
+            )}
             {source.page && (
               <span className="text-xs text-gray-500 flex items-center gap-1">
                 <FileText size={10} />
@@ -140,27 +150,42 @@ function SettingsPanel({
 
       <div>
         <label className="text-xs font-medium text-gray-500 mb-1.5 block uppercase tracking-wide">Keresési logika</label>
-        <div className="grid grid-cols-3 gap-1.5">
+        <div className="grid grid-cols-2 gap-1.5">
           {([
-            { value: "mszt", label: "MSZT szabvány", icon: <BookOpen size={12} /> },
-            { value: "internal", label: "Belső dok.", icon: <FileText size={12} /> },
-            { value: "combined", label: "Kombinált", icon: <Search size={12} /> },
-          ] as const).map(({ value, label, icon }) => (
+            { value: "mszt", label: "MSZT szabvány", icon: <BookOpen size={12} />, desc: "Szabványtár" },
+            { value: "internal", label: "Belső dok.", icon: <FileText size={12} />, desc: "Feltöltött" },
+            { value: "combined", label: "Kombinált", icon: <Search size={12} />, desc: "Könyvtár" },
+            { value: "web", label: "Internet", icon: <Globe size={12} />, desc: "Web keresés" },
+            { value: "combined_with_web", label: "Kombinált + Web", icon: <Globe size={12} />, desc: "Könyvtár + internet", wide: true },
+          ] as Array<{ value: SearchMode; label: string; icon: React.ReactNode; desc: string; wide?: boolean }>).map(({ value, label, icon, desc, wide }) => (
             <button
               key={value}
               onClick={() => setSearchMode(value)}
-              className={`flex flex-col items-center gap-1 p-2 rounded-lg border text-xs font-medium transition-all ${
+              className={`${
+                wide ? "col-span-2" : ""
+              } flex items-center gap-2 p-2.5 rounded-lg border text-xs font-medium transition-all ${
                 searchMode === value
                   ? "text-white border-transparent"
                   : "text-gray-600 border-gray-200 bg-white hover:border-gray-300"
               }`}
-              style={searchMode === value ? { backgroundColor: "#7CA9D3" } : {}}
+              style={searchMode === value ? { backgroundColor: value === "web" || value === "combined_with_web" ? "#4caf50" : "#7CA9D3" } : {}}
             >
               {icon}
-              {label}
+              <span className="flex flex-col items-start">
+                <span>{label}</span>
+                <span className={`text-xs ${searchMode === value ? "opacity-80" : "text-gray-400"}`}>{desc}</span>
+              </span>
             </button>
           ))}
         </div>
+        {(searchMode === "web" || searchMode === "combined_with_web") && (
+          <div className="mt-2 p-2 rounded-lg bg-green-50 border border-green-100 flex items-start gap-2">
+            <Globe size={12} className="text-green-600 mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-green-700">
+              Az internetes keresés valós idejű webes találatokat is bevon a válasz generálásához. A keresési idő hosszabb lehet.
+            </p>
+          </div>
+        )}
       </div>
 
       <div>
@@ -348,7 +373,11 @@ export default function StandardsSearchPage() {
                 <div className="text-center">
                   <p className="font-medium text-gray-700">Keresés folyamatban...</p>
                   <p className="text-sm text-gray-400 mt-1">
-                    {operationMode === "accurate"
+                    {searchMode === "web"
+                      ? "Internetes keresés folyamatban → Tartalom letöltés → Válasz generálás"
+                      : searchMode === "combined_with_web"
+                      ? "Könyvtár keresés + Internetes keresés → Összevonás → Válasz generálás"
+                      : operationMode === "accurate"
                       ? "Kérdés pontosítása → Forráskeresés → Válasz generálás → Ellenőrzés"
                       : "Forráskeresés → Válasz generálás"}
                   </p>
