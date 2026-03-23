@@ -1,0 +1,8 @@
+{
+  "query": "\nALTER TABLE analyses\n  ADD COLUMN userId INT NULL AFTER projectId,\n  ADD COLUMN progressStep VARCHAR(255) NULL DEFAULT NULL AFTER workflowStatus,\n  ADD COLUMN retryCount INT NOT NULL DEFAULT 0 AFTER progressStep;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user umEGVX5xqZTdjsh.44621c0fe7b1 --database Lkoz8HcKNEz8RQmUhyV4qZ --execute \nALTER TABLE analyses\n  ADD COLUMN userId INT NULL AFTER projectId,\n  ADD COLUMN progressStep VARCHAR(255) NULL DEFAULT NULL AFTER workflowStatus,\n  ADD COLUMN retryCount INT NOT NULL DEFAULT 0 AFTER progressStep;\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 2: Unknown column 'progressstep' in 'analyses'"
+  ]
+}
