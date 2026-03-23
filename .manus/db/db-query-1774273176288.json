@@ -1,0 +1,34 @@
+{
+  "query": "SHOW COLUMNS FROM regulation_sources LIKE 'lastSyncAt'; SHOW COLUMNS FROM search_queries LIKE 'project_id';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user umEGVX5xqZTdjsh.44621c0fe7b1 --database Lkoz8HcKNEz8RQmUhyV4qZ --execute SHOW COLUMNS FROM regulation_sources LIKE 'lastSyncAt'; SHOW COLUMNS FROM search_queries LIKE 'project_id';",
+  "rows": [
+    {
+      "Field": "lastSyncAt",
+      "Type": "timestamp",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "Field",
+      "Type": "Type",
+      "Null": "Null",
+      "Key": "Key",
+      "Default": "Default",
+      "Extra": "Extra"
+    },
+    {
+      "Field": "project_id",
+      "Type": "int",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    }
+  ],
+  "messages": [],
+  "stdout": "Field\tType\tNull\tKey\tDefault\tExtra\nlastSyncAt\ttimestamp\tYES\t\tNULL\t\nField\tType\tNull\tKey\tDefault\tExtra\nproject_id\tint\tYES\t\tNULL\t\n",
+  "stderr": "",
+  "execution_time_ms": 714
+}

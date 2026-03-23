@@ -204,7 +204,25 @@ export async function loginToMszt(username: string, password: string): Promise<P
     if (isSuccess) {
       return { success: true, sessionCookies: phpSessId + "; " + sessionCookies };
     } else {
-      // Try to get error message from the redirect page
+      // Follow the redirect to check the actual error message on the login page
+      // The MSZT server shows different messages for:
+      //   1. Wrong credentials: standard login form with no special message
+      //   2. Already logged in: "Sajnáljuk! Ezzel a felhasználónévvel már bejelentkezett valaki!"
+      try {
+        const redirectedRes = await fetch(location || `${BASE}/login`, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Cookie": phpSessId,
+          },
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+        });
+        const redirectedHtml = await redirectedRes.text();
+        if (redirectedHtml.includes("már bejelentkezett") || redirectedHtml.includes("Sajnáljuk")) {
+          return { success: false, error: "Ez a fiók már be van jelentkezve egy másik munkamenetben. Az MSZT szerver 20 percenként automatikusan kijelentkeztet. Kérjük, várjon 20 percet, majd próbálja újra." };
+        }
+      } catch {
+        // Ignore errors when following redirect for error detection
+      }
       const errorMsg = location.includes("/login")
         ? "Hibás felhasználónév vagy jelszó."
         : `Bejelentkezés sikertelen (HTTP ${loginRes.status}).`;

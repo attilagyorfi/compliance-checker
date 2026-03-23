@@ -241,3 +241,9 @@
 - [x] DB oszlopok ellenőrzése: regulation_sources és search_queries táblák rendben
 - [x] Vitest: 18/18 sikeres
 - [x] TypeScript: 0 hiba
+
+## V8 – MSZT "már bejelentkezett" hiba felismerése
+
+- [x] MSZT loginToMszt: redirect követés + "már bejelentkezett valaki" üzenet detektálása
+- [x] Barátságos hibaüzenet: "Ez a fiók már be van jelentkezve egy másik munkamenetben. Várjon 20 percet, majd próbálja újra."
+- [x] Vitest: 18/18 sikeres
