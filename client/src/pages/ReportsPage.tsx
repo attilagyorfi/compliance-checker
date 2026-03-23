@@ -119,14 +119,14 @@ export default function ReportsPage() {
                 Korábbi megfelelőség-ellenőrzések és eredmények
               </p>
             </div>
-            <Link href="/analysis">
+            <Link href="/search">
               <Button
                 size="sm"
                 className="gap-2 text-white font-medium"
                 style={{ backgroundColor: "#7CA9D3" }}
               >
                 <Plus size={15} />
-                Új elemzés
+                Új keresés
               </Button>
             </Link>
           </div>
@@ -152,10 +152,10 @@ export default function ReportsPage() {
             <p className="text-gray-400 text-sm mb-6">
               Indítsa el az első megfelelőség-ellenőrzést a dokumentumai feltöltésével.
             </p>
-            <Link href="/analysis">
+            <Link href="/search">
               <Button className="gap-2 text-white" style={{ backgroundColor: "#7CA9D3" }}>
                 <Plus size={15} />
-                Első elemzés indítása
+                Keresés indítása
               </Button>
             </Link>
           </div>

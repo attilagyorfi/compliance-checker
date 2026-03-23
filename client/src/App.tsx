@@ -11,11 +11,13 @@ import RegulationLibraryPage from "./pages/RegulationLibraryPage";
 import StandardsSearchPage from "./pages/StandardsSearchPage";
 import SearchHistoryPage from "./pages/SearchHistoryPage";
 import KnowledgeBasePage from "./pages/KnowledgeBasePage";
+import DashboardPage from "./pages/DashboardPage";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/dashboard" component={DashboardPage} />
       <Route path="/search" component={StandardsSearchPage} />
       <Route path="/knowledge-base" component={KnowledgeBasePage} />
       <Route path="/reports" component={ReportsPage} />

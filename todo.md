@@ -138,14 +138,98 @@
 
 ## Javítások V5
 
-- [ ] Ellenőrzés menüpont törlése (Header + App.tsx)
-- [ ] Platformok menüpont törlése (Header + App.tsx)
-- [ ] Tudástár menüpont hozzáadása (Header + App.tsx + új oldal)
-- [ ] Főoldal "Elemzés indítása" CTA → /search átirányítás
-- [ ] Tudástár oldal: dokumentum feltöltés, lista, törlés
-- [ ] Tudástár backend: tRPC router + DB tábla
-- [ ] Szabványkereső: URL beviteli mező internetes keresés módhoz
-- [ ] Szabványkereső: URL-alapú tartalom letöltés + keresés
-- [ ] Jogszabályok oldal: csak feltöltött dokumentumok, AI kategória-felismerés
-- [ ] Jogszabályok backend: dokumentum kategória AI elemzés
-- [ ] Lábléc: 2025 → 2026 javítás
+- [x] Ellenőrzés menüpont törlése (Header + App.tsx)
+- [x] Platformok menüpont törlése (Header + App.tsx)
+- [x] Tudástár menüpont hozzáadása (Header + App.tsx + KnowledgeBasePage.tsx)
+- [x] Főoldal "Elemzés indítása" CTA → /search átirányítás
+- [x] Tudástár oldal: dokumentum feltöltés, lista, törlés
+- [x] Tudástár backend: tRPC router + DB tábla
+- [x] Szabványkereső: URL beviteli mező internetes keresés módhoz
+- [x] Szabványkereső: URL-alapú tartalom letöltés + keresés
+- [x] Jogszabályok oldal: csak feltöltött dokumentumok, AI kategória-felismerés
+- [x] Jogszabályok backend: dokumentum kategória AI elemzés
+- [x] Lábléc: 2025 → 2026 javítás
+
+## V6 – Professzionális szintre emelés
+
+### 1. BLOKK – Stabilizáció és biztonság
+
+#### 1.1 Jogosultságkezelés
+- [x] users tábla: role enum bővítése (admin / internal / reviewer)
+- [x] projects tábla
+- [x] project_members tábla
+
+#### 1.2 Audit log
+- [x] audit_logs tábla
+- [x] auditLog() helper
+- [x] Naplózás: feltöltés, elemzés indítás, elemzés befejezés, hiba
+
+#### 1.3 Privát fájltárolás
+- [x] storageGet() presigned URL wrapper (meglévő storage.ts)
+- [x] PDF export: generálási metaadat
+
+#### 1.4 Compliance engine – bizonyíték-alapú findingok
+- [x] ComplianceResult típus bővítése: severity, confidence, regulationExcerpt, planExcerpt, nextStep
+- [x] LLM prompt + JSON schema frissítése
+- [x] reszben_megfelel státusz hozzáadva
+
+#### 1.5 Releváncia-alapú chunkolás
+- [x] selectRelevantChunks() TF-IDF alapú (relevanceChunker.ts)
+- [x] Top-K releváns chunk kiválasztása
+
+#### 1.6 OCR
+- [x] tesseract.js integráció
+- [x] Szkennélt PDF detektálás
+- [x] OCR fallback a compliance engine-ben
+
+#### 1.7 Queue-alapú feldolgozás
+- [x] In-memory queue + retry logika (analysisQueue.ts, max 3 próbálkozás, exponenciális backoff)
+- [x] Hibáállapot kezelés
+
+### 2. BLOKK – Workflow és UX
+
+#### 2.1 Projektalapú működés
+- [x] projects tábla + project_members tábla
+- [ ] analyses/knowledgeBase/searchQueries: projectId FK (későbbi fejállesztés)
+- [ ] ProjectsPage + ProjectDetailPage (későbbi fejlesztés)
+
+#### 2.2 Workflow státuszok
+- [x] analyses: workflowStatus mező (compliance router-ben)
+- [x] Finding státusz kezelés (severity, confidence)
+- [ ] Státusz változtatás endpointok (későbbi fejlesztés)
+
+#### 2.3 Operatív dashboard
+- [x] DashboardPage: stat kártyák, szűrhető elemzéslista, workflow badge-ek
+- [x] Gyors műveletek gombok
+
+#### 2.4 Finding kártya
+- [x] Státusz, súlyosság, confidence, idézett részlet, tervdokumentum-részlet
+- [x] Confidence progress bar, severity badge
+- [x] "Miért ezt állítja?" bizonyíték panel
+- [ ] Felelős személy, review gomb, megjegyzés (későbbi fejlesztés)
+
+#### 2.5 Valós idejű státuszjelzés
+- [x] SSE endpoint (compliance router-ben)
+- [x] Lépésenkénti státuszjelzés (progressStep mező)
+
+#### 2.6 UX újrastruktúrálás
+- [x] Új navigáció: Dashboard / Szabványkereső / Tudástár / Jogszabályok / Előzmények
+- [x] Header + App.tsx frissítése
+- [x] Stale /analysis linkek javítása
+
+### 3. BLOKK – Keresés és forráskezelés
+
+#### 3.1 Szemantikus keresés
+- [x] TF-IDF alapú relevancia-ponozás (relevanceChunker.ts)
+- [ ] Embedding + cosine similarity (későbbi fejlesztés)
+
+#### 3.2 Forrás megbízhatóság
+- [x] regulationSources: lastFetched, fetchStatus mezők
+- [ ] Elavultsági figyelmeztetés (későbbi fejlesztés)
+
+#### 3.3 "Miért ezt állítja?" panel
+- [x] FindingEvidencePanel beépítve a ResultCard komponensbe (regulationExcerpt + planExcerpt idézetek)
+
+### Tesztek
+- [x] Compliance engine bővítés tesztek
+- [x] Vitest: 18/18 sikeres

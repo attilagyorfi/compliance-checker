@@ -41,20 +41,54 @@ const statusConfig: Record<ComplianceStatus, {
     borderClass: "border-red-200",
     bgClass: "bg-red-50",
   },
+  reszben_megfelel: {
+    label: "Részben megfelel",
+    icon: AlertTriangle,
+    colorClass: "text-orange-700",
+    borderClass: "border-orange-200",
+    bgClass: "bg-orange-50",
+  },
 };
 
 const borderLeft: Record<ComplianceStatus, string> = {
   megfelel: "4px solid #16a34a",
   bizonytalan: "4px solid #ca8a04",
   nem_felel_meg: "4px solid #dc2626",
+  reszben_megfelel: "4px solid #ea580c",
 };
+
+// ── Severity badge ────────────────────────────────────────────────────────────
+
+const severityConfig: Record<string, { label: string; color: string }> = {
+  critical: { label: "Kritikus", color: "bg-red-100 text-red-700" },
+  major: { label: "Jelentős", color: "bg-orange-100 text-orange-700" },
+  minor: { label: "Kisebb", color: "bg-yellow-100 text-yellow-700" },
+  info: { label: "Tájékoztató", color: "bg-blue-100 text-blue-700" },
+};
+
+function ConfidenceBar({ value }: { value?: number }) {
+  if (value == null) return null;
+  const pct = Math.round(value * 100);
+  const color = pct >= 80 ? "#16a34a" : pct >= 50 ? "#ca8a04" : "#dc2626";
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+      </div>
+      <span className="text-xs font-medium" style={{ color }}>{pct}%</span>
+    </div>
+  );
+}
 
 // ── Result card ───────────────────────────────────────────────────────────────
 
 function ResultCard({ result }: { result: ComplianceResult }) {
   const [expanded, setExpanded] = useState(false);
+  const [showEvidence, setShowEvidence] = useState(false);
   const cfg = statusConfig[result.status];
   const Icon = cfg.icon;
+  const r = result as any; // extended fields from V6
+  const sevCfg = r.severity ? severityConfig[r.severity] : null;
 
   return (
     <div
@@ -71,16 +105,29 @@ function ResultCard({ result }: { result: ComplianceResult }) {
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <span
-                  className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border mb-2 ${cfg.bgClass} ${cfg.colorClass} ${cfg.borderClass}`}
-                >
-                  {cfg.label}
-                </span>
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                  <span
+                    className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${cfg.bgClass} ${cfg.colorClass} ${cfg.borderClass}`}
+                  >
+                    {cfg.label}
+                  </span>
+                  {sevCfg && (
+                    <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full ${sevCfg.color}`}>
+                      {sevCfg.label}
+                    </span>
+                  )}
+                </div>
                 <h3 className="font-semibold text-sm text-gray-900 leading-snug">
                   {result.title}
                 </h3>
                 <p className="text-xs text-gray-500 mt-1">{result.description}</p>
+                {r.confidence != null && (
+                  <div className="mt-2 max-w-[160px]">
+                    <div className="text-xs text-gray-400 mb-1">AI bizonyosság</div>
+                    <ConfidenceBar value={r.confidence} />
+                  </div>
+                )}
               </div>
               <div className="flex-shrink-0 mt-1">
                 {expanded ? (
@@ -97,12 +144,15 @@ function ResultCard({ result }: { result: ComplianceResult }) {
       {expanded && (
         <div className="px-5 pb-5 border-t" style={{ borderColor: "#f3f4f6" }}>
           <div className="pt-4 space-y-4">
+            {/* Justification */}
             <div>
               <div className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1.5">
                 Indoklás
               </div>
               <p className="text-sm text-gray-700 leading-relaxed">{result.justification}</p>
             </div>
+
+            {/* Reference + Category */}
             <div className="flex flex-wrap gap-4">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1.5">
@@ -121,6 +171,53 @@ function ResultCard({ result }: { result: ComplianceResult }) {
                 </Badge>
               </div>
             </div>
+
+            {/* Next step */}
+            {r.nextStep && (
+              <div className="rounded-lg p-3" style={{ backgroundColor: "#EBF3FA" }}>
+                <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#5a8ab8" }}>
+                  Javasolt következő lépés
+                </div>
+                <p className="text-sm text-gray-700">{r.nextStep}</p>
+              </div>
+            )}
+
+            {/* Evidence panel – "Miért ezt állítja?" */}
+            {(r.regulationExcerpt || r.planExcerpt) && (
+              <div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowEvidence(!showEvidence); }}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors"
+                >
+                  {showEvidence ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                  Miért ezt állítja? (bizonyítékok)
+                </button>
+                {showEvidence && (
+                  <div className="mt-3 space-y-3">
+                    {r.regulationExcerpt && (
+                      <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
+                        <div className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-1.5">
+                          Jogszabály / szabvány szövegrészlet
+                        </div>
+                        <blockquote className="text-xs text-blue-900 italic leading-relaxed border-l-2 border-blue-300 pl-3">
+                          {r.regulationExcerpt}
+                        </blockquote>
+                      </div>
+                    )}
+                    {r.planExcerpt && (
+                      <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                          Tervdokumentum szövegrészlet
+                        </div>
+                        <blockquote className="text-xs text-gray-700 italic leading-relaxed border-l-2 border-gray-300 pl-3">
+                          {r.planExcerpt}
+                        </blockquote>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -293,10 +390,10 @@ export default function ResultPage() {
             </div>
             <h2 className="text-xl font-semibold mb-3 text-red-700">Elemzési hiba</h2>
             <p className="text-gray-500 text-sm mb-6">{analysis.errorMessage || "Ismeretlen hiba történt."}</p>
-            <Link href="/analysis">
+            <Link href="/search">
               <Button style={{ backgroundColor: "#7CA9D3" }} className="text-white gap-2">
                 <ArrowLeft size={14} />
-                Új elemzés indítása
+                Vissza a keresőhöz
               </Button>
             </Link>
           </div>

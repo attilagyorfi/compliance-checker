@@ -7,11 +7,13 @@ const STATUS_COLORS: Record<ComplianceStatus, { text: string; bg: string }> = {
   megfelel: { text: "#16a34a", bg: "#f0fdf4" },
   bizonytalan: { text: "#ca8a04", bg: "#fefce8" },
   nem_felel_meg: { text: "#dc2626", bg: "#fef2f2" },
+  reszben_megfelel: { text: "#ea580c", bg: "#fff7ed" },
 };
 const STATUS_LABELS: Record<ComplianceStatus, string> = {
   megfelel: "MEGFELEL",
   bizonytalan: "BIZONYTALAN",
   nem_felel_meg: "NEM FELEL MEG",
+  reszben_megfelel: "RÉSZBEN MEGFELEL",
 };
 
 export function generatePdfReport(analysis: Analysis): Promise<Buffer> {

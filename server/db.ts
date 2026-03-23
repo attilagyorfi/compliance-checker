@@ -114,7 +114,7 @@ export async function listAnalyses(): Promise<Analysis[]> {
 export async function updateAnalysisStatus(
   id: number,
   status: Analysis["status"],
-  extra?: { results?: ComplianceResult[]; summary?: string; errorMessage?: string }
+  extra?: { results?: ComplianceResult[]; summary?: string; errorMessage?: string; progressStep?: string }
 ): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
