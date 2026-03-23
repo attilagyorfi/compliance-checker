@@ -1,0 +1,103 @@
+{
+  "query": "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'search_queries' ORDER BY ORDINAL_POSITION;\nSELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'regulation_sources' ORDER BY ORDINAL_POSITION;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user umEGVX5xqZTdjsh.44621c0fe7b1 --database Lkoz8HcKNEz8RQmUhyV4qZ --execute SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'search_queries' ORDER BY ORDINAL_POSITION;\nSELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'regulation_sources' ORDER BY ORDINAL_POSITION;",
+  "rows": [
+    {
+      "COLUMN_NAME": "id"
+    },
+    {
+      "COLUMN_NAME": "question"
+    },
+    {
+      "COLUMN_NAME": "rewritten_question"
+    },
+    {
+      "COLUMN_NAME": "search_mode"
+    },
+    {
+      "COLUMN_NAME": "answer_length"
+    },
+    {
+      "COLUMN_NAME": "operation_mode"
+    },
+    {
+      "COLUMN_NAME": "answer"
+    },
+    {
+      "COLUMN_NAME": "extended_answer"
+    },
+    {
+      "COLUMN_NAME": "confidence"
+    },
+    {
+      "COLUMN_NAME": "sources"
+    },
+    {
+      "COLUMN_NAME": "has_sufficient_sources"
+    },
+    {
+      "COLUMN_NAME": "self_check_passed"
+    },
+    {
+      "COLUMN_NAME": "self_check_notes"
+    },
+    {
+      "COLUMN_NAME": "user_id"
+    },
+    {
+      "COLUMN_NAME": "project_name"
+    },
+    {
+      "COLUMN_NAME": "createdAt"
+    },
+    {
+      "COLUMN_NAME": "updatedAt"
+    },
+    {
+      "COLUMN_NAME": "projectId"
+    },
+    {
+      "COLUMN_NAME": "COLUMN_NAME"
+    },
+    {
+      "COLUMN_NAME": "id"
+    },
+    {
+      "COLUMN_NAME": "name"
+    },
+    {
+      "COLUMN_NAME": "shortCode"
+    },
+    {
+      "COLUMN_NAME": "discipline"
+    },
+    {
+      "COLUMN_NAME": "sourceType"
+    },
+    {
+      "COLUMN_NAME": "sourceUrl"
+    },
+    {
+      "COLUMN_NAME": "content"
+    },
+    {
+      "COLUMN_NAME": "contentFetchedAt"
+    },
+    {
+      "COLUMN_NAME": "s3Key"
+    },
+    {
+      "COLUMN_NAME": "isActive"
+    },
+    {
+      "COLUMN_NAME": "createdAt"
+    },
+    {
+      "COLUMN_NAME": "updatedAt"
+    }
+  ],
+  "messages": [],
+  "stdout": "COLUMN_NAME\nid\nquestion\nrewritten_question\nsearch_mode\nanswer_length\noperation_mode\nanswer\nextended_answer\nconfidence\nsources\nhas_sufficient_sources\nself_check_passed\nself_check_notes\nuser_id\nproject_name\ncreatedAt\nupdatedAt\nprojectId\nCOLUMN_NAME\nid\nname\nshortCode\ndiscipline\nsourceType\nsourceUrl\ncontent\ncontentFetchedAt\ns3Key\nisActive\ncreatedAt\nupdatedAt\n",
+  "stderr": "",
+  "execution_time_ms": 59
+}

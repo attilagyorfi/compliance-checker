@@ -12,6 +12,7 @@ import StandardsSearchPage from "./pages/StandardsSearchPage";
 import SearchHistoryPage from "./pages/SearchHistoryPage";
 import KnowledgeBasePage from "./pages/KnowledgeBasePage";
 import DashboardPage from "./pages/DashboardPage";
+import PlatformConnectionsPage from "./pages/PlatformConnectionsPage";
 
 function Router() {
   return (
@@ -24,6 +25,7 @@ function Router() {
       <Route path="/result/:id" component={ResultPage} />
       <Route path="/regulations" component={RegulationLibraryPage} />
       <Route path="/search-history" component={SearchHistoryPage} />
+      <Route path="/platforms" component={PlatformConnectionsPage} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>
