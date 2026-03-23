@@ -1,0 +1,162 @@
+{
+  "query": "SHOW COLUMNS FROM search_queries;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user umEGVX5xqZTdjsh.44621c0fe7b1 --database Lkoz8HcKNEz8RQmUhyV4qZ --execute SHOW COLUMNS FROM search_queries;",
+  "rows": [
+    {
+      "Field": "id",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "PRI",
+      "Default": "NULL",
+      "Extra": "auto_increment"
+    },
+    {
+      "Field": "question",
+      "Type": "text",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "rewritten_question",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "search_mode",
+      "Type": "enum('mszt','internal','combined','web','combined_with_web')",
+      "Null": "NO",
+      "Key": "",
+      "Default": "combined",
+      "Extra": ""
+    },
+    {
+      "Field": "answer_length",
+      "Type": "enum('short','standard','detailed')",
+      "Null": "NO",
+      "Key": "",
+      "Default": "standard",
+      "Extra": ""
+    },
+    {
+      "Field": "operation_mode",
+      "Type": "enum('fast','accurate')",
+      "Null": "NO",
+      "Key": "",
+      "Default": "accurate",
+      "Extra": ""
+    },
+    {
+      "Field": "answer",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "extended_answer",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "confidence",
+      "Type": "enum('low','medium','high')",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "sources",
+      "Type": "json",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "has_sufficient_sources",
+      "Type": "tinyint(1)",
+      "Null": "NO",
+      "Key": "",
+      "Default": "1",
+      "Extra": ""
+    },
+    {
+      "Field": "self_check_passed",
+      "Type": "tinyint(1)",
+      "Null": "NO",
+      "Key": "",
+      "Default": "1",
+      "Extra": ""
+    },
+    {
+      "Field": "self_check_notes",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "user_id",
+      "Type": "int",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "project_name",
+      "Type": "varchar(255)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "createdAt",
+      "Type": "timestamp",
+      "Null": "NO",
+      "Key": "",
+      "Default": "CURRENT_TIMESTAMP",
+      "Extra": ""
+    },
+    {
+      "Field": "updatedAt",
+      "Type": "timestamp",
+      "Null": "NO",
+      "Key": "",
+      "Default": "CURRENT_TIMESTAMP",
+      "Extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP"
+    },
+    {
+      "Field": "projectId",
+      "Type": "int",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "project_id",
+      "Type": "int",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    }
+  ],
+  "messages": [],
+  "stdout": "Field\tType\tNull\tKey\tDefault\tExtra\nid\tint\tNO\tPRI\tNULL\tauto_increment\nquestion\ttext\tNO\t\tNULL\t\nrewritten_question\ttext\tYES\t\tNULL\t\nsearch_mode\tenum('mszt','internal','combined','web','combined_with_web')\tNO\t\tcombined\t\nanswer_length\tenum('short','standard','detailed')\tNO\t\tstandard\t\noperation_mode\tenum('fast','accurate')\tNO\t\taccurate\t\nanswer\ttext\tYES\t\tNULL\t\nextended_answer\ttext\tYES\t\tNULL\t\nconfidence\tenum('low','medium','high')\tYES\t\tNULL\t\nsources\tjson\tYES\t\tNULL\t\nhas_sufficient_sources\ttinyint(1)\tNO\t\t1\t\nself_check_passed\ttinyint(1)\tNO\t\t1\t\nself_check_notes\ttext\tYES\t\tNULL\t\nuser_id\tint\tYES\t\tNULL\t\nproject_name\tvarchar(255)\tYES\t\tNULL\t\ncreatedAt\ttimestamp\tNO\t\tCURRENT_TIMESTAMP\t\nupdatedAt\ttimestamp\tNO\t\tCURRENT_TIMESTAMP\tDEFAULT_GENERATED on update CURRENT_TIMESTAMP\nprojectId\tint\tYES\t\tNULL\t\nproject_id\tint\tYES\t\tNULL\t\n",
+  "stderr": "",
+  "execution_time_ms": 56
+}

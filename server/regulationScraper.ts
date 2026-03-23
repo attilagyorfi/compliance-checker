@@ -141,56 +141,85 @@ export interface PlatformLoginResult {
  * Returns session cookies on success.
  */
 export async function loginToMszt(username: string, password: string): Promise<PlatformLoginResult> {
+  // MSZT Szabványtár uses plain HTTP (Apache 2.2 / PHP 5.4 – no valid TLS from server-side Node)
+  const BASE = "http://szabvanykonyvtar.mszt.hu";
+  const TIMEOUT_MS = 15000;
   try {
-    // Step 1: Get the login page to extract CSRF token
-    const loginPageRes = await fetch("https://szabvanykonyvtar.mszt.hu/login", {
+    // Step 1: GET /login to obtain PHPSESSID + CSRF token
+    const loginPageRes = await fetch(`${BASE}/login`, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; ComplianceChecker/1.0)",
-        "Accept": "text/html,application/xhtml+xml",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "hu-HU,hu;q=0.9,en;q=0.8",
       },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
 
     if (!loginPageRes.ok) {
-      return { success: false, error: `Login page fetch failed: ${loginPageRes.status}` };
+      return { success: false, error: `Login oldal betöltése sikertelen: HTTP ${loginPageRes.status}` };
     }
 
     const loginHtml = await loginPageRes.text();
     const $ = cheerio.load(loginHtml);
-    
-    // Extract CSRF token if present
-    const csrfToken = $('input[name="_token"], input[name="csrf_token"], input[name="_csrf"]').val() as string | undefined;
-    const loginCookies = loginPageRes.headers.get("set-cookie") ?? "";
 
-    // Step 2: POST login credentials
+    // MSZT uses Symfony security: field names are _username, _password, _csrf_token
+    const csrfToken = $('input[name="_csrf_token"]').val() as string | undefined;
+    // Collect session cookie (PHPSESSID)
+    const setCookieHeader = loginPageRes.headers.get("set-cookie") ?? "";
+    const phpSessMatch = setCookieHeader.match(/PHPSESSID=([^;]+)/);
+    const phpSessId = phpSessMatch ? `PHPSESSID=${phpSessMatch[1]}` : "";
+
+    if (!csrfToken) {
+      return { success: false, error: "CSRF token nem található a bejelentkezési oldalon. Az MSZT oldal struktúrája megváltozott." };
+    }
+
+    // Step 2: POST to /login_check (Symfony security firewall endpoint)
     const formData = new URLSearchParams();
-    formData.append("username", username);
-    formData.append("password", password);
-    if (csrfToken) formData.append("_token", csrfToken);
+    formData.append("_username", username);
+    formData.append("_password", password);
+    formData.append("_csrf_token", csrfToken);
+    formData.append("_target_path", "search");
+    formData.append("login", "Bejelentkezés");
 
-    const loginRes = await fetch("https://szabvanykonyvtar.mszt.hu/login", {
+    const loginRes = await fetch(`${BASE}/login_check`, {
       method: "POST",
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; ComplianceChecker/1.0)",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "Content-Type": "application/x-www-form-urlencoded",
-        "Cookie": loginCookies,
-        "Referer": "https://szabvanykonyvtar.mszt.hu/login",
+        "Cookie": phpSessId,
+        "Referer": `${BASE}/login`,
+        "Origin": BASE,
       },
       body: formData.toString(),
       redirect: "manual",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
 
-    // Successful login usually redirects (302) or returns 200 with session cookie
     const sessionCookies = loginRes.headers.get("set-cookie") ?? "";
-    const isSuccess = loginRes.status === 302 || 
-                      (loginRes.status === 200 && sessionCookies.includes("session"));
+    // Symfony redirects to the target path (302) on success
+    // On failure it redirects back to /login (also 302 but Location contains /login)
+    const location = loginRes.headers.get("location") ?? "";
+    const isSuccess = loginRes.status === 302 && !location.includes("/login");
 
     if (isSuccess) {
-      return { success: true, sessionCookies: loginCookies + "; " + sessionCookies };
+      return { success: true, sessionCookies: phpSessId + "; " + sessionCookies };
     } else {
-      return { success: false, error: "Bejelentkezés sikertelen – ellenőrizze a felhasználónevet és jelszót." };
+      // Try to get error message from the redirect page
+      const errorMsg = location.includes("/login")
+        ? "Hibás felhasználónév vagy jelszó."
+        : `Bejelentkezés sikertelen (HTTP ${loginRes.status}).`;
+      return { success: false, error: errorMsg };
     }
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
+    const msg = err instanceof Error ? err.message : String(err);
+    // Provide more helpful error messages for common failures
+    let friendlyMsg = msg;
+    if (msg.includes("timeout") || msg.includes("TimeoutError")) {
+      friendlyMsg = "Kapcsolat időtúllépés – az MSZT szerver nem válaszolt 15 másodpercen belül.";
+    } else if (msg.includes("fetch failed") || msg.includes("ECONNREFUSED") || msg.includes("ENOTFOUND")) {
+      friendlyMsg = "Hálózati hiba – nem sikerült kapcsolódni az MSZT szerverhez. Ellenőrizze az internetkapcsolatot.";
+    }
+    return { success: false, error: `Kapcsolódási hiba: ${friendlyMsg}` };
   }
 }
 

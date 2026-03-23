@@ -233,3 +233,11 @@
 ### Tesztek
 - [x] Compliance engine bővítés tesztek
 - [x] Vitest: 18/18 sikeres
+
+## V7 – MSZT kapcsolat javítás és stabilitás
+
+- [x] MSZT loginToMszt: AbortSignal.timeout(15000) hozzáadva mindkét fetch híváshoz
+- [x] MSZT loginToMszt: Barátságosabb hibaüzenetek (timeout, ECONNREFUSED, ENOTFOUND)
+- [x] DB oszlopok ellenőrzése: regulation_sources és search_queries táblák rendben
+- [x] Vitest: 18/18 sikeres
+- [x] TypeScript: 0 hiba
