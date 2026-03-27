@@ -247,3 +247,9 @@
 - [x] MSZT loginToMszt: redirect követés + "már bejelentkezett valaki" üzenet detektálása
 - [x] Barátságos hibaüzenet: "Ez a fiók már be van jelentkezve egy másik munkamenetben. Várjon 20 percet, majd próbálja újra."
 - [x] Vitest: 18/18 sikeres
+
+## V9 – Jogszabályi tartalom feltöltése teszteléshez
+
+- [x] Magyar építési jogszabályok letöltése internetről (OTSZ, OTÉK, Épkiv, Étv.)
+- [x] Jogszabályok feltöltése a rendszerbe (regulation_sources tábla, MEDIUMTEXT oszlop bővítés)
+- [x] Kereső funkciók tesztelése a feltöltött tartalommal – Magas megbízhatóság, 4 forrás találva

@@ -1,4 +1,4 @@
-import { boolean, int, mysqlEnum, mysqlTable, text, timestamp, varchar, json } from "drizzle-orm/mysql-core";
+import { boolean, int, mysqlEnum, mysqlTable, text, mediumtext, timestamp, varchar, json } from "drizzle-orm/mysql-core";
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 
@@ -127,7 +127,7 @@ export const regulationSources = mysqlTable("regulation_sources", {
     "njt", "netjogtar", "eurlex", "mszt", "jogtar", "epitesijog", "pdf", "url",
   ]).default("njt").notNull(),
   sourceUrl: text("sourceUrl"),
-  content: text("content"),
+  content: mediumtext("content"),
   contentFetchedAt: timestamp("contentFetchedAt"),
   /** When this source was last successfully synced */
   lastSyncAt: timestamp("lastSyncAt"),

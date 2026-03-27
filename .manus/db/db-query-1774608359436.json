@@ -1,0 +1,186 @@
+{
+  "query": "SELECT id, name, shortCode, discipline, sourceType, LENGTH(content) as contentLen, syncStatus, version, isActive FROM regulation_sources ORDER BY id;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user umEGVX5xqZTdjsh.44621c0fe7b1 --database Lkoz8HcKNEz8RQmUhyV4qZ --execute SELECT id, name, shortCode, discipline, sourceType, LENGTH(content) as contentLen, syncStatus, version, isActive FROM regulation_sources ORDER BY id;",
+  "rows": [
+    {
+      "id": "1",
+      "name": "TÉKA – 280/2024. (IX. 30.) Korm. rendelet – Településrendezési és építési követelmények",
+      "shortCode": "TEKA_2024",
+      "discipline": "epiteszet",
+      "sourceType": "njt",
+      "contentLen": "NULL",
+      "syncStatus": "never",
+      "version": "NULL",
+      "isActive": "1"
+    },
+    {
+      "id": "2",
+      "name": "OTSZ – 54/2014. (XII. 5.) BM rendelet – Országos Tűzvédelmi Szabályzat",
+      "shortCode": "OTSZ_2014",
+      "discipline": "tuzvedelmi",
+      "sourceType": "netjogtar",
+      "contentLen": "NULL",
+      "syncStatus": "never",
+      "version": "NULL",
+      "isActive": "1"
+    },
+    {
+      "id": "3",
+      "name": "7/2006. (V. 24.) TNM rendelet – Épületek energetikai jellemzői",
+      "shortCode": "TNM_2006",
+      "discipline": "energetika",
+      "sourceType": "njt",
+      "contentLen": "NULL",
+      "syncStatus": "never",
+      "version": "NULL",
+      "isActive": "1"
+    },
+    {
+      "id": "4",
+      "name": "Méptv. – 2023. évi C. törvény – Magyar építészetről szóló törvény",
+      "shortCode": "MEPTV_2023",
+      "discipline": "altalanos",
+      "sourceType": "njt",
+      "contentLen": "NULL",
+      "syncStatus": "never",
+      "version": "NULL",
+      "isActive": "1"
+    },
+    {
+      "id": "5",
+      "name": "281/2024. (IX. 30.) Korm. rendelet – Építésügyi hatósági eljárások",
+      "shortCode": "EHHAT_2024",
+      "discipline": "altalanos",
+      "sourceType": "njt",
+      "contentLen": "NULL",
+      "syncStatus": "never",
+      "version": "NULL",
+      "isActive": "1"
+    },
+    {
+      "id": "6",
+      "name": "MSZ EN 1990:2005 – Eurocode 0: Tartószerkezetek tervezési alapjai",
+      "shortCode": "EC0",
+      "discipline": "statika",
+      "sourceType": "mszt",
+      "contentLen": "NULL",
+      "syncStatus": "never",
+      "version": "NULL",
+      "isActive": "1"
+    },
+    {
+      "id": "7",
+      "name": "MSZ EN 1991-1-1:2005 – Eurocode 1: Terhek tartószerkezetekre",
+      "shortCode": "EC1",
+      "discipline": "statika",
+      "sourceType": "mszt",
+      "contentLen": "NULL",
+      "syncStatus": "never",
+      "version": "NULL",
+      "isActive": "1"
+    },
+    {
+      "id": "8",
+      "name": "MSZ EN 1992-1-1:2005 – Eurocode 2: Vasbeton szerkezetek tervezése",
+      "shortCode": "EC2",
+      "discipline": "statika",
+      "sourceType": "mszt",
+      "contentLen": "NULL",
+      "syncStatus": "never",
+      "version": "NULL",
+      "isActive": "1"
+    },
+    {
+      "id": "9",
+      "name": "MSZ EN 1993-1-1:2005 – Eurocode 3: Acélszerkezetek tervezése",
+      "shortCode": "EC3",
+      "discipline": "statika",
+      "sourceType": "mszt",
+      "contentLen": "NULL",
+      "syncStatus": "never",
+      "version": "NULL",
+      "isActive": "1"
+    },
+    {
+      "id": "10",
+      "name": "MSZ EN 1997-1:2005 – Eurocode 7: Geotechnikai tervezés",
+      "shortCode": "EC7",
+      "discipline": "geotechnika",
+      "sourceType": "mszt",
+      "contentLen": "NULL",
+      "syncStatus": "never",
+      "version": "NULL",
+      "isActive": "1"
+    },
+    {
+      "id": "11",
+      "name": "266/2013. (VII. 11.) Korm. rendelet – Építésügyi és építésfelügyeleti hatósági eljárások",
+      "shortCode": "EHHAT_2013",
+      "discipline": "altalanos",
+      "sourceType": "njt",
+      "contentLen": "NULL",
+      "syncStatus": "never",
+      "version": "NULL",
+      "isActive": "1"
+    },
+    {
+      "id": "12",
+      "name": "176/2008. (VI. 30.) Korm. rendelet – Épületek energetikai tanúsítása",
+      "shortCode": "ENTAN_2008",
+      "discipline": "energetika",
+      "sourceType": "njt",
+      "contentLen": "NULL",
+      "syncStatus": "never",
+      "version": "NULL",
+      "isActive": "1"
+    },
+    {
+      "id": "30001",
+      "name": "54/2014. (XII. 5.) BM rendelet – Országos Tűzvédelmi Szabályzat (OTSZ)",
+      "shortCode": "OTSZ",
+      "discipline": "tuzvedelmi",
+      "sourceType": "njt",
+      "contentLen": "67722",
+      "syncStatus": "ok",
+      "version": "2025-09-23",
+      "isActive": "1"
+    },
+    {
+      "id": "30002",
+      "name": "253/1997. (XII. 20.) Korm. rendelet – Országos Településrendezési és Építési Követelmények (OTÉK)",
+      "shortCode": "OTÉK",
+      "discipline": "epiteszet",
+      "sourceType": "njt",
+      "contentLen": "67805",
+      "syncStatus": "ok",
+      "version": "2024-01-01",
+      "isActive": "1"
+    },
+    {
+      "id": "30003",
+      "name": "312/2012. (XI. 8.) Korm. rendelet – Építésügyi és építésfelügyeleti hatósági eljárások",
+      "shortCode": "Épkiv",
+      "discipline": "altalanos",
+      "sourceType": "njt",
+      "contentLen": "68217",
+      "syncStatus": "ok",
+      "version": "2024-08-16",
+      "isActive": "1"
+    },
+    {
+      "id": "30004",
+      "name": "1997. évi LXXVIII. törvény – Az épített környezet alakításáról és védelméről (Étv.)",
+      "shortCode": "Étv.",
+      "discipline": "altalanos",
+      "sourceType": "njt",
+      "contentLen": "68134",
+      "syncStatus": "ok",
+      "version": "2024-09-01",
+      "isActive": "1"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\tshortCode\tdiscipline\tsourceType\tcontentLen\tsyncStatus\tversion\tisActive\n1\tTÉKA – 280/2024. (IX. 30.) Korm. rendelet – Településrendezési és építési követelmények\tTEKA_2024\tepiteszet\tnjt\tNULL\tnever\tNULL\t1\n2\tOTSZ – 54/2014. (XII. 5.) BM rendelet – Országos Tűzvédelmi Szabályzat\tOTSZ_2014\ttuzvedelmi\tnetjogtar\tNULL\tnever\tNULL\t1\n3\t7/2006. (V. 24.) TNM rendelet – Épületek energetikai jellemzői\tTNM_2006\tenergetika\tnjt\tNULL\tnever\tNULL\t1\n4\tMéptv. – 2023. évi C. törvény – Magyar építészetről szóló törvény\tMEPTV_2023\taltalanos\tnjt\tNULL\tnever\tNULL\t1\n5\t281/2024. (IX. 30.) Korm. rendelet – Építésügyi hatósági eljárások\tEHHAT_2024\taltalanos\tnjt\tNULL\tnever\tNULL\t1\n6\tMSZ EN 1990:2005 – Eurocode 0: Tartószerkezetek tervezési alapjai\tEC0\tstatika\tmszt\tNULL\tnever\tNULL\t1\n7\tMSZ EN 1991-1-1:2005 – Eurocode 1: Terhek tartószerkezetekre\tEC1\tstatika\tmszt\tNULL\tnever\tNULL\t1\n8\tMSZ EN 1992-1-1:2005 – Eurocode 2: Vasbeton szerkezetek tervezése\tEC2\tstatika\tmszt\tNULL\tnever\tNULL\t1\n9\tMSZ EN 1993-1-1:2005 – Eurocode 3: Acélszerkezetek tervezése\tEC3\tstatika\tmszt\tNULL\tnever\tNULL\t1\n10\tMSZ EN 1997-1:2005 – Eurocode 7: Geotechnikai tervezés\tEC7\tgeotechnika\tmszt\tNULL\tnever\tNULL\t1\n11\t266/2013. (VII. 11.) Korm. rendelet – Építésügyi és építésfelügyeleti hatósági eljárások\tEHHAT_2013\taltalanos\tnjt\tNULL\tnever\tNULL\t1\n12\t176/2008. (VI. 30.) Korm. rendelet – Épületek energetikai tanúsítása\tENTAN_2008\tenergetika\tnjt\tNULL\tnever\tNULL\t1\n30001\t54/2014. (XII. 5.) BM rendelet – Országos Tűzvédelmi Szabályzat (OTSZ)\tOTSZ\ttuzvedelmi\tnjt\t67722\tok\t2025-09-23\t1\n30002\t253/1997. (XII. 20.) Korm. rendelet – Országos Településrendezési és Építési Követelmények (OTÉK)\tOTÉK\tepiteszet\tnjt\t67805\tok\t2024-01-01\t1\n30003\t312/2012. (XI. 8.) Korm. rendelet – Építésügyi és építésfelügyeleti hatósági eljárások\tÉpkiv\taltalanos\tnjt\t68217\tok\t2024-08-16\t1\n30004\t1997. évi LXXVIII. törvény – Az épített környezet alakításáról és védelméről (Étv.)\tÉtv.\taltalanos\tnjt\t68134\tok\t2024-09-01\t1\n",
+  "stderr": "",
+  "execution_time_ms": 65
+}
