@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { ClipboardList, Menu, X, BookOpen, Search, History, Database, LayoutDashboard, FolderOpen, ChevronDown, Check } from "lucide-react";
+import { ClipboardList, Menu, X, BookOpen, Search, History, Database, LayoutDashboard, FolderOpen, ChevronDown, Check, Shield } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useActiveProject } from "@/contexts/ProjectContext";
 import { trpc } from "@/lib/trpc";
@@ -13,6 +13,7 @@ const navItems = [
   { href: "/knowledge-base", label: "Tudástár", icon: Database },
   { href: "/regulations", label: "Jogszabályok", icon: BookOpen },
   { href: "/search-history", label: "Előzmények", icon: History },
+  { href: "/audit", label: "Audit", icon: Shield },
 ];
 
 function ActiveProjectSelector() {

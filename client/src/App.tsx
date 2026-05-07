@@ -16,6 +16,7 @@ import DashboardPage from "./pages/DashboardPage";
 import PlatformConnectionsPage from "./pages/PlatformConnectionsPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import ProjectDetailPage from "./pages/ProjectDetailPage";
+import AuditPage from "./pages/AuditPage";
 
 function Router() {
   return (
@@ -31,6 +32,7 @@ function Router() {
       <Route path="/regulations" component={RegulationLibraryPage} />
       <Route path="/search-history" component={SearchHistoryPage} />
       <Route path="/platforms" component={PlatformConnectionsPage} />
+      <Route path="/audit" component={AuditPage} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>
