@@ -2,7 +2,8 @@ import { useState, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import {
   Upload, FileText, X, Loader2, CheckCircle2, BookOpen,
-  ChevronDown, ChevronUp, Info, FileSpreadsheet, Layers, File
+  ChevronDown, ChevronUp, Info, FileSpreadsheet, Layers, File,
+  RefreshCw, AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -202,7 +203,37 @@ function RegulationLibraryPicker({
 }) {
   const [open, setOpen] = useState(false);
   const [filterDiscipline, setFilterDiscipline] = useState<string>("all");
-  const { data: sources, isLoading } = trpc.regulationSources.list.useQuery();
+  const { data: sources, isLoading, refetch } = trpc.regulationSources.list.useQuery();
+  const utils = trpc.useUtils();
+  const refreshStaleMut = trpc.regulationSources.refreshAllStale.useMutation({
+    onSuccess: (data) => {
+      const parts = [
+        `Frissítve: ${data.refreshed}`,
+        data.skipped > 0 ? `kihagyva: ${data.skipped} (hiányzó belépő)` : null,
+        data.failed > 0 ? `hiba: ${data.failed}` : null,
+      ].filter(Boolean).join(", ");
+      toast.success(`Elavult források frissítése kész — ${parts}`);
+      utils.regulationSources.list.invalidate();
+      refetch();
+    },
+    onError: (err) => toast.error(`Frissítés sikertelen: ${err.message}`),
+  });
+
+  const STALE_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  function isStale(s: { lastSyncAt: Date | string | null; contentFetchedAt: Date | string | null; content: string | null }) {
+    if (!s.content) return false; // never had content — not "stale", just empty
+    const last = s.lastSyncAt ?? s.contentFetchedAt;
+    if (!last) return true;
+    const lastMs = typeof last === "string" ? new Date(last).getTime() : last.getTime();
+    return now - lastMs > STALE_THRESHOLD_MS;
+  }
+  function daysAgo(d: Date | string | null): number | null {
+    if (!d) return null;
+    const ms = typeof d === "string" ? new Date(d).getTime() : d.getTime();
+    return Math.floor((now - ms) / (24 * 60 * 60 * 1000));
+  }
+  const staleCount = (sources ?? []).filter(isStale).length;
 
   const filtered = sources?.filter(
     (s) => filterDiscipline === "all" || s.discipline === filterDiscipline
@@ -233,6 +264,36 @@ function RegulationLibraryPicker({
 
       {open && (
         <div className="border-t" style={{ borderColor: "#e5e7eb" }}>
+          {/* Stale warning + bulk refresh */}
+          {staleCount > 0 && (
+            <div className="px-3 py-2 border-b flex items-center justify-between gap-2 bg-amber-50" style={{ borderColor: "#fde68a" }}>
+              <div className="flex items-center gap-2 text-xs text-amber-800">
+                <AlertTriangle size={12} />
+                {staleCount === 1
+                  ? "1 forrás 30+ napja nem volt frissítve."
+                  : `${staleCount} forrás 30+ napja nem volt frissítve.`}
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1.5 border-amber-300 text-amber-800"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  refreshStaleMut.mutate({ olderThanDays: 30 });
+                }}
+                disabled={refreshStaleMut.isPending}
+              >
+                {refreshStaleMut.isPending ? (
+                  <Loader2 size={11} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={11} />
+                )}
+                Mind frissítése
+              </Button>
+            </div>
+          )}
+
           {/* Discipline filter */}
           <div className="p-3 border-b flex gap-2 flex-wrap" style={{ borderColor: "#e5e7eb" }}>
             {disciplines.map((d) => (
@@ -286,10 +347,26 @@ function RegulationLibraryPicker({
                           {DISCIPLINE_LABELS[source.discipline] ?? source.discipline}
                         </span>
                         <span className="text-xs text-gray-400 uppercase">{source.sourceType}</span>
-                        {source.content && (
+                        {source.content && !isStale(source) && (
                           <span className="text-xs text-green-600 flex items-center gap-0.5">
                             <CheckCircle2 size={10} />
                             Letöltve
+                          </span>
+                        )}
+                        {source.content && isStale(source) && (
+                          <span
+                            className="text-xs text-amber-700 flex items-center gap-0.5"
+                            title={
+                              source.lastSyncAt || source.contentFetchedAt
+                                ? `Utolsó frissítés: ${daysAgo(source.lastSyncAt ?? source.contentFetchedAt)} napja`
+                                : "Soha nem lett frissítve"
+                            }
+                          >
+                            <AlertTriangle size={10} />
+                            {(() => {
+                              const d = daysAgo(source.lastSyncAt ?? source.contentFetchedAt);
+                              return d != null ? `Elavult (${d} napja)` : "Elavult";
+                            })()}
                           </span>
                         )}
                         {!source.content && ["mszt", "jogtar", "epitesijog"].includes(source.sourceType) && (

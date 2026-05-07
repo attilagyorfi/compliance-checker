@@ -286,3 +286,20 @@ export const knowledgeBaseDocuments = mysqlTable("knowledge_base_documents", {
 
 export type KnowledgeBaseDocument = typeof knowledgeBaseDocuments.$inferSelect;
 export type InsertKnowledgeBaseDocument = typeof knowledgeBaseDocuments.$inferInsert;
+
+// ─── Chunk embeddings (semantic search — V12) ─────────────────────────────────
+// Polymorphic table for chunk-level embeddings. `sourceType` distinguishes
+// regulation_sources rows from knowledge_base_documents rows.
+
+export const chunkEmbeddings = mysqlTable("chunk_embeddings", {
+  id: int("id").autoincrement().primaryKey(),
+  sourceType: mysqlEnum("source_type", ["regulation", "knowledge_base"]).notNull(),
+  sourceId: int("source_id").notNull(),
+  chunkIndex: int("chunk_index").notNull(),
+  text: text("text").notNull(),
+  embedding: json("embedding").$type<number[]>().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type ChunkEmbedding = typeof chunkEmbeddings.$inferSelect;
+export type InsertChunkEmbedding = typeof chunkEmbeddings.$inferInsert;

@@ -5,6 +5,8 @@ import { regulationSourcesRouter } from "./routers/regulationSources";
 import { platformCredentialsRouter } from "./routers/platformCredentials";
 import { standardsSearchRouter } from "./routers/standardsSearch";
 import { knowledgeBaseRouter } from "./routers/knowledgeBase";
+import { projectsRouter } from "./routers/projects";
+import { projectMembersRouter } from "./routers/projectMembers";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
@@ -29,6 +31,8 @@ export const appRouter = router({
   platformCredentials: platformCredentialsRouter,
   standardsSearch: standardsSearchRouter,
   knowledgeBase: knowledgeBaseRouter,
+  projects: projectsRouter,
+  projectMembers: projectMembersRouter,
 
   // TODO: add feature routers here, e.g.
   // todo: router({

@@ -13,12 +13,16 @@ import SearchHistoryPage from "./pages/SearchHistoryPage";
 import KnowledgeBasePage from "./pages/KnowledgeBasePage";
 import DashboardPage from "./pages/DashboardPage";
 import PlatformConnectionsPage from "./pages/PlatformConnectionsPage";
+import ProjectsPage from "./pages/ProjectsPage";
+import ProjectDetailPage from "./pages/ProjectDetailPage";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/dashboard" component={DashboardPage} />
+      <Route path="/projects" component={ProjectsPage} />
+      <Route path="/projects/:id" component={ProjectDetailPage} />
       <Route path="/search" component={StandardsSearchPage} />
       <Route path="/knowledge-base" component={KnowledgeBasePage} />
       <Route path="/reports" component={ReportsPage} />

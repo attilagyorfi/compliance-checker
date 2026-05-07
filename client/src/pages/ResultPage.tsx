@@ -3,13 +3,29 @@ import { useParams, Link } from "wouter";
 import {
   CheckCircle2, AlertTriangle, XCircle, Loader2,
   FileText, Download, ArrowLeft, ChevronDown, ChevronUp,
-  BarChart3, ClipboardList
+  BarChart3, ClipboardList, ClipboardCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { toast } from "sonner";
 import Header from "@/components/Header";
 import { trpc } from "@/lib/trpc";
-import type { ComplianceResult, ComplianceStatus } from "../../../drizzle/schema";
+import type { ComplianceResult, ComplianceStatus, FindingWorkflowStatus } from "../../../drizzle/schema";
+
+const FINDING_WORKFLOW_LABELS: Record<FindingWorkflowStatus, { label: string; color: string; bg: string }> = {
+  nyitott:           { label: "Nyitott",            color: "#6b7280", bg: "#f3f4f6" },
+  ellenorzes_alatt:  { label: "Ellenőrzés alatt",   color: "#1d4ed8", bg: "#eff6ff" },
+  elfogadva:         { label: "Elfogadva",          color: "#059669", bg: "#f0fdf4" },
+  elutasitva:        { label: "Elutasítva",         color: "#dc2626", bg: "#fef2f2" },
+  javitva:           { label: "Javítva",            color: "#d97706", bg: "#fffbeb" },
+  lezarva:           { label: "Lezárva",            color: "#0f766e", bg: "#ecfdf5" },
+};
 
 // ── Status helpers ────────────────────────────────────────────────────────────
 
@@ -82,13 +98,44 @@ function ConfidenceBar({ value }: { value?: number }) {
 
 // ── Result card ───────────────────────────────────────────────────────────────
 
-function ResultCard({ result }: { result: ComplianceResult }) {
+function ResultCard({ result, analysisId, onUpdate }: {
+  result: ComplianceResult;
+  analysisId: number;
+  onUpdate: () => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const [showEvidence, setShowEvidence] = useState(false);
+  const [showReview, setShowReview] = useState(false);
+  const [workflowStatus, setWorkflowStatus] = useState<FindingWorkflowStatus>(
+    (result.workflowStatus as FindingWorkflowStatus) ?? "nyitott"
+  );
+  const [reviewNote, setReviewNote] = useState(result.reviewNote ?? "");
+  const [assignedTo, setAssignedTo] = useState(result.assignedTo ?? "");
+
   const cfg = statusConfig[result.status];
   const Icon = cfg.icon;
   const r = result as any; // extended fields from V6
   const sevCfg = r.severity ? severityConfig[r.severity] : null;
+  const wfCfg = FINDING_WORKFLOW_LABELS[workflowStatus] ?? FINDING_WORKFLOW_LABELS.nyitott;
+
+  const updateMut = trpc.compliance.updateFindingStatus.useMutation({
+    onSuccess: () => {
+      toast.success("Felülvizsgálat mentve");
+      onUpdate();
+    },
+    onError: (err) => toast.error(`Hiba: ${err.message}`),
+  });
+
+  const saveReview = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    updateMut.mutate({
+      analysisId,
+      findingId: result.id,
+      workflowStatus,
+      reviewNote: reviewNote || undefined,
+      assignedTo: assignedTo || undefined,
+    });
+  };
 
   return (
     <div
@@ -117,6 +164,13 @@ function ResultCard({ result }: { result: ComplianceResult }) {
                       {sevCfg.label}
                     </span>
                   )}
+                  <span
+                    className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full"
+                    style={{ backgroundColor: wfCfg.bg, color: wfCfg.color }}
+                  >
+                    <ClipboardCheck size={10} />
+                    {wfCfg.label}
+                  </span>
                 </div>
                 <h3 className="font-semibold text-sm text-gray-900 leading-snug">
                   {result.title}
@@ -218,6 +272,66 @@ function ResultCard({ result }: { result: ComplianceResult }) {
                 )}
               </div>
             )}
+
+            {/* Review panel — V11 finding-level workflow */}
+            <div>
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowReview(!showReview); }}
+                className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                {showReview ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                Felülvizsgálat
+              </button>
+              {showReview && (
+                <div className="mt-3 rounded-lg border bg-gray-50 p-4 space-y-3" style={{ borderColor: "#e5e7eb" }} onClick={(e) => e.stopPropagation()}>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`wf-${result.id}`} className="text-xs">Munkafolyamat-státusz</Label>
+                      <Select value={workflowStatus} onValueChange={(v) => setWorkflowStatus(v as FindingWorkflowStatus)}>
+                        <SelectTrigger id={`wf-${result.id}`} className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {(Object.entries(FINDING_WORKFLOW_LABELS) as Array<[FindingWorkflowStatus, typeof FINDING_WORKFLOW_LABELS[FindingWorkflowStatus]]>).map(([key, c]) => (
+                            <SelectItem key={key} value={key}>{c.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`as-${result.id}`} className="text-xs">Felelős (név vagy e-mail)</Label>
+                      <Input
+                        id={`as-${result.id}`}
+                        value={assignedTo}
+                        onChange={(e) => setAssignedTo(e.target.value)}
+                        placeholder="pl. Kovács J."
+                        className="h-9 text-xs"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`note-${result.id}`} className="text-xs">Megjegyzés / döntés indoklása</Label>
+                    <Textarea
+                      id={`note-${result.id}`}
+                      value={reviewNote}
+                      onChange={(e) => setReviewNote(e.target.value)}
+                      placeholder="Pl. A javaslat elfogadva, kiviteli tervben pontosítani."
+                      rows={3}
+                      className="text-xs"
+                    />
+                  </div>
+                  <div className="flex justify-end">
+                    <Button
+                      size="sm"
+                      onClick={saveReview}
+                      disabled={updateMut.isPending}
+                      style={{ backgroundColor: "#7CA9D3" }}
+                    >
+                      {updateMut.isPending ? <Loader2 size={14} className="animate-spin mr-2" /> : null}
+                      Mentés
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -442,7 +556,12 @@ export default function ResultPage() {
             {/* Result cards */}
             <div className="space-y-3">
               {filtered.map((result) => (
-                <ResultCard key={result.id} result={result} />
+                <ResultCard
+                  key={result.id}
+                  result={result}
+                  analysisId={analysisId}
+                  onUpdate={() => refetch()}
+                />
               ))}
             </div>
 

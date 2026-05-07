@@ -105,9 +105,17 @@ export async function getAnalysisById(id: number): Promise<Analysis | undefined>
   return result[0];
 }
 
-export async function listAnalyses(): Promise<Analysis[]> {
+export async function listAnalyses(filter?: { projectId?: number }): Promise<Analysis[]> {
   const db = await getDb();
   if (!db) return [];
+  if (filter?.projectId !== undefined) {
+    return db
+      .select()
+      .from(analyses)
+      .where(eq(analyses.projectId, filter.projectId))
+      .orderBy(desc(analyses.createdAt))
+      .limit(50);
+  }
   return db.select().from(analyses).orderBy(desc(analyses.createdAt)).limit(50);
 }
 

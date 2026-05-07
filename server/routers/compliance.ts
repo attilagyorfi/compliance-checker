@@ -261,6 +261,8 @@ export const complianceRouter = router({
       const analysisId = await createAnalysis({
         title: input.title,
         status: "processing",
+        projectId: input.projectId ?? null,
+        userId: ctx.user?.id ?? null,
         planDocuments: (input.planDocumentNames ?? [input.planDocument.name]).map((name) => ({
           key: "",
           name,
@@ -329,11 +331,13 @@ export const complianceRouter = router({
     }),
 
   /**
-   * List all analyses (most recent first).
+   * List analyses (most recent first). Optionally filtered by project.
    */
-  listAnalyses: publicProcedure.query(async () => {
-    return listAnalyses();
-  }),
+  listAnalyses: publicProcedure
+    .input(z.object({ projectId: z.number().int().positive().optional() }).optional())
+    .query(async ({ input }) => {
+      return listAnalyses(input?.projectId ? { projectId: input.projectId } : undefined);
+    }),
 
   /**
    * Update the workflow status of an analysis.

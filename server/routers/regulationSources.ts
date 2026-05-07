@@ -7,9 +7,10 @@ import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { getDb } from "../db";
-import { regulationSources } from "../../drizzle/schema";
-import { eq, desc, asc } from "drizzle-orm";
+import { regulationSources, chunkEmbeddings } from "../../drizzle/schema";
+import { and, eq, desc, asc } from "drizzle-orm";
 import { fetchRegulationText } from "../regulationScraper";
+import { chunkAndEmbed } from "../embeddings";
 
 const disciplineEnum = z.enum([
   "altalanos", "epiteszet", "tuzvedelmi", "energetika", "statika",
@@ -142,17 +143,134 @@ export const regulationSourcesRouter = router({
 
       const result = await fetchRegulationText(source.sourceType as any, source.sourceUrl, credentials);
 
-      // Update the cached content
+      // Update the cached content + sync status / lastSyncAt for staleness tracking
+      const succeeded = !result.warning && result.text.length > 0;
       await db.update(regulationSources).set({
-        content: result.text.slice(0, 65000), // MySQL TEXT limit
+        content: result.text.slice(0, 16_000_000), // mediumtext limit
         contentFetchedAt: result.fetchedAt,
+        lastSyncAt: result.fetchedAt,
+        syncStatus: succeeded ? "ok" : "error",
+        lastSyncError: succeeded ? null : (result.warning ?? null),
       }).where(eq(regulationSources.id, input.id));
 
       return {
-        success: !result.warning,
+        success: succeeded,
         characterCount: result.text.length,
         warning: result.warning,
         fetchedAt: result.fetchedAt,
       };
+    }),
+
+  /**
+   * Refresh all sources whose lastSyncAt is older than `olderThanDays` (default 30)
+   * or null. Sequential, best-effort: failures are logged but the loop continues.
+   * Designed to be called from a Manus scheduled task or a manual "Frissítés mind"
+   * UI button. NJT/netjogtar/eurlex/url sources don't need credentials; the rest
+   * are skipped if no credential is configured.
+   */
+  refreshAllStale: publicProcedure
+    .input(z.object({ olderThanDays: z.number().int().min(0).max(365).default(30) }).optional())
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+
+      const olderThanDays = input?.olderThanDays ?? 30;
+      const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
+
+      const all = await db.select().from(regulationSources);
+      const stale = all.filter((s) => {
+        if (!s.sourceUrl) return false;
+        if (!s.isActive) return false;
+        const last = s.lastSyncAt ?? s.contentFetchedAt;
+        return last == null || last < cutoff;
+      });
+
+      const { platformCredentials } = await import("../../drizzle/schema");
+      const { decryptPassword } = await import("../regulationScraper");
+
+      let refreshed = 0;
+      let skipped = 0;
+      let failed = 0;
+      const errors: Array<{ id: number; name: string; error: string }> = [];
+
+      for (const source of stale) {
+        try {
+          let credentials: { username: string; password: string } | undefined;
+          if (["mszt", "jogtar", "epitesijog"].includes(source.sourceType)) {
+            const credRows = await db
+              .select()
+              .from(platformCredentials)
+              .where(eq(platformCredentials.platform, source.sourceType as any))
+              .limit(1);
+            const cred = credRows[0];
+            if (!cred?.username || !cred?.encryptedPassword) {
+              skipped++;
+              continue;
+            }
+            credentials = { username: cred.username, password: decryptPassword(cred.encryptedPassword) };
+          }
+          const result = await fetchRegulationText(source.sourceType as any, source.sourceUrl!, credentials);
+          const succeeded = !result.warning && result.text.length > 0;
+          await db.update(regulationSources).set({
+            content: result.text.slice(0, 16_000_000),
+            contentFetchedAt: result.fetchedAt,
+            lastSyncAt: result.fetchedAt,
+            syncStatus: succeeded ? "ok" : "error",
+            lastSyncError: succeeded ? null : (result.warning ?? null),
+          }).where(eq(regulationSources.id, source.id));
+          if (succeeded) refreshed++;
+          else { failed++; errors.push({ id: source.id, name: source.name, error: result.warning ?? "ismeretlen" }); }
+        } catch (err) {
+          failed++;
+          const msg = err instanceof Error ? err.message : String(err);
+          errors.push({ id: source.id, name: source.name, error: msg });
+          await db.update(regulationSources).set({
+            syncStatus: "error",
+            lastSyncError: msg,
+          }).where(eq(regulationSources.id, source.id));
+        }
+      }
+
+      return { staleCount: stale.length, refreshed, skipped, failed, errors };
+    }),
+
+  /**
+   * Generate (or regenerate) chunk embeddings for a regulation source.
+   * Returns the number of chunks embedded; returns `embeddingApiUnavailable: true`
+   * if the embedding API isn't reachable so the UI can surface a hint.
+   */
+  regenerateEmbeddings: publicProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+
+      const rows = await db.select().from(regulationSources).where(eq(regulationSources.id, input.id)).limit(1);
+      const source = rows[0];
+      if (!source) throw new TRPCError({ code: "NOT_FOUND", message: "Jogszabály forrás nem található" });
+      if (!source.content || source.content.trim().length === 0) {
+        return { chunkCount: 0, embeddingApiUnavailable: false, message: "A forrásnak nincs letöltött szövege." };
+      }
+
+      const embedded = await chunkAndEmbed(source.content);
+      if (embedded.length === 0) {
+        return { chunkCount: 0, embeddingApiUnavailable: true, message: "Az embedding API nem érhető el, vagy nincs használható chunk." };
+      }
+
+      // Wipe previous embeddings for this source, then bulk insert new ones.
+      await db
+        .delete(chunkEmbeddings)
+        .where(and(eq(chunkEmbeddings.sourceType, "regulation"), eq(chunkEmbeddings.sourceId, input.id)));
+      await db.insert(chunkEmbeddings).values(
+        embedded.map((c) => ({
+          sourceType: "regulation" as const,
+          sourceId: input.id,
+          chunkIndex: c.chunkIndex,
+          text: c.text.slice(0, 65000),
+          embedding: c.embedding,
+        }))
+      );
+
+      return { chunkCount: embedded.length, embeddingApiUnavailable: false, message: null };
     }),
 });

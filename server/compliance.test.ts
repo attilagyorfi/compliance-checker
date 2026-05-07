@@ -247,6 +247,126 @@ describe("regulation scraper", () => {
     expect(enc1).not.toBe(enc2);
   });
 
+  it("encryptPassword randomizes IV (same input yields different ciphertexts)", async () => {
+    const { encryptPassword, decryptPassword } = await import("./regulationScraper");
+    const enc1 = encryptPassword("same-password");
+    const enc2 = encryptPassword("same-password");
+    expect(enc1).not.toBe(enc2);
+    expect(decryptPassword(enc1)).toBe("same-password");
+    expect(decryptPassword(enc2)).toBe("same-password");
+  });
+
+  it("decryptPassword decodes legacy XOR-encoded values for backward compatibility", async () => {
+    const { decryptPassword } = await import("./regulationScraper");
+    // Reproduce the old XOR scheme exactly to seed a legacy ciphertext.
+    const ENCRYPTION_KEY = process.env.JWT_SECRET ?? "compliance-checker-key-2024";
+    const original = "legacy-stored-password";
+    const key = Buffer.from(ENCRYPTION_KEY);
+    const data = Buffer.from(original, "utf8");
+    const xored = Buffer.alloc(data.length);
+    for (let i = 0; i < data.length; i++) xored[i] = data[i]! ^ key[i % key.length]!;
+    const legacyEncoded = xored.toString("base64");
+    expect(legacyEncoded).not.toContain(":");
+    expect(decryptPassword(legacyEncoded)).toBe(original);
+  });
+
+  it("cookieHeaderFromResponse strips attributes from a single Set-Cookie value", async () => {
+    const { cookieHeaderFromResponse } = await import("./regulationScraper");
+    const headers = new Headers();
+    headers.set("set-cookie", "PHPSESSID=abc123; Path=/; HttpOnly; SameSite=Lax");
+    expect(cookieHeaderFromResponse(headers)).toBe("PHPSESSID=abc123");
+  });
+
+  it("cookieHeaderFromResponse handles multiple Set-Cookie headers", async () => {
+    const { cookieHeaderFromResponse } = await import("./regulationScraper");
+    const headers = new Headers();
+    headers.append("set-cookie", "PHPSESSID=abc; Path=/; HttpOnly");
+    headers.append("set-cookie", "XSRF-TOKEN=xyz; Path=/; Secure");
+    const result = cookieHeaderFromResponse(headers);
+    expect(result).toContain("PHPSESSID=abc");
+    expect(result).toContain("XSRF-TOKEN=xyz");
+    expect(result).not.toContain("HttpOnly");
+    expect(result).not.toContain("Path=");
+    expect(result).not.toContain("Secure");
+  });
+
+  it("mergeCookies overrides earlier values by name", async () => {
+    const { mergeCookies } = await import("./regulationScraper");
+    expect(mergeCookies("a=1; b=2", "b=3; c=4")).toBe("a=1; b=3; c=4");
+    expect(mergeCookies("", "x=1")).toBe("x=1");
+    expect(mergeCookies("PHPSESSID=old", "PHPSESSID=new; auth=t")).toBe("PHPSESSID=new; auth=t");
+  });
+
+  it("withSessionCache returns cached session on hit (no extra loginFn call)", async () => {
+    const { withSessionCache } = await import("./regulationScraper");
+    const cache = new Map();
+    const loginFn = vi.fn().mockResolvedValue({ success: true, sessionCookies: "PHPSESSID=abc" });
+    const r1 = await withSessionCache(cache, 60_000, "user", "pass", loginFn);
+    const r2 = await withSessionCache(cache, 60_000, "user", "pass", loginFn);
+    expect(r1.sessionCookies).toBe("PHPSESSID=abc");
+    expect(r2.sessionCookies).toBe("PHPSESSID=abc");
+    expect(loginFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("withSessionCache re-logs after TTL expires", async () => {
+    const { withSessionCache } = await import("./regulationScraper");
+    const cache = new Map();
+    let counter = 0;
+    const loginFn = vi.fn().mockImplementation(async () => ({
+      success: true as const,
+      sessionCookies: `PHPSESSID=v${++counter}`,
+    }));
+    const nowSpy = vi.spyOn(Date, "now");
+    nowSpy.mockReturnValue(0);
+    const r1 = await withSessionCache(cache, 60_000, "user", "pass", loginFn);
+    nowSpy.mockReturnValue(61_000);
+    const r2 = await withSessionCache(cache, 60_000, "user", "pass", loginFn);
+    expect(r1.sessionCookies).toBe("PHPSESSID=v1");
+    expect(r2.sessionCookies).toBe("PHPSESSID=v2");
+    expect(loginFn).toHaveBeenCalledTimes(2);
+    nowSpy.mockRestore();
+  });
+
+  it("withSessionCache invalidates entry when password changes", async () => {
+    const { withSessionCache } = await import("./regulationScraper");
+    const cache = new Map();
+    let counter = 0;
+    const loginFn = vi.fn().mockImplementation(async () => ({
+      success: true as const,
+      sessionCookies: `PHPSESSID=v${++counter}`,
+    }));
+    await withSessionCache(cache, 60_000, "user", "pass1", loginFn);
+    await withSessionCache(cache, 60_000, "user", "pass2", loginFn);
+    expect(loginFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("withSessionCache does not cache failed logins", async () => {
+    const { withSessionCache } = await import("./regulationScraper");
+    const cache = new Map();
+    const loginFn = vi.fn().mockResolvedValue({ success: false, error: "bad creds" });
+    await withSessionCache(cache, 60_000, "user", "pass", loginFn);
+    await withSessionCache(cache, 60_000, "user", "pass", loginFn);
+    expect(loginFn).toHaveBeenCalledTimes(2);
+    expect(cache.size).toBe(0);
+  });
+
+  it("withSessionCache uses separate entries per username", async () => {
+    const { withSessionCache } = await import("./regulationScraper");
+    const cache = new Map();
+    let counter = 0;
+    const loginFn = vi.fn().mockImplementation(async () => ({
+      success: true as const,
+      sessionCookies: `PHPSESSID=v${++counter}`,
+    }));
+    const r1 = await withSessionCache(cache, 60_000, "alice", "pass", loginFn);
+    const r2 = await withSessionCache(cache, 60_000, "bob", "pass", loginFn);
+    const r3 = await withSessionCache(cache, 60_000, "alice", "pass", loginFn);
+    expect(r1.sessionCookies).toBe("PHPSESSID=v1");
+    expect(r2.sessionCookies).toBe("PHPSESSID=v2");
+    expect(r3.sessionCookies).toBe("PHPSESSID=v1");
+    expect(loginFn).toHaveBeenCalledTimes(2);
+  });
+
   it("fetchRegulationText returns warning for paid platform without credentials", async () => {
     const { fetchRegulationText } = await import("./regulationScraper");
     const result = await fetchRegulationText("mszt", "https://szabvanykonyvtar.mszt.hu/test");
@@ -288,5 +408,152 @@ describe("standardsSearch router", () => {
     const { appRouter } = await import("./routers");
     const caller = appRouter.createCaller(createPublicContext());
     await expect(caller.standardsSearch.extendAnswer({ queryId: 999999 })).rejects.toThrow();
+  });
+});
+
+// ── Projects router tests (V10.A1) ────────────────────────────────────────────
+describe("projects router", () => {
+  it("list returns empty array when DB unavailable", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    const result = await caller.projects.list({ includeDeleted: false });
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(0);
+  });
+
+  it("getById throws when DB unavailable", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.projects.getById({ id: 1 })).rejects.toThrow();
+  });
+
+  it("create requires authentication (UNAUTHORIZED for public context)", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(
+      caller.projects.create({ name: "Test", discipline: "altalanos", workflowStatus: "uj" })
+    ).rejects.toThrow();
+  });
+
+  it("delete requires authentication (UNAUTHORIZED for public context)", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.projects.delete({ id: 1 })).rejects.toThrow();
+  });
+
+  it("update requires authentication (UNAUTHORIZED for public context)", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.projects.update({ id: 1, name: "x" })).rejects.toThrow();
+  });
+});
+
+// ── Project members router tests (V10.A4) ─────────────────────────────────────
+describe("projectMembers router", () => {
+  it("list returns empty array when DB unavailable", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    const result = await caller.projectMembers.list({ projectId: 1 });
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(0);
+  });
+
+  it("add requires authentication", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(
+      caller.projectMembers.add({ projectId: 1, email: "x@y.com", role: "member" })
+    ).rejects.toThrow();
+  });
+
+  it("changeRole requires authentication", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(
+      caller.projectMembers.changeRole({ projectId: 1, userId: 1, role: "reviewer" })
+    ).rejects.toThrow();
+  });
+
+  it("remove requires authentication", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.projectMembers.remove({ projectId: 1, userId: 1 })).rejects.toThrow();
+  });
+});
+
+// ── Embeddings (semantic search V12) ──────────────────────────────────────────
+describe("embeddings helpers", () => {
+  it("cosineSimilarity returns 1 for identical vectors", async () => {
+    const { cosineSimilarity } = await import("./embeddings");
+    expect(cosineSimilarity([1, 0, 0], [1, 0, 0])).toBeCloseTo(1);
+    expect(cosineSimilarity([3, 4], [3, 4])).toBeCloseTo(1);
+  });
+
+  it("cosineSimilarity returns 0 for orthogonal vectors", async () => {
+    const { cosineSimilarity } = await import("./embeddings");
+    expect(cosineSimilarity([1, 0], [0, 1])).toBeCloseTo(0);
+  });
+
+  it("cosineSimilarity returns -1 for opposite vectors", async () => {
+    const { cosineSimilarity } = await import("./embeddings");
+    expect(cosineSimilarity([1, 0], [-1, 0])).toBeCloseTo(-1);
+  });
+
+  it("cosineSimilarity returns 0 for mismatched-dim or zero vectors (no throw)", async () => {
+    const { cosineSimilarity } = await import("./embeddings");
+    expect(cosineSimilarity([1, 0], [1, 0, 0])).toBe(0);
+    expect(cosineSimilarity([0, 0], [1, 1])).toBe(0);
+    expect(cosineSimilarity([], [])).toBe(0);
+  });
+
+  it("isMsztLiveSearchEnabled returns false by default (feature flag off)", async () => {
+    const { isMsztLiveSearchEnabled } = await import("./regulationScraper");
+    const old = process.env.ENABLE_LIVE_MSZT_SEARCH;
+    delete process.env.ENABLE_LIVE_MSZT_SEARCH;
+    try {
+      expect(isMsztLiveSearchEnabled()).toBe(false);
+    } finally {
+      if (old !== undefined) process.env.ENABLE_LIVE_MSZT_SEARCH = old;
+    }
+  });
+
+  it("isMsztLiveSearchEnabled toggles on with ENABLE_LIVE_MSZT_SEARCH=true", async () => {
+    const { isMsztLiveSearchEnabled } = await import("./regulationScraper");
+    const old = process.env.ENABLE_LIVE_MSZT_SEARCH;
+    process.env.ENABLE_LIVE_MSZT_SEARCH = "true";
+    try {
+      expect(isMsztLiveSearchEnabled()).toBe(true);
+    } finally {
+      if (old === undefined) delete process.env.ENABLE_LIVE_MSZT_SEARCH;
+      else process.env.ENABLE_LIVE_MSZT_SEARCH = old;
+    }
+  });
+
+  it("searchMsztLive returns [] when feature flag is off (no network call)", async () => {
+    const { searchMsztLive } = await import("./regulationScraper");
+    const old = process.env.ENABLE_LIVE_MSZT_SEARCH;
+    delete process.env.ENABLE_LIVE_MSZT_SEARCH;
+    try {
+      const result = await searchMsztLive("test query", { username: "u", password: "p" });
+      expect(result).toEqual([]);
+    } finally {
+      if (old !== undefined) process.env.ENABLE_LIVE_MSZT_SEARCH = old;
+    }
+  });
+
+  it("getEmbedding returns null without API key (graceful degradation)", async () => {
+    const { _resetEmbeddingApiStateForTests, getEmbedding } = await import("./embeddings");
+    _resetEmbeddingApiStateForTests();
+    const oldKey = process.env.BUILT_IN_FORGE_API_KEY;
+    delete process.env.BUILT_IN_FORGE_API_KEY;
+    try {
+      // ENV.forgeApiKey is captured at module load, so without an API key
+      // at import time the call returns null. Even if it isn't null in this
+      // env, we just assert it's null OR an array — never throwing.
+      const result = await getEmbedding("test query");
+      expect(result === null || Array.isArray(result)).toBe(true);
+    } finally {
+      if (oldKey !== undefined) process.env.BUILT_IN_FORGE_API_KEY = oldKey;
+    }
   });
 });

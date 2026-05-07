@@ -153,11 +153,11 @@ function SettingsPanel({
         <label className="text-xs font-medium text-gray-500 mb-1.5 block uppercase tracking-wide">Keresési logika</label>
         <div className="grid grid-cols-2 gap-1.5">
           {([
-            { value: "mszt", label: "MSZT szabvány", icon: <BookOpen size={12} />, desc: "Szabványtár" },
-            { value: "internal", label: "Belső dok.", icon: <FileText size={12} />, desc: "Feltöltött" },
-            { value: "combined", label: "Kombinált", icon: <Search size={12} />, desc: "Könyvtár" },
+            { value: "mszt", label: "MSZT", icon: <BookOpen size={12} />, desc: "Csak importált MSZT" },
+            { value: "internal", label: "Belső", icon: <FileText size={12} />, desc: "Jogszabály + Tudástár" },
+            { value: "combined", label: "Kombinált", icon: <Search size={12} />, desc: "Minden belső forrás" },
             { value: "web", label: "Internet", icon: <Globe size={12} />, desc: "Web keresés" },
-            { value: "combined_with_web", label: "Kombinált + Web", icon: <Globe size={12} />, desc: "Könyvtár + internet", wide: true },
+            { value: "combined_with_web", label: "Kombinált + Web", icon: <Globe size={12} />, desc: "Belső + internet", wide: true },
           ] as Array<{ value: SearchMode; label: string; icon: React.ReactNode; desc: string; wide?: boolean }>).map(({ value, label, icon, desc, wide }) => (
             <button
               key={value}

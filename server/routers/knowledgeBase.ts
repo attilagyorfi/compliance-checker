@@ -1,45 +1,53 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { publicProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
-import { knowledgeBaseDocuments } from "../../drizzle/schema";
-import { eq, like, or, desc } from "drizzle-orm";
+import { knowledgeBaseDocuments, chunkEmbeddings } from "../../drizzle/schema";
+import { and, eq, like, or, desc } from "drizzle-orm";
 import { storagePut } from "../storage";
 import { extractDocumentText, type ExtractionResult } from "../documentExtractor";
+import { chunkAndEmbed } from "../embeddings";
 import { nanoid } from "nanoid";
 
 export const knowledgeBaseRouter = router({
-  // List all documents, optionally filtered by search query
+  // List all documents, optionally filtered by search query and/or project
   list: publicProcedure
-    .input(z.object({ search: z.string().optional() }))
+    .input(z.object({
+      search: z.string().optional(),
+      projectId: z.number().int().positive().optional(),
+    }))
     .query(async ({ input }) => {
       const db = await getDb();
       if (!db) return [];
 
+      const filters = [];
       if (input.search && input.search.trim()) {
         const q = `%${input.search.trim()}%`;
-        return db
-          .select()
-          .from(knowledgeBaseDocuments)
-          .where(
-            or(
-              like(knowledgeBaseDocuments.name, q),
-              like(knowledgeBaseDocuments.originalName, q),
-              like(knowledgeBaseDocuments.description, q),
-              like(knowledgeBaseDocuments.tags, q),
-            )
+        filters.push(
+          or(
+            like(knowledgeBaseDocuments.name, q),
+            like(knowledgeBaseDocuments.originalName, q),
+            like(knowledgeBaseDocuments.description, q),
+            like(knowledgeBaseDocuments.tags, q),
           )
-          .orderBy(desc(knowledgeBaseDocuments.uploadedAt));
+        );
+      }
+      if (input.projectId !== undefined) {
+        filters.push(eq(knowledgeBaseDocuments.projectId, input.projectId));
       }
 
-      return db
-        .select()
-        .from(knowledgeBaseDocuments)
-        .orderBy(desc(knowledgeBaseDocuments.uploadedAt));
+      const baseQuery = db.select().from(knowledgeBaseDocuments);
+      const filtered = filters.length > 0
+        ? baseQuery.where(filters.length === 1 ? filters[0] : and(...filters))
+        : baseQuery;
+
+      return filtered.orderBy(desc(knowledgeBaseDocuments.uploadedAt));
     }),
 
   // Upload one or more documents
   upload: publicProcedure
     .input(z.object({
+      projectId: z.number().int().positive().optional(),
       documents: z.array(z.object({
         base64: z.string(),
         originalName: z.string(),
@@ -97,6 +105,7 @@ export const knowledgeBaseRouter = router({
           extractedText,
           description: doc.description ?? null,
           tags: doc.tags ?? null,
+          projectId: input.projectId ?? null,
         });
 
         results.push({ name: doc.name, s3Key });
@@ -112,7 +121,50 @@ export const knowledgeBaseRouter = router({
       const db = await getDb();
       if (!db) throw new Error("Adatbázis nem elérhető");
       await db.delete(knowledgeBaseDocuments).where(eq(knowledgeBaseDocuments.id, input.id));
+      // Best-effort: also drop any cached chunk embeddings for this doc
+      await db
+        .delete(chunkEmbeddings)
+        .where(and(eq(chunkEmbeddings.sourceType, "knowledge_base"), eq(chunkEmbeddings.sourceId, input.id)));
       return { success: true };
+    }),
+
+  /**
+   * Generate (or regenerate) chunk embeddings for a Knowledge Base document.
+   * Mirrors regulationSources.regenerateEmbeddings — same graceful fallback
+   * if the embedding API is unavailable.
+   */
+  regenerateEmbeddings: publicProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Adatbázis nem elérhető" });
+
+      const rows = await db.select().from(knowledgeBaseDocuments).where(eq(knowledgeBaseDocuments.id, input.id)).limit(1);
+      const doc = rows[0];
+      if (!doc) throw new TRPCError({ code: "NOT_FOUND", message: "Tudástár dokumentum nem található" });
+      if (!doc.extractedText || doc.extractedText.trim().length === 0) {
+        return { chunkCount: 0, embeddingApiUnavailable: false, message: "A dokumentumnak nincs kinyert szövege." };
+      }
+
+      const embedded = await chunkAndEmbed(doc.extractedText);
+      if (embedded.length === 0) {
+        return { chunkCount: 0, embeddingApiUnavailable: true, message: "Az embedding API nem érhető el, vagy nincs használható chunk." };
+      }
+
+      await db
+        .delete(chunkEmbeddings)
+        .where(and(eq(chunkEmbeddings.sourceType, "knowledge_base"), eq(chunkEmbeddings.sourceId, input.id)));
+      await db.insert(chunkEmbeddings).values(
+        embedded.map((c) => ({
+          sourceType: "knowledge_base" as const,
+          sourceId: input.id,
+          chunkIndex: c.chunkIndex,
+          text: c.text.slice(0, 65000),
+          embedding: c.embedding,
+        }))
+      );
+
+      return { chunkCount: embedded.length, embeddingApiUnavailable: false, message: null };
     }),
 
   // Get all extracted texts for internal search (used by standardsSearch)

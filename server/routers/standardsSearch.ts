@@ -16,10 +16,13 @@ import { publicProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db";
-import { searchQueries, regulationSources } from "../../drizzle/schema";
+import { searchQueries, regulationSources, knowledgeBaseDocuments, chunkEmbeddings } from "../../drizzle/schema";
 import type { SearchSource } from "../../drizzle/schema";
-import { desc, eq, like, or } from "drizzle-orm";
+import { and, desc, eq, like, or } from "drizzle-orm";
 import { webSearchStandards, fetchUrlSources } from "../webSearch";
+import { getEmbedding, cosineSimilarity } from "../embeddings";
+import { searchMsztLive, isMsztLiveSearchEnabled, decryptPassword } from "../regulationScraper";
+import { platformCredentials } from "../../drizzle/schema";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -149,6 +152,263 @@ async function keywordSearch(query: string, mode: SearchMode): Promise<SearchSou
     console.error("[StandardsSearch] Keyword search error:", err);
     return [];
   }
+}
+
+/**
+ * Keyword-based search over Knowledge Base documents (user-uploaded internal docs).
+ * Mirrors keywordSearch but reads from knowledge_base_documents.extractedText.
+ */
+async function searchKnowledgeBase(query: string): Promise<SearchSource[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const keywords = query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 3)
+    .slice(0, 6);
+
+  if (keywords.length === 0) return [];
+
+  try {
+    const conditions = keywords.map((kw) =>
+      or(
+        like(knowledgeBaseDocuments.name, `%${kw}%`),
+        like(knowledgeBaseDocuments.extractedText, `%${kw}%`)
+      )
+    );
+
+    const docs = await db
+      .select({
+        id: knowledgeBaseDocuments.id,
+        name: knowledgeBaseDocuments.name,
+        originalName: knowledgeBaseDocuments.originalName,
+        extractedText: knowledgeBaseDocuments.extractedText,
+      })
+      .from(knowledgeBaseDocuments)
+      .where(or(...conditions))
+      .limit(20);
+
+    const results: SearchSource[] = [];
+    for (const doc of docs) {
+      if (!doc.extractedText) continue;
+
+      const contentLower = doc.extractedText.toLowerCase();
+      let bestPos = -1;
+      let bestScore = 0;
+
+      for (const kw of keywords) {
+        const pos = contentLower.indexOf(kw);
+        if (pos !== -1) {
+          const score = keywords.filter((k) => contentLower.includes(k)).length;
+          if (score > bestScore) {
+            bestScore = score;
+            bestPos = pos;
+          }
+        }
+      }
+
+      if (bestPos === -1) continue;
+
+      const start = Math.max(0, bestPos - 200);
+      const end = Math.min(doc.extractedText.length, bestPos + 600);
+      const excerpt = doc.extractedText.slice(start, end).replace(/\s+/g, " ").trim();
+
+      results.push({
+        documentName: `Tudástár: ${doc.name || doc.originalName}`,
+        excerpt,
+        relevanceScore: bestScore / keywords.length,
+        sourceType: "library",
+      });
+    }
+
+    return results
+      .sort((a, b) => (b.relevanceScore ?? 0) - (a.relevanceScore ?? 0))
+      .slice(0, 5);
+  } catch (err) {
+    console.error("[StandardsSearch] Knowledge base search error:", err);
+    return [];
+  }
+}
+
+/**
+ * Live MSZT-search bridge — only runs when ENABLE_LIVE_MSZT_SEARCH=true AND
+ * MSZT credentials are configured. Returns [] otherwise (silent fallback).
+ */
+async function liveMsztSources(query: string, topK = 5): Promise<SearchSource[]> {
+  if (!isMsztLiveSearchEnabled()) return [];
+  const db = await getDb();
+  if (!db) return [];
+
+  try {
+    const credRows = await db
+      .select()
+      .from(platformCredentials)
+      .where(eq(platformCredentials.platform, "mszt"))
+      .limit(1);
+    const cred = credRows[0];
+    if (!cred?.username || !cred?.encryptedPassword) return [];
+    const password = decryptPassword(cred.encryptedPassword);
+    const hits = await searchMsztLive(query, { username: cred.username, password }, topK);
+    return hits.map((h, i) => ({
+      documentName: `MSZT (élő): ${h.documentName}`,
+      url: h.url,
+      excerpt: h.excerpt,
+      relevanceScore: h.relevanceScore ?? Math.max(0.1, 0.6 - i * 0.05),
+      sourceType: "mszt",
+    } satisfies SearchSource));
+  } catch (err) {
+    console.warn("[StandardsSearch] live MSZT search failed:", err);
+    return [];
+  }
+}
+
+/**
+ * Semantic search across both regulation_sources and knowledge_base_documents
+ * using pre-computed chunk embeddings. Returns top-K SearchSource objects
+ * with cosine-similarity-derived relevanceScore. Returns empty array if the
+ * embedding API is unavailable or no chunks have been embedded yet — in that
+ * case the caller falls back to pure keyword search and behavior is unchanged
+ * from V11.
+ */
+async function semanticSearch(
+  query: string,
+  mode: SearchMode,
+  topK = 8
+): Promise<SearchSource[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const queryEmbedding = await getEmbedding(query);
+  if (!queryEmbedding) return [];
+
+  // Decide which source types to consider based on search mode.
+  const includeRegulations = mode !== "web";
+  const includeKnowledgeBase = mode === "internal" || mode === "combined" || mode === "combined_with_web";
+
+  type Row = {
+    id: number;
+    sourceType: "regulation" | "knowledge_base";
+    sourceId: number;
+    chunkIndex: number;
+    text: string;
+    embedding: number[];
+  };
+
+  let rows: Row[] = [];
+  try {
+    rows = await db
+      .select({
+        id: chunkEmbeddings.id,
+        sourceType: chunkEmbeddings.sourceType,
+        sourceId: chunkEmbeddings.sourceId,
+        chunkIndex: chunkEmbeddings.chunkIndex,
+        text: chunkEmbeddings.text,
+        embedding: chunkEmbeddings.embedding,
+      })
+      .from(chunkEmbeddings) as Row[];
+  } catch (err) {
+    // Table may not exist yet on this environment (db:push not run for V12).
+    console.error("[StandardsSearch] semantic search skipped (chunk_embeddings table missing?):", err);
+    return [];
+  }
+
+  if (rows.length === 0) return [];
+
+  // Score each chunk and group by (sourceType, sourceId).
+  type Scored = { row: Row; score: number };
+  const scored: Scored[] = [];
+  for (const row of rows) {
+    if (row.sourceType === "regulation" && !includeRegulations) continue;
+    if (row.sourceType === "knowledge_base" && !includeKnowledgeBase) continue;
+    if (!Array.isArray(row.embedding) || row.embedding.length === 0) continue;
+    const score = cosineSimilarity(queryEmbedding, row.embedding);
+    if (score > 0.1) scored.push({ row, score });
+  }
+
+  if (scored.length === 0) return [];
+
+  // For mszt mode, further restrict to MSZT-sourced regulations
+  let filteredScored = scored;
+  if (mode === "mszt") {
+    const regIds = Array.from(new Set(scored.filter((s) => s.row.sourceType === "regulation").map((s) => s.row.sourceId)));
+    if (regIds.length === 0) return [];
+    const msztRegs = await db
+      .select({ id: regulationSources.id })
+      .from(regulationSources)
+      .where(eq(regulationSources.sourceType, "mszt"));
+    const msztIds = new Set(msztRegs.map((r) => r.id));
+    filteredScored = scored.filter((s) => s.row.sourceType === "regulation" && msztIds.has(s.row.sourceId));
+  }
+
+  filteredScored.sort((a, b) => b.score - a.score);
+  const top = filteredScored.slice(0, topK);
+
+  // Bulk-fetch the source names so the UI can display human-readable labels.
+  const regIds = Array.from(new Set(top.filter((s) => s.row.sourceType === "regulation").map((s) => s.row.sourceId)));
+  const kbIds = Array.from(new Set(top.filter((s) => s.row.sourceType === "knowledge_base").map((s) => s.row.sourceId)));
+
+  const regNameById = new Map<number, { name: string; url: string | null }>();
+  if (regIds.length > 0) {
+    const regs = await db
+      .select({ id: regulationSources.id, name: regulationSources.name, sourceUrl: regulationSources.sourceUrl })
+      .from(regulationSources);
+    for (const r of regs) {
+      if (regIds.includes(r.id)) regNameById.set(r.id, { name: r.name, url: r.sourceUrl });
+    }
+  }
+
+  const kbNameById = new Map<number, string>();
+  if (kbIds.length > 0) {
+    const docs = await db
+      .select({ id: knowledgeBaseDocuments.id, name: knowledgeBaseDocuments.name, originalName: knowledgeBaseDocuments.originalName })
+      .from(knowledgeBaseDocuments);
+    for (const d of docs) {
+      if (kbIds.includes(d.id)) kbNameById.set(d.id, d.name || d.originalName);
+    }
+  }
+
+  return top.map(({ row, score }) => {
+    if (row.sourceType === "regulation") {
+      const meta = regNameById.get(row.sourceId);
+      return {
+        documentName: meta?.name ?? `Forrás #${row.sourceId}`,
+        url: meta?.url ?? undefined,
+        excerpt: row.text,
+        relevanceScore: score,
+        sourceType: "library",
+      } satisfies SearchSource;
+    }
+    return {
+      documentName: `Tudástár: ${kbNameById.get(row.sourceId) ?? `Doc #${row.sourceId}`}`,
+      excerpt: row.text,
+      relevanceScore: score,
+      sourceType: "library",
+    } satisfies SearchSource;
+  });
+}
+
+/**
+ * Merge keyword and semantic search results, deduplicating by documentName +
+ * excerpt prefix and keeping the higher-scoring entry. Limit to maxItems.
+ */
+function mergeSearchSources(
+  keyword: SearchSource[],
+  semantic: SearchSource[],
+  maxItems: number
+): SearchSource[] {
+  const all = [...semantic, ...keyword]; // semantic first so its score wins on dedupe ties
+  const seen = new Map<string, SearchSource>();
+  for (const s of all) {
+    const key = `${s.documentName}::${s.excerpt.slice(0, 80)}`;
+    const existing = seen.get(key);
+    if (!existing || (s.relevanceScore ?? 0) > (existing.relevanceScore ?? 0)) {
+      seen.set(key, s);
+    }
+  }
+  return Array.from(seen.values())
+    .sort((a, b) => (b.relevanceScore ?? 0) - (a.relevanceScore ?? 0))
+    .slice(0, maxItems);
 }
 
 /**
@@ -337,12 +597,13 @@ export const standardsSearchRouter = router({
         searchMode: z.enum(["mszt", "internal", "combined", "web", "combined_with_web"]).default("combined"),
         answerLength: z.enum(["short", "standard", "detailed"]).default("standard"),
         operationMode: z.enum(["fast", "accurate"]).default("accurate"),
+        projectId: z.number().int().positive().optional(),
         projectName: z.string().optional(),
         urls: z.array(z.string().url()).optional(),
       })
     )
     .mutation(async ({ input }) => {
-      const { question, searchMode, answerLength, operationMode, projectName, urls } = input;
+      const { question, searchMode, answerLength, operationMode, projectId, projectName, urls } = input;
 
       // Step 1: Rewrite query
       const rewrittenQuestion = operationMode === "accurate"
@@ -360,18 +621,34 @@ export const standardsSearchRouter = router({
           sources = await webSearchStandards(rewrittenQuestion, true);
         }
       } else if (searchMode === "combined_with_web") {
-        // Library + internet combined
+        // Library + Knowledge Base + semantic + (optional) live MSZT + internet combined
         const webSources = urls && urls.length > 0
           ? await fetchUrlSources(urls, rewrittenQuestion)
           : await webSearchStandards(rewrittenQuestion, true);
         const libSources = await keywordSearch(rewrittenQuestion, "combined");
-        // Merge: library sources first, then web sources (deduplicate by URL)
-        const seenUrls = new Set(libSources.map((s: SearchSource) => s.url).filter(Boolean));
+        const kbSources = await searchKnowledgeBase(rewrittenQuestion);
+        const semanticSources = await semanticSearch(rewrittenQuestion, "combined_with_web");
+        const liveMszt = await liveMsztSources(rewrittenQuestion);
+        const allLibrary = mergeSearchSources([...libSources, ...kbSources, ...liveMszt], semanticSources, 8);
+        // Merge: library + KB + semantic + live first, then web sources (deduplicate by URL)
+        const seenUrls = new Set(allLibrary.map((s: SearchSource) => s.url).filter(Boolean));
         const dedupedWeb = webSources.filter((s: SearchSource) => !s.url || !seenUrls.has(s.url));
-        sources = [...libSources, ...dedupedWeb].slice(0, 10);
+        sources = [...allLibrary, ...dedupedWeb].slice(0, 10);
       } else {
         // mszt / internal / combined – library only
-        sources = await keywordSearch(rewrittenQuestion, searchMode);
+        const libSources = await keywordSearch(rewrittenQuestion, searchMode);
+        // Knowledge Base is "internal" content — include for internal/combined modes,
+        // exclude for mszt (deliberate scope filter).
+        const kbSources = searchMode === "mszt"
+          ? []
+          : await searchKnowledgeBase(rewrittenQuestion);
+        const semanticSources = await semanticSearch(rewrittenQuestion, searchMode);
+        // Live MSZT search piggybacks onto mszt and combined modes when the
+        // feature flag is enabled and credentials are configured.
+        const liveMszt = (searchMode === "mszt" || searchMode === "combined")
+          ? await liveMsztSources(rewrittenQuestion)
+          : [];
+        sources = mergeSearchSources([...libSources, ...kbSources, ...liveMszt], semanticSources, 10);
       }
 
       // Step 3: Generate structured answer
@@ -400,6 +677,7 @@ export const standardsSearchRouter = router({
             hasSufficientSources: result.hasSufficientSources,
             selfCheckPassed: result.selfCheckPassed,
             selfCheckNotes: result.selfCheckNotes,
+            projectId: projectId ?? null,
             projectName,
           });
           queryId = (inserted as any).insertId;
@@ -460,6 +738,7 @@ export const standardsSearchRouter = router({
         limit: z.number().min(1).max(100).default(50),
         offset: z.number().min(0).default(0),
         search: z.string().optional(),
+        projectId: z.number().int().positive().optional(),
       })
     )
     .query(async ({ input }) => {
@@ -467,18 +746,25 @@ export const standardsSearchRouter = router({
       if (!db) return { items: [], total: 0 };
 
       try {
-        let query = db.select().from(searchQueries);
-
+        const conditions = [];
         if (input.search) {
-          query = query.where(
+          conditions.push(
             or(
               like(searchQueries.question, `%${input.search}%`),
               like(searchQueries.answer, `%${input.search}%`)
             )
-          ) as typeof query;
+          );
+        }
+        if (input.projectId !== undefined) {
+          conditions.push(eq(searchQueries.projectId, input.projectId));
         }
 
-        const items = await query
+        const baseQuery = db.select().from(searchQueries);
+        const filtered = conditions.length > 0
+          ? baseQuery.where(conditions.length === 1 ? conditions[0] : and(...conditions))
+          : baseQuery;
+
+        const items = await filtered
           .orderBy(desc(searchQueries.createdAt))
           .limit(input.limit)
           .offset(input.offset);

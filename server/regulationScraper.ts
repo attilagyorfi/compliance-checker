@@ -5,6 +5,7 @@
  */
 
 import * as cheerio from "cheerio";
+import * as crypto from "crypto";
 
 // ── Free source scrapers ───────────────────────────────────────────────────────
 
@@ -136,6 +137,56 @@ export interface PlatformLoginResult {
   error?: string;
 }
 
+// ── Cookie header helpers ──────────────────────────────────────────────────────
+// `Set-Cookie` response headers carry attributes (Path, HttpOnly, Expires, etc.)
+// that must NOT appear in the corresponding `Cookie` request header — the request
+// form only accepts `name=value` pairs joined by "; ". These helpers convert
+// response cookies into request-header form and merge multiple cookie strings
+// with later values overriding earlier ones by name.
+
+/**
+ * Convert one or more `Set-Cookie` response headers into a `Cookie` request
+ * header value, stripping attributes and keeping only `name=value` pairs.
+ */
+export function cookieHeaderFromResponse(headers: Headers): string {
+  const getSetCookie = (headers as { getSetCookie?: () => string[] }).getSetCookie?.bind(headers);
+  let rawCookies: string[] = [];
+  if (typeof getSetCookie === "function") {
+    rawCookies = getSetCookie();
+  } else {
+    const single = headers.get("set-cookie");
+    if (single) {
+      // Split on ", " before a cookie name=value (avoids splitting Expires's comma).
+      rawCookies = single.split(/,\s*(?=[A-Za-z0-9!#$%&'*+\-.^_`|~]+=)/);
+    }
+  }
+  return rawCookies
+    .map((c) => {
+      const semi = c.indexOf(";");
+      return (semi === -1 ? c : c.slice(0, semi)).trim();
+    })
+    .filter((c) => c.includes("="))
+    .join("; ");
+}
+
+/**
+ * Merge `Cookie` request header strings; later values override earlier ones by name.
+ */
+export function mergeCookies(...cookieStrings: string[]): string {
+  const map = new Map<string, string>();
+  for (const cookieStr of cookieStrings) {
+    if (!cookieStr) continue;
+    for (const part of cookieStr.split(/;\s*/)) {
+      if (!part) continue;
+      const eq = part.indexOf("=");
+      if (eq === -1) continue;
+      const name = part.slice(0, eq).trim();
+      if (name) map.set(name, part.slice(eq + 1).trim());
+    }
+  }
+  return Array.from(map.entries()).map(([k, v]) => `${k}=${v}`).join("; ");
+}
+
 /**
  * Attempt to log in to MSZT Online Szabványtár.
  * Returns session cookies on success.
@@ -195,14 +246,14 @@ export async function loginToMszt(username: string, password: string): Promise<P
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
 
-    const sessionCookies = loginRes.headers.get("set-cookie") ?? "";
+    const newSessionCookies = cookieHeaderFromResponse(loginRes.headers);
     // Symfony redirects to the target path (302) on success
     // On failure it redirects back to /login (also 302 but Location contains /login)
     const location = loginRes.headers.get("location") ?? "";
     const isSuccess = loginRes.status === 302 && !location.includes("/login");
 
     if (isSuccess) {
-      return { success: true, sessionCookies: phpSessId + "; " + sessionCookies };
+      return { success: true, sessionCookies: mergeCookies(phpSessId, newSessionCookies) };
     } else {
       // Follow the redirect to check the actual error message on the login page
       // The MSZT server shows different messages for:
@@ -255,9 +306,9 @@ export async function loginToJogtar(username: string, password: string): Promise
 
     const loginHtml = loginPageRes.ok ? await loginPageRes.text() : "";
     const $ = cheerio.load(loginHtml);
-    const csrfToken = $('input[name="_token"], meta[name="csrf-token"]').attr("content") ?? 
+    const csrfToken = $('input[name="_token"], meta[name="csrf-token"]').attr("content") ??
                       $('input[name="_token"]').val() as string | undefined;
-    const loginCookies = loginPageRes.headers.get("set-cookie") ?? "";
+    const initialCookies = cookieHeaderFromResponse(loginPageRes.headers);
 
     const formData = new URLSearchParams();
     formData.append("email", username);
@@ -269,18 +320,18 @@ export async function loginToJogtar(username: string, password: string): Promise
       headers: {
         "User-Agent": "Mozilla/5.0 (compatible; ComplianceChecker/1.0)",
         "Content-Type": "application/x-www-form-urlencoded",
-        "Cookie": loginCookies,
+        "Cookie": initialCookies,
         "Referer": "https://uj.jogtar.hu/login",
       },
       body: formData.toString(),
       redirect: "manual",
     });
 
-    const sessionCookies = loginRes.headers.get("set-cookie") ?? "";
-    const isSuccess = loginRes.status === 302 || sessionCookies.includes("session");
+    const newSessionCookies = cookieHeaderFromResponse(loginRes.headers);
+    const isSuccess = loginRes.status === 302 || newSessionCookies.includes("session");
 
     if (isSuccess) {
-      return { success: true, sessionCookies: loginCookies + "; " + sessionCookies };
+      return { success: true, sessionCookies: mergeCookies(initialCookies, newSessionCookies) };
     } else {
       return { success: false, error: "Bejelentkezés sikertelen – ellenőrizze a felhasználónevet és jelszót." };
     }
@@ -304,7 +355,7 @@ export async function loginToEpitesijog(username: string, password: string): Pro
     const loginHtml = loginPageRes.ok ? await loginPageRes.text() : "";
     const $ = cheerio.load(loginHtml);
     const csrfToken = $('input[name="_token"]').val() as string | undefined;
-    const loginCookies = loginPageRes.headers.get("set-cookie") ?? "";
+    const initialCookies = cookieHeaderFromResponse(loginPageRes.headers);
 
     const formData = new URLSearchParams();
     formData.append("email", username);
@@ -316,23 +367,205 @@ export async function loginToEpitesijog(username: string, password: string): Pro
       headers: {
         "User-Agent": "Mozilla/5.0 (compatible; ComplianceChecker/1.0)",
         "Content-Type": "application/x-www-form-urlencoded",
-        "Cookie": loginCookies,
+        "Cookie": initialCookies,
         "Referer": "https://epitesijog.hu/belepes",
       },
       body: formData.toString(),
       redirect: "manual",
     });
 
-    const sessionCookies = loginRes.headers.get("set-cookie") ?? "";
-    const isSuccess = loginRes.status === 302 || sessionCookies.includes("session");
+    const newSessionCookies = cookieHeaderFromResponse(loginRes.headers);
+    const isSuccess = loginRes.status === 302 || newSessionCookies.includes("session");
 
     if (isSuccess) {
-      return { success: true, sessionCookies: loginCookies + "; " + sessionCookies };
+      return { success: true, sessionCookies: mergeCookies(initialCookies, newSessionCookies) };
     } else {
       return { success: false, error: "Bejelentkezés sikertelen – ellenőrizze a felhasználónevet és jelszót." };
     }
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// ── Session cache (MSZT) ──────────────────────────────────────────────────────
+// MSZT only allows one active session per account, so re-logging in for every
+// `regulationSources.fetchContent` call wastes time and risks the "already
+// logged in" race. A small in-memory TTL cache reuses a successful session
+// for `MSZT_SESSION_TTL_MS` after login. The password-hash key invalidates
+// the cache automatically if the user changes their password.
+
+interface CachedSession {
+  sessionCookies: string;
+  expiresAt: number;
+  passwordHash: string;
+}
+
+export const MSZT_SESSION_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const msztSessionCache = new Map<string, CachedSession>();
+
+function hashPassword(password: string): string {
+  return crypto.createHash("sha256").update(password).digest("hex");
+}
+
+/**
+ * Generic session-cache wrapper. Returns a cached session if not expired and
+ * the password hash matches; otherwise calls `loginFn` and caches the result.
+ * Exported so unit tests can verify the caching logic without hitting the
+ * network — pass in a Map and a fake login function.
+ */
+export async function withSessionCache(
+  cache: Map<string, CachedSession>,
+  ttlMs: number,
+  username: string,
+  password: string,
+  loginFn: (u: string, p: string) => Promise<PlatformLoginResult>
+): Promise<PlatformLoginResult> {
+  const now = Date.now();
+  const passwordHash = hashPassword(password);
+  const cached = cache.get(username);
+  if (cached && cached.expiresAt > now && cached.passwordHash === passwordHash) {
+    return { success: true, sessionCookies: cached.sessionCookies };
+  }
+  const result = await loginFn(username, password);
+  if (result.success && result.sessionCookies) {
+    cache.set(username, {
+      sessionCookies: result.sessionCookies,
+      expiresAt: now + ttlMs,
+      passwordHash,
+    });
+  } else {
+    cache.delete(username);
+  }
+  return result;
+}
+
+/**
+ * Cached MSZT login. Use this from request flows (e.g. fetchRegulationText);
+ * `platformCredentials.testConnection` should bypass the cache and call
+ * `loginToMszt` directly to verify credentials freshly.
+ */
+export function getMsztSession(username: string, password: string): Promise<PlatformLoginResult> {
+  return withSessionCache(msztSessionCache, MSZT_SESSION_TTL_MS, username, password, loginToMszt);
+}
+
+/**
+ * Drop the cached MSZT session for `username`, or all entries if omitted.
+ * Call after detecting a stale-cookie failure (e.g. 401 on content fetch).
+ */
+export function invalidateMsztSession(username?: string): void {
+  if (username) msztSessionCache.delete(username);
+  else msztSessionCache.clear();
+}
+
+// ── MSZT live search (V11+, experimental) ─────────────────────────────────────
+// Performs a live keyword search against the MSZT Szabványtár, parses the
+// results page, and returns a small list of standard hits. This is
+// EXPERIMENTAL: MSZT exposes no documented search API, so the scraping is
+// best-effort and feature-flagged off by default.
+//
+// Enable in production by setting `ENABLE_LIVE_MSZT_SEARCH=true`. Disabled
+// callers receive an empty array and the search engine falls back to the
+// existing DB-cached MSZT-imported sources.
+
+export interface MsztSearchHit {
+  documentName: string;
+  url?: string;
+  excerpt: string;
+  relevanceScore?: number;
+}
+
+export function isMsztLiveSearchEnabled(): boolean {
+  return (process.env.ENABLE_LIVE_MSZT_SEARCH ?? "").toLowerCase() === "true";
+}
+
+/**
+ * Live MSZT search using stored credentials. Returns [] on any failure so the
+ * caller can fall back gracefully. Uses the session cache to avoid re-login.
+ */
+export async function searchMsztLive(
+  query: string,
+  credentials: { username: string; password: string },
+  topK = 5
+): Promise<MsztSearchHit[]> {
+  if (!isMsztLiveSearchEnabled()) return [];
+  if (!query.trim()) return [];
+
+  const BASE = "http://szabvanykonyvtar.mszt.hu";
+  const TIMEOUT_MS = 15_000;
+
+  try {
+    const session = await getMsztSession(credentials.username, credentials.password);
+    if (!session.success || !session.sessionCookies) return [];
+
+    // Try the most likely search URL pattern; the login flow already sets
+    // _target_path=search, suggesting `/search` is the canonical search page.
+    const searchUrl = `${BASE}/search?q=${encodeURIComponent(query)}`;
+    const res = await fetch(searchUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "hu-HU,hu;q=0.9,en;q=0.8",
+        "Cookie": session.sessionCookies,
+        "Referer": `${BASE}/search`,
+      },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+
+    if (!res.ok) {
+      console.warn(`[MSZT live search] HTTP ${res.status}`);
+      return [];
+    }
+
+    const html = await res.text();
+
+    // If we got redirected back to the login page (cookie expired despite cache),
+    // invalidate and bail out.
+    if (html.includes("_username") && html.includes("_password") && html.includes("_csrf_token")) {
+      invalidateMsztSession(credentials.username);
+      return [];
+    }
+
+    const $ = cheerio.load(html);
+
+    // Try several plausible result selectors in order of specificity.
+    // MSZT's actual markup is unknown to us at implementation time — the
+    // surrounding caller treats no-hits and parser-confusion identically.
+    const selectorCandidates = [
+      ".search-result",
+      ".standard-item",
+      ".result-item",
+      ".szabvany-item",
+      ".search-results .item",
+      "article",
+      "tr.result",
+    ];
+
+    let hits: MsztSearchHit[] = [];
+    for (const sel of selectorCandidates) {
+      const elements = $(sel);
+      if (elements.length === 0) continue;
+      hits = elements.toArray().slice(0, topK).map((el) => {
+        const $el = $(el);
+        const linkEl = $el.find("a").first();
+        const link = linkEl.attr("href");
+        const url = link
+          ? (link.startsWith("http") ? link : `${BASE}${link.startsWith("/") ? "" : "/"}${link}`)
+          : undefined;
+        const name = (linkEl.text() || $el.find("h1,h2,h3,h4,.title").first().text() || $el.text().slice(0, 200)).trim();
+        const excerpt = $el.text().replace(/\s+/g, " ").trim().slice(0, 600);
+        return {
+          documentName: name || "MSZT találat",
+          url,
+          excerpt,
+        } as MsztSearchHit;
+      }).filter((h) => h.documentName.length > 0 && h.excerpt.length > 20);
+      if (hits.length > 0) break;
+    }
+
+    return hits;
+  } catch (err) {
+    console.warn("[MSZT live search] error:", err instanceof Error ? err.message : err);
+    return [];
   }
 }
 
@@ -383,9 +616,9 @@ export async function fetchRegulationText(
           warning: `A ${sourceType.toUpperCase()} platformhoz bejelentkezési adatok szükségesek. Kérjük, adja meg a hitelesítő adatokat a Beállítások / Platform-kapcsolatok menüpontban.`,
         };
       }
-      // Attempt login and fetch
+      // Attempt login and fetch (MSZT uses a TTL cache to avoid redundant logins)
       let loginResult: PlatformLoginResult;
-      if (sourceType === "mszt") loginResult = await loginToMszt(credentials.username, credentials.password);
+      if (sourceType === "mszt") loginResult = await getMsztSession(credentials.username, credentials.password);
       else if (sourceType === "jogtar") loginResult = await loginToJogtar(credentials.username, credentials.password);
       else loginResult = await loginToEpitesijog(credentials.username, credentials.password);
 
@@ -434,22 +667,41 @@ export async function fetchRegulationText(
   }
 }
 
-// ── Simple encryption helpers ──────────────────────────────────────────────────
-// Note: For production, use proper KMS. This is a simple XOR+base64 for the pilot.
+// ── Password encryption (AES-256-CBC) ──────────────────────────────────────────
+// Key is derived from JWT_SECRET via scrypt; each encryption uses a random IV.
+// Output format: "<base64 IV>:<base64 ciphertext>".
+// For backward compatibility, decryptPassword falls back to the legacy XOR
+// scheme when the input has no IV separator — so existing rows in the DB keep
+// working until they are re-saved.
 
-const ENCRYPTION_KEY = process.env.JWT_SECRET ?? "compliance-checker-key-2024";
+const SCRYPT_SALT = "compliance-checker-aes-salt-v1";
+
+function getEncryptionKey(): Buffer {
+  const secret = process.env.JWT_SECRET ?? "compliance-checker-key-2024";
+  return crypto.scryptSync(secret, SCRYPT_SALT, 32);
+}
 
 export function encryptPassword(plaintext: string): string {
-  const key = Buffer.from(ENCRYPTION_KEY);
-  const data = Buffer.from(plaintext, "utf8");
-  const encrypted = Buffer.alloc(data.length);
-  for (let i = 0; i < data.length; i++) {
-    encrypted[i] = data[i]! ^ key[i % key.length]!;
-  }
-  return encrypted.toString("base64");
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv("aes-256-cbc", getEncryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  return iv.toString("base64") + ":" + encrypted.toString("base64");
 }
 
 export function decryptPassword(encrypted: string): string {
+  if (!encrypted.includes(":")) {
+    return decryptLegacyXor(encrypted);
+  }
+  const sep = encrypted.indexOf(":");
+  const iv = Buffer.from(encrypted.slice(0, sep), "base64");
+  const data = Buffer.from(encrypted.slice(sep + 1), "base64");
+  const decipher = crypto.createDecipheriv("aes-256-cbc", getEncryptionKey(), iv);
+  const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
+  return decrypted.toString("utf8");
+}
+
+function decryptLegacyXor(encrypted: string): string {
+  const ENCRYPTION_KEY = process.env.JWT_SECRET ?? "compliance-checker-key-2024";
   const key = Buffer.from(ENCRYPTION_KEY);
   const data = Buffer.from(encrypted, "base64");
   const decrypted = Buffer.alloc(data.length);
