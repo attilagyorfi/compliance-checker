@@ -423,7 +423,12 @@ export default function KnowledgeBasePage() {
                 <DocumentCard
                   key={doc.id}
                   doc={doc}
-                  onDelete={(id) => deleteMutation.mutate({ id })}
+                  onDelete={(id) => {
+                    const name = doc.name || doc.originalName;
+                    if (confirm(`Biztosan törlöd a(z) "${name}" dokumentumot a Tudástárból? A művelet visszavonhatatlan.`)) {
+                      deleteMutation.mutate({ id });
+                    }
+                  }}
                   embeddingCount={countMap.get(doc.id) ?? 0}
                   onRegenerateEmbeddings={handleRegenerate}
                   isRegenerating={embedRegeneratingId === doc.id}

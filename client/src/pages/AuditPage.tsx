@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import Header from "@/components/Header";
 import { trpc } from "@/lib/trpc";
+import { formatDateTime } from "@/lib/format";
 
 const EVENT_TYPE_OPTIONS = [
   { value: "all", label: "Minden esemény" },
@@ -61,14 +62,6 @@ const SINCE_OPTIONS = [
 ];
 
 const PAGE_SIZE = 50;
-
-function formatDateTime(d: Date | string): string {
-  const date = typeof d === "string" ? new Date(d) : d;
-  return new Intl.DateTimeFormat("hu-HU", {
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-  }).format(date);
-}
 
 function eventTypeLabel(eventType: string): string {
   return EVENT_TYPE_OPTIONS.find((o) => o.value === eventType)?.label ?? eventType;
@@ -156,20 +149,24 @@ function EventRow({ event }: { event: AuditRow }) {
   );
 }
 
+type EventTypeValue = typeof EVENT_TYPE_OPTIONS[number]["value"];
+type EventTypeBackend = Exclude<EventTypeValue, "all">;
+
 export default function AuditPage() {
-  const [eventType, setEventType] = useState<string>("all");
+  const [eventType, setEventType] = useState<EventTypeValue>("all");
   const [resourceType, setResourceType] = useState<string>("all");
   const [sinceDays, setSinceDays] = useState<string>("30");
   const [offset, setOffset] = useState(0);
 
-  const eventTypeFilter = eventType === "all" ? undefined : eventType;
+  const eventTypeFilter: EventTypeBackend | undefined =
+    eventType === "all" ? undefined : eventType;
   const resourceTypeFilter = resourceType === "all" ? undefined : resourceType;
   const sinceDaysFilter = sinceDays === "all" ? undefined : Number(sinceDays);
 
   const listQuery = trpc.audit.list.useQuery({
     limit: PAGE_SIZE,
     offset,
-    eventType: eventTypeFilter as never,
+    eventType: eventTypeFilter,
     resourceType: resourceTypeFilter,
     sinceDays: sinceDaysFilter,
   });
@@ -223,7 +220,7 @@ export default function AuditPage() {
                 return (
                   <button
                     key={s.eventType}
-                    onClick={() => { setEventType(s.eventType); onFilterChange(); }}
+                    onClick={() => { setEventType(s.eventType as EventTypeValue); onFilterChange(); }}
                     className="text-xs px-2 py-1 rounded-full font-medium border-0 hover:opacity-80 transition-opacity"
                     style={{ backgroundColor: cfg.bg, color: cfg.color }}
                   >
@@ -241,7 +238,7 @@ export default function AuditPage() {
             <Filter size={12} />
             Szűrés:
           </div>
-          <Select value={eventType} onValueChange={(v) => { setEventType(v); onFilterChange(); }}>
+          <Select value={eventType} onValueChange={(v) => { setEventType(v as EventTypeValue); onFilterChange(); }}>
             <SelectTrigger className="h-9 text-xs w-48"><SelectValue /></SelectTrigger>
             <SelectContent>
               {EVENT_TYPE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}

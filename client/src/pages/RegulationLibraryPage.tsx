@@ -27,6 +27,7 @@ import {
 import { toast } from "sonner";
 import Header from "@/components/Header";
 import { trpc } from "@/lib/trpc";
+import { formatDate, daysAgo } from "@/lib/format";
 
 const DISCIPLINE_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   altalanos:    { label: "Általános",     color: "#6b7280", bg: "#f3f4f6" },
@@ -67,18 +68,6 @@ function isStale(s: { lastSyncAt: Date | string | null; contentFetchedAt: Date |
   if (!last) return true;
   const ms = typeof last === "string" ? new Date(last).getTime() : last.getTime();
   return Date.now() - ms > STALE_THRESHOLD_MS;
-}
-
-function daysAgo(d: Date | string | null): number | null {
-  if (!d) return null;
-  const ms = typeof d === "string" ? new Date(d).getTime() : d.getTime();
-  return Math.floor((Date.now() - ms) / (24 * 60 * 60 * 1000));
-}
-
-function formatDate(d: Date | string | null): string {
-  if (!d) return "—";
-  const date = typeof d === "string" ? new Date(d) : d;
-  return new Intl.DateTimeFormat("hu-HU", { year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 }
 
 // ── Create dialog ──────────────────────────────────────────────────────────────

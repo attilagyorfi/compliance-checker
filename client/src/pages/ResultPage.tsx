@@ -128,12 +128,16 @@ function ResultCard({ result, analysisId, onUpdate }: {
 
   const saveReview = (e: React.MouseEvent) => {
     e.stopPropagation();
+    // Always send the actual values (incl. empty string) — the previous
+    // `|| undefined` made it impossible to clear an existing reviewNote /
+    // assignedTo, because the backend's `?? r.reviewNote` preserves the
+    // old value on undefined input.
     updateMut.mutate({
       analysisId,
       findingId: result.id,
       workflowStatus,
-      reviewNote: reviewNote || undefined,
-      assignedTo: assignedTo || undefined,
+      reviewNote,
+      assignedTo,
     });
   };
 

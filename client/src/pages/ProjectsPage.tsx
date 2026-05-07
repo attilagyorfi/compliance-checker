@@ -23,6 +23,7 @@ import {
 import { toast } from "sonner";
 import Header from "@/components/Header";
 import { trpc } from "@/lib/trpc";
+import { formatDate } from "@/lib/format";
 
 const DISCIPLINE_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   altalanos:    { label: "Általános",     color: "#6b7280", bg: "#f3f4f6" },
@@ -52,10 +53,6 @@ const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }
   archived: { label: "Archivált", color: "#6b7280", bg: "#f3f4f6" },
   deleted:  { label: "Törölt",    color: "#dc2626", bg: "#fef2f2" },
 };
-
-function formatDate(d: Date): string {
-  return new Intl.DateTimeFormat("hu-HU", { year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
-}
 
 // ── Create project dialog ─────────────────────────────────────────────────────
 

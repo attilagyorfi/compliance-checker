@@ -11,11 +11,12 @@ import {
   FolderOpen, ArrowLeft, Loader2, AlertTriangle,
   ClipboardList, Database, Search, Users, Settings,
   FileText, Calendar, Inbox, UserPlus, Trash2, Crown, ShieldCheck, Eye,
-  Download, ListChecks,
+  Download, ListChecks, Edit3, Save, Archive,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -28,6 +29,7 @@ import {
 import { toast } from "sonner";
 import Header from "@/components/Header";
 import { trpc } from "@/lib/trpc";
+import { formatDate, formatBytes } from "@/lib/format";
 
 type MemberRole = "owner" | "member" | "reviewer";
 
@@ -36,17 +38,6 @@ const ROLE_CONFIG: Record<MemberRole, { label: string; icon: typeof Crown; color
   member:   { label: "Tag",         icon: ShieldCheck, color: "#1d4ed8", bg: "#eff6ff" },
   reviewer: { label: "Lektor",      icon: Eye,         color: "#6b7280", bg: "#f3f4f6" },
 };
-
-function formatDate(d: Date | string): string {
-  const date = typeof d === "string" ? new Date(d) : d;
-  return new Intl.DateTimeFormat("hu-HU", { year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 const ANALYSIS_STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
   pending:    { label: "Várakozik",   color: "#6b7280", bg: "#f3f4f6" },
@@ -292,7 +283,63 @@ function AddMemberDialog({ projectId }: { projectId: number }) {
   );
 }
 
-function SettingsTab({ projectId, projectName }: { projectId: number; projectName: string }) {
+function SettingsTab({
+  projectId, projectName, projectDescription, projectStatus, projectWorkflowStatus, onChanged,
+}: {
+  projectId: number;
+  projectName: string;
+  projectDescription: string | null;
+  projectStatus: "active" | "archived" | "deleted";
+  projectWorkflowStatus: string;
+  onChanged: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(projectName);
+  const [description, setDescription] = useState(projectDescription ?? "");
+
+  // Reset local state when entering edit mode (so closing without save discards)
+  const startEdit = () => {
+    setName(projectName);
+    setDescription(projectDescription ?? "");
+    setEditing(true);
+  };
+
+  const updateMut = trpc.projects.update.useMutation({
+    onSuccess: () => {
+      toast.success("Projekt frissítve");
+      setEditing(false);
+      onChanged();
+    },
+    onError: (err) => toast.error(`Frissítési hiba: ${err.message}`),
+  });
+
+  const archiveMut = trpc.projects.update.useMutation({
+    onSuccess: () => {
+      toast.success(projectStatus === "archived" ? "Projekt visszaaktiválva" : "Projekt archiválva");
+      onChanged();
+    },
+    onError: (err) => toast.error(`Hiba: ${err.message}`),
+  });
+
+  const handleSave = () => {
+    if (!name.trim()) {
+      toast.error("A projekt neve nem lehet üres.");
+      return;
+    }
+    updateMut.mutate({
+      id: projectId,
+      name: name.trim(),
+      description: description.trim() ? description.trim() : null,
+    });
+  };
+
+  const handleArchiveToggle = () => {
+    const targetStatus = projectStatus === "archived" ? "active" : "archived";
+    const verb = targetStatus === "archived" ? "archivál" : "visszaaktivál";
+    if (!confirm(`Biztosan ${verb}ja a "${projectName}" projektet?`)) return;
+    archiveMut.mutate({ id: projectId, status: targetStatus });
+  };
+
   const exportMut = trpc.projects.export.useMutation({
     onSuccess: (data) => {
       try {
@@ -323,6 +370,87 @@ function SettingsTab({ projectId, projectName }: { projectId: number; projectNam
 
   return (
     <div className="space-y-4">
+      {/* Rename / edit description */}
+      <div className="rounded-xl border bg-white p-5" style={{ borderColor: "#e5e7eb" }}>
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center">
+            <Edit3 size={20} className="text-gray-500" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-semibold text-gray-900 text-sm">Projekt-adatok</h3>
+            {!editing ? (
+              <>
+                <p className="text-xs text-gray-500 mt-1">
+                  Név: <span className="text-gray-700 font-medium">{projectName}</span>
+                </p>
+                {projectDescription && (
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Leírás: <span className="text-gray-700">{projectDescription}</span>
+                  </p>
+                )}
+                <Button size="sm" variant="outline" className="gap-2 mt-3" onClick={startEdit}>
+                  <Edit3 size={13} /> Szerkesztés
+                </Button>
+              </>
+            ) : (
+              <div className="space-y-3 mt-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="proj-edit-name" className="text-xs">Név *</Label>
+                  <Input id="proj-edit-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={255} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="proj-edit-desc" className="text-xs">Leírás</Label>
+                  <Textarea
+                    id="proj-edit-desc"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={3}
+                    maxLength={10_000}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" className="gap-2" style={{ backgroundColor: "#7CA9D3" }} onClick={handleSave} disabled={updateMut.isPending}>
+                    {updateMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                    Mentés
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setEditing(false)}>Mégse</Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Archive / unarchive */}
+      <div className="rounded-xl border bg-white p-5" style={{ borderColor: "#e5e7eb" }}>
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center">
+            <Archive size={20} className="text-gray-500" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-semibold text-gray-900 text-sm">
+              {projectStatus === "archived" ? "Projekt visszaaktiválása" : "Projekt archiválása"}
+            </h3>
+            <p className="text-xs text-gray-500 mt-1 max-w-xl">
+              {projectStatus === "archived"
+                ? "Az archivált projekt aktív státuszra kerül, és újra hozzáadhatók adatok."
+                : "Az archivált projektet rejti az alapértelmezett listázás (kivéve, ha bejelölöd a 'Törölteket is mutasd' opciót), de adatai megmaradnak."}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2 mt-3"
+              onClick={handleArchiveToggle}
+              disabled={archiveMut.isPending}
+            >
+              {archiveMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Archive size={13} />}
+              {projectStatus === "archived" ? "Visszaaktiválás" : "Archiválás"}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Export */}
       <div className="rounded-xl border bg-white p-5" style={{ borderColor: "#e5e7eb" }}>
         <div className="flex items-start gap-4">
           <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center">
@@ -354,18 +482,12 @@ function SettingsTab({ projectId, projectName }: { projectId: number; projectNam
         </div>
       </div>
 
-      <div className="rounded-xl border bg-white p-5" style={{ borderColor: "#e5e7eb" }}>
-        <div className="flex items-start gap-4">
-          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center">
-            <ListChecks size={20} className="text-gray-500" />
-          </div>
-          <div className="flex-1">
-            <h3 className="font-semibold text-gray-900 text-sm">További beállítások</h3>
-            <p className="text-xs text-gray-500 mt-1">
-              Átnevezés, archiválás, workflow-státusz módosítás és törlés bekötése későbbi körben
-              érkezik. Addig a Projektek listán a kontextusmenüből (kuka ikon) tudod törölni.
-            </p>
-          </div>
+      {/* Workflow note */}
+      <div className="rounded-xl border bg-gray-50 p-4 flex items-start gap-3" style={{ borderColor: "#e5e7eb" }}>
+        <ListChecks size={16} className="text-gray-400 mt-0.5" />
+        <div className="text-xs text-gray-600">
+          A workflow-státusz jelenleg: <span className="font-medium text-gray-800">{projectWorkflowStatus}</span>.
+          A finding-szintű workflow a Riportok &gt; konkrét elemzés &gt; Felülvizsgálat panelből változtatható.
         </div>
       </div>
     </div>
@@ -651,7 +773,14 @@ export default function ProjectDetailPage() {
           </TabsContent>
 
           <TabsContent value="settings" className="mt-4">
-            <SettingsTab projectId={projectId} projectName={project.name} />
+            <SettingsTab
+              projectId={projectId}
+              projectName={project.name}
+              projectDescription={project.description}
+              projectStatus={project.status}
+              projectWorkflowStatus={project.workflowStatus}
+              onChanged={() => projectQuery.refetch()}
+            />
           </TabsContent>
         </Tabs>
       </div>
