@@ -31,9 +31,19 @@ function ActiveProjectSelector() {
   }, [open]);
 
   const projects = projectsQuery.data ?? [];
+
+  // Auto-clear the active project if it has been deleted in another tab/browser
+  // or by another user. Only checked once the list has loaded successfully.
+  useEffect(() => {
+    if (activeProjectId == null) return;
+    if (!projectsQuery.isSuccess) return;
+    const exists = projects.some((p) => p.id === activeProjectId);
+    if (!exists) clearActiveProject();
+  }, [activeProjectId, projectsQuery.isSuccess, projects, clearActiveProject]);
+
   const activeProject = projects.find((p) => p.id === activeProjectId);
   const label = activeProject ? activeProject.name : "Minden projekt";
-  const isScoped = activeProjectId != null;
+  const isScoped = activeProjectId != null && activeProject != null;
 
   return (
     <div ref={ref} className="relative">

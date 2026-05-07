@@ -238,6 +238,7 @@ export default function KnowledgeBasePage() {
       toast.success("Dokumentumok sikeresen feltöltve a Tudástárba");
       setPendingFiles([]);
       refetch();
+      utils.knowledgeBase.getEmbeddingCounts.invalidate();
     },
     onError: (err) => toast.error(`Feltöltési hiba: ${err.message}`),
     onSettled: () => setUploading(false),

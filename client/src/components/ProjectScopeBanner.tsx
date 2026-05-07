@@ -3,6 +3,7 @@
  * projektre szűrnek. Csak akkor renderelődik, ha van aktív projekt.
  */
 
+import { useEffect } from "react";
 import { FolderOpen, X } from "lucide-react";
 import { Link } from "wouter";
 import { useActiveProject } from "@/contexts/ProjectContext";
@@ -17,11 +18,24 @@ export function ProjectScopeBanner({ describe }: Props) {
   const { activeProjectId, clearActiveProject } = useActiveProject();
   const projectQuery = trpc.projects.getById.useQuery(
     { id: activeProjectId ?? 0 },
-    { enabled: activeProjectId != null },
+    {
+      enabled: activeProjectId != null,
+      // NOT_FOUND on a missing/deleted project shouldn't keep retrying — clear instead.
+      retry: false,
+    },
   );
 
+  // If the stored active project no longer exists (deleted by another user / browser),
+  // clear it transparently rather than render a broken "#<id>" banner.
+  useEffect(() => {
+    if (activeProjectId != null && projectQuery.isError) {
+      clearActiveProject();
+    }
+  }, [activeProjectId, projectQuery.isError, clearActiveProject]);
+
   if (activeProjectId == null) return null;
-  const projectName = projectQuery.data?.name ?? `#${activeProjectId}`;
+  if (projectQuery.isError) return null; // mid-clear, don't flash broken UI
+  const projectName = projectQuery.data?.name ?? "…";
 
   return (
     <div
