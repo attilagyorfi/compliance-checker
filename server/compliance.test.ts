@@ -508,6 +508,29 @@ describe("audit router", () => {
   });
 });
 
+// ── searchSettings router tests (V11.3) ───────────────────────────────────────
+describe("searchSettings router", () => {
+  it("get requires authentication (UNAUTHORIZED for public context)", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.searchSettings.get()).rejects.toThrow();
+  });
+
+  it("upsert requires authentication", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(
+      caller.searchSettings.upsert({ answerLength: "short", operationMode: "fast", searchMode: "internal" })
+    ).rejects.toThrow();
+  });
+
+  it("reset requires authentication", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.searchSettings.reset()).rejects.toThrow();
+  });
+});
+
 // ── Embeddings (semantic search V12) ──────────────────────────────────────────
 describe("embeddings helpers", () => {
   it("cosineSimilarity returns 1 for identical vectors", async () => {

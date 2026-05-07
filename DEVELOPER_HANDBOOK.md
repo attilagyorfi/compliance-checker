@@ -1,10 +1,16 @@
 # M Mérnöki – Tervmegfelelőség-ellenőrző: Fejlesztői Kézikönyv
 
-> **Verzió:** V11.2 (2026. május 7.)
+> **Verzió:** V11.3 (2026. május 7.)
 > **Projekt:** `compliance-checker`
 > **Élő URL:** https://compliance-lkoz8hck.manus.space
 > **Stack:** React 19 + Vite 7 + Express 4 + tRPC 11 + Drizzle ORM + MySQL/TiDB
 > **Platform:** Manus WebDev (hosting + auth + DB + S3 storage)
+>
+> **V11.3 változásnapló (V11.2-höz képest):**
+> - **Polish (V11.2.1):** ActiveProjectSelector és ProjectScopeBanner auto-clear ha a stored aktív-projekt eltűnt (törölve más böngészőben/usernél). KnowledgeBasePage upload onSuccess invalidate-eli a getEmbeddingCounts-t.
+> - **Projekt-export (V11.3.b):** `projects.export({ id })` protected endpoint — JSON snapshot a projekt minden adatáról (metaadat + tagok + analízisek + KB + keresések), audit-logolva. UI: ProjectDetailPage Beállítások-tabján "JSON letöltése" gomb.
+> - **Audit-log nézet (V11.3.c):** új `/audit` route + `AuditPage` esemény-megoszlás widgettel, szűrőkkel (eventType / resourceType / sinceDays) és paginációval. Backend: új `audit` tRPC router (list / summary / resourceTypes), mind protected.
+> - **Beállítások oldal (V11.3.d):** új `/settings` route + `SettingsPage` a Szabványkereső per-user alapértelmezéseihez (searchMode / operationMode / answerLength). Backend: új `searchSettings` router (get / upsert / reset), a `search_settings` táblát userId-vel kulcsolva. A StandardsSearchPage betöltődéskor alkalmazza a mentett értékeket; az adott keresésnél a user szabadon felülírhatja.
 >
 > **V11.2 változásnapló (V11.1-hez képest):**
 > - **Globális "aktív projekt" context:** új `ProjectContext` provider (`client/src/contexts/ProjectContext.tsx`) localStorage-perzisztált aktív-projekt id-vel. A `Header`-be új `ActiveProjectSelector` dropdown került (asztalon a nav-bar jobb oldalán, mobilon a hamburger-menüben), ami listázza a `projects.list` eredményét és engedi a switch-et / "Minden projekt" feloldást.
@@ -56,7 +62,7 @@ A platform három fő funkcionális pillérre épül. Az első a **Compliance En
 | Fájltárolás | AWS S3 (Manus beépített) | `storagePut` / `storageGet` helperek |
 | Auth | Manus OAuth 2.0 | JWT session cookie (`jose` lib) |
 | AI | Manus beépített LLM API | `invokeLLM()` helper, JSON schema output |
-| Tesztek | Vitest | 47/47 teszt zöld |
+| Tesztek | Vitest | 54/54 teszt zöld |
 | Dokumentum-kinyerés | pdf-parse, mammoth, xlsx, tesseract.js | OCR fallback szkennelt PDF-hez |
 | Web scraping | cheerio, node fetch | DuckDuckGo HTML scraper |
 | Build pluginek | `vite-plugin-manus-runtime`, `@builder.io/vite-plugin-jsx-loc` | Manus-specifikus dev integráció |
@@ -210,6 +216,13 @@ projectMembers.list             → Projekt-tagok listája
 projectMembers.add              → Tag hozzáadása e-mail alapján (owner-only)
 projectMembers.changeRole       → Tag szerepkörének módosítása (owner-only, utolsó owner védve)
 projectMembers.remove           → Tag eltávolítása (owner-only, utolsó owner védve)
+projects.export                 → Projekt-adatok JSON-export (V11.3, member-only, audit-logolva)
+audit.list                      → Audit-napló listázása szűrőkkel + paginálással (V11.3, protected)
+audit.summary                   → Esemény-megoszlás eventType szerint (V11.3, protected)
+audit.resourceTypes             → Distinct resourceType-ok (V11.3, protected)
+searchSettings.get              → Felhasználói keresési alapértelmezések (V11.3, protected)
+searchSettings.upsert           → Beállítások mentése/frissítése (V11.3, protected)
+searchSettings.reset            → Beállítások törlése = alapértelmezésre (V11.3, protected)
 compliance.updateWorkflowStatus → Elemzés-szintű workflow státusz módosítása
 compliance.updateFindingStatus  → Finding-szintű workflow + reviewNote + assignedTo módosítása
 system.notifyOwner              → Értesítés küldése az alkalmazás tulajdonosának
@@ -367,6 +380,9 @@ Az alkalmazás navigációja a `client/src/components/Header.tsx`-ben van defini
 | Tudástár | `/knowledge-base` | Belső dokumentumok feltöltése és kezelése |
 | Jogszabályok | `/regulations` | Jogszabályi könyvtár — `regulation_sources` CRUD, tartalom-letöltés, embedding-backfill, stale-warning (V11.1) |
 | Előzmények | `/search-history` | Keresési előzmények |
+| Audit | `/audit` | Audit-napló (V11.3) — esemény-megoszlás, szűrők, paginálás, JSON metadata expand |
+
+A header jobb oldalán **Beállítások ikon** (fogaskerék) is — `/settings` route, a Szabványkereső per-user alapértelmezéseivel.
 
 A `/projects/:id` route a projekt-részletes oldal, négy adat-tabbal (Elemzések, Tudástár, Keresések, Tagok) és egy beállítások-tabbal. A Tagok-tab az owner számára add/changeRole/remove műveleteket biztosít.
 
@@ -384,7 +400,7 @@ A platform kapcsolatok a `/platforms` route-on érhetők el (nem szerepel a navi
 
 ## 14. Tesztek
 
-A tesztek a `server/compliance.test.ts` és `server/auth.logout.test.ts` fájlokban vannak, Vitest keretrendszerrel. Jelenleg **47/47 teszt zöld**. A tesztek lefedik:
+A tesztek a `server/compliance.test.ts` és `server/auth.logout.test.ts` fájlokban vannak, Vitest keretrendszerrel. Jelenleg **54/54 teszt zöld**. A tesztek lefedik:
 
 - Dokumentumtípus kinyerés (PDF, DOCX, XLSX, DWG, IFC)
 - Regulation source scraper (NJT, net.jogtar.hu)
@@ -403,6 +419,9 @@ A tesztek a `server/compliance.test.ts` és `server/auth.logout.test.ts` fájlok
 - Embedding helperek (`cosineSimilarity` identitás / orthogonális / opposite / dim-mismatch graceful, `getEmbedding` graceful nullret API hiányzásánál)
 - MSZT live search feature flag (`isMsztLiveSearchEnabled` true/false toggle, `searchMsztLive` üres tömböt ad flag-off állapotban hálózat nélkül)
 - Embedding-counts endpointok (`regulationSources.getEmbeddingCounts` és `knowledgeBase.getEmbeddingCounts` graceful empty-array fallback DB hiányában)
+- Projects router export endpoint (auth required)
+- Audit router (list / summary / resourceTypes — mind auth required)
+- SearchSettings router (get / upsert / reset — mind auth required)
 
 ```bash
 pnpm test                    # Összes teszt

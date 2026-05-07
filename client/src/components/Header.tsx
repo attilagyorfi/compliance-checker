@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { ClipboardList, Menu, X, BookOpen, Search, History, Database, LayoutDashboard, FolderOpen, ChevronDown, Check, Shield } from "lucide-react";
+import { ClipboardList, Menu, X, BookOpen, Search, History, Database, LayoutDashboard, FolderOpen, ChevronDown, Check, Shield, Settings as SettingsIcon } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useActiveProject } from "@/contexts/ProjectContext";
 import { trpc } from "@/lib/trpc";
@@ -163,9 +163,22 @@ export default function Header() {
             })}
           </nav>
 
-          {/* Active project selector — desktop only (mobile shown in menu) */}
-          <div className="hidden md:block ml-2">
+          {/* Active project selector + Settings icon — desktop only */}
+          <div className="hidden md:flex items-center gap-2 ml-2">
             <ActiveProjectSelector />
+            <Link
+              href="/settings"
+              className={`flex items-center justify-center w-8 h-8 rounded transition-all ${
+                location === "/settings"
+                  ? "text-white"
+                  : "text-gray-300 hover:text-white hover:bg-white/10"
+              }`}
+              style={location === "/settings" ? { backgroundColor: "#7CA9D3" } : {}}
+              title="Beállítások"
+              aria-label="Beállítások"
+            >
+              <SettingsIcon size={15} />
+            </Link>
           </div>
 
           {/* Mobile hamburger */}
@@ -201,6 +214,17 @@ export default function Header() {
                 </Link>
               );
             })}
+            <Link
+              href="/settings"
+              onClick={() => setMobileOpen(false)}
+              className={`flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors ${
+                location === "/settings" ? "text-white" : "text-gray-300 hover:text-white"
+              }`}
+              style={location === "/settings" ? { color: "#7CA9D3" } : {}}
+            >
+              <SettingsIcon size={16} />
+              Beállítások
+            </Link>
           </div>
         )}
       </div>

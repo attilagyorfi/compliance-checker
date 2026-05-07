@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Search, Loader2, ChevronDown, ChevronUp, BookOpen, ExternalLink,
   CheckCircle2, AlertTriangle, XCircle, Info, Zap, Target,
@@ -242,8 +242,24 @@ export default function StandardsSearchPage() {
   const [showExtended, setShowExtended] = useState(false);
   const [copied, setCopied] = useState(false);
   const [urlInput, setUrlInput] = useState("");
+  const [defaultsApplied, setDefaultsApplied] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { activeProjectId } = useActiveProject();
+
+  // Load saved per-user defaults once and apply them as initial values.
+  // After the first apply, the user's tweaks on this page stay sticky for
+  // the session (they only get re-applied on page reload).
+  const settingsQuery = trpc.searchSettings.get.useQuery(undefined, {
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  useEffect(() => {
+    if (defaultsApplied || !settingsQuery.data) return;
+    setSearchMode(settingsQuery.data.searchMode as SearchMode);
+    setAnswerLength(settingsQuery.data.answerLength as AnswerLength);
+    setOperationMode(settingsQuery.data.operationMode as OperationMode);
+    setDefaultsApplied(true);
+  }, [defaultsApplied, settingsQuery.data]);
 
   const searchMutation = trpc.standardsSearch.search.useMutation({
     onSuccess: (data) => {
