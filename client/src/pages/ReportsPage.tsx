@@ -6,6 +6,8 @@ import {
 import { Button } from "@/components/ui/button";
 import Header from "@/components/Header";
 import { trpc } from "@/lib/trpc";
+import { useActiveProject } from "@/contexts/ProjectContext";
+import { ProjectScopeBanner } from "@/components/ProjectScopeBanner";
 import type { Analysis, ComplianceResult, ComplianceStatus } from "../../../drizzle/schema";
 
 const statusLabels: Record<string, { label: string; color: string; bg: string; icon: typeof CheckCircle2 }> = {
@@ -96,7 +98,10 @@ function AnalysisCard({ analysis }: { analysis: Analysis }) {
 }
 
 export default function ReportsPage() {
-  const { data: analyses, isLoading } = trpc.compliance.listAnalyses.useQuery();
+  const { activeProjectId } = useActiveProject();
+  const { data: analyses, isLoading } = trpc.compliance.listAnalyses.useQuery(
+    activeProjectId ? { projectId: activeProjectId } : undefined,
+  );
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
@@ -133,7 +138,8 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      <main className="flex-1 container py-8">
+      <main className="flex-1 container py-8 space-y-4">
+        <ProjectScopeBanner describe={(name) => `Az alábbi riportok csak a(z) ${name} projekt elemzéseihez tartoznak.`} />
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 size={28} className="animate-spin" style={{ color: "#7CA9D3" }} />

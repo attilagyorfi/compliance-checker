@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { useActiveProject } from "@/contexts/ProjectContext";
+import { ProjectScopeBanner } from "@/components/ProjectScopeBanner";
 import {
   Search,
   FileText,
@@ -144,10 +146,12 @@ function AnalysisRow({ analysis }: { analysis: any }) {
 
 export default function DashboardPage() {
   const [filter, setFilter] = useState<"all" | "processing" | "completed" | "error">("all");
+  const { activeProjectId } = useActiveProject();
 
-  const { data: analyses = [], isLoading, refetch, isFetching } = trpc.compliance.listAnalyses.useQuery(undefined, {
-    refetchInterval: 10_000,
-  });
+  const { data: analyses = [], isLoading, refetch, isFetching } = trpc.compliance.listAnalyses.useQuery(
+    activeProjectId ? { projectId: activeProjectId } : undefined,
+    { refetchInterval: 10_000 },
+  );
 
   const filtered = filter === "all" ? analyses : analyses.filter((a: any) => a.status === filter);
 
@@ -164,7 +168,9 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="container py-8 max-w-6xl mx-auto px-4">
+      <div className="container py-8 max-w-6xl mx-auto px-4 space-y-4">
+
+        <ProjectScopeBanner describe={(name) => `Az alábbi elemzések csak a(z) ${name} projekthez tartoznak.`} />
 
         {/* Page header */}
         <div className="flex items-center justify-between mb-6">

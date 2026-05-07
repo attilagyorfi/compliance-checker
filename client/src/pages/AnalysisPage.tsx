@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import Header from "@/components/Header";
 import { trpc } from "@/lib/trpc";
+import { useActiveProject } from "@/contexts/ProjectContext";
+import { ProjectScopeBanner } from "@/components/ProjectScopeBanner";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -397,6 +399,7 @@ export default function AnalysisPage() {
   const [regulationFiles, setRegulationFiles] = useState<UploadedFile[]>([]);
   const [selectedRegSourceIds, setSelectedRegSourceIds] = useState<number[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { activeProjectId } = useActiveProject();
 
   const startAnalysis = trpc.compliance.startAnalysis.useMutation({
     onSuccess: (data) => {
@@ -460,6 +463,7 @@ export default function AnalysisPage() {
 
       await startAnalysis.mutateAsync({
         title: title.trim(),
+        projectId: activeProjectId ?? undefined,
         planDocument: { key: "", name: primaryPlan.name, base64: planBase64 },
         regulationDocuments: [...regulationDocuments, ...libDocs],
         planDocumentNames: planFiles.map((f) => f.name),
@@ -492,7 +496,9 @@ export default function AnalysisPage() {
       </div>
 
       <main className="flex-1 container py-10">
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-2xl mx-auto space-y-6">
+
+          <ProjectScopeBanner describe={(name) => `Az új elemzés a(z) ${name} projekthez fog tartozni.`} />
 
           {/* Step 1: Title */}
           <div className="mb-8">

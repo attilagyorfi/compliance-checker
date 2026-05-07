@@ -17,6 +17,7 @@ import { Link } from "wouter";
 import Header from "@/components/Header";
 import { trpc } from "@/lib/trpc";
 import { Streamdown } from "streamdown";
+import { useActiveProject } from "@/contexts/ProjectContext";
 import type { SearchSource } from "../../../drizzle/schema";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -242,6 +243,7 @@ export default function StandardsSearchPage() {
   const [copied, setCopied] = useState(false);
   const [urlInput, setUrlInput] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { activeProjectId } = useActiveProject();
 
   const searchMutation = trpc.standardsSearch.search.useMutation({
     onSuccess: (data) => {
@@ -268,7 +270,14 @@ export default function StandardsSearchPage() {
     const urls = urlInput.trim()
       ? urlInput.split(/[\n,]+/).map(u => u.trim()).filter(u => u.startsWith("http"))
       : undefined;
-    searchMutation.mutate({ question: question.trim(), searchMode, answerLength, operationMode, urls });
+    searchMutation.mutate({
+      question: question.trim(),
+      searchMode,
+      answerLength,
+      operationMode,
+      urls,
+      projectId: activeProjectId ?? undefined,
+    });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

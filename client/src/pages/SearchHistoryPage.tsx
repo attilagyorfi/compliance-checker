@@ -12,6 +12,8 @@ import { toast } from "sonner";
 import { Link } from "wouter";
 import Header from "@/components/Header";
 import { trpc } from "@/lib/trpc";
+import { useActiveProject } from "@/contexts/ProjectContext";
+import { ProjectScopeBanner } from "@/components/ProjectScopeBanner";
 import { Streamdown } from "streamdown";
 import type { SearchSource } from "../../../drizzle/schema";
 
@@ -192,6 +194,7 @@ function HistoryItem({ item, onDelete }: {
 }
 
 export default function SearchHistoryPage() {
+  const { activeProjectId } = useActiveProject();
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const debounceRef = useState<ReturnType<typeof setTimeout> | null>(null);
@@ -206,6 +209,7 @@ export default function SearchHistoryPage() {
     limit: 50,
     offset: 0,
     search: debouncedSearch || undefined,
+    projectId: activeProjectId ?? undefined,
   });
 
   const deleteMutation = trpc.standardsSearch.deleteQuery.useMutation({
@@ -247,7 +251,8 @@ export default function SearchHistoryPage() {
         </div>
       </div>
 
-      <main className="flex-1 container py-8">
+      <main className="flex-1 container py-8 space-y-4">
+        <ProjectScopeBanner describe={(name) => `Az alábbi keresési előzmények csak a(z) ${name} projektben végzettek.`} />
         {/* Search bar */}
         <div className="flex items-center gap-3 mb-6">
           <div className="relative flex-1 max-w-md">

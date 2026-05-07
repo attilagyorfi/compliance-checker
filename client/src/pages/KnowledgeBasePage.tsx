@@ -11,6 +11,8 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import Header from "@/components/Header";
 import { trpc } from "@/lib/trpc";
+import { useActiveProject } from "@/contexts/ProjectContext";
+import { ProjectScopeBanner } from "@/components/ProjectScopeBanner";
 
 // ── File type icon ─────────────────────────────────────────────────────────────
 
@@ -222,7 +224,11 @@ export default function KnowledgeBasePage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [uploading, setUploading] = useState(false);
 
-  const { data: documents, isLoading, refetch } = trpc.knowledgeBase.list.useQuery({ search: searchQuery });
+  const { activeProjectId } = useActiveProject();
+  const { data: documents, isLoading, refetch } = trpc.knowledgeBase.list.useQuery({
+    search: searchQuery,
+    projectId: activeProjectId ?? undefined,
+  });
   const countsQuery = trpc.knowledgeBase.getEmbeddingCounts.useQuery();
   const utils = trpc.useUtils();
   const countMap = new Map((countsQuery.data ?? []).map((c) => [c.sourceId, c.chunkCount]));
@@ -296,7 +302,10 @@ export default function KnowledgeBasePage() {
       });
     }
 
-    uploadMutation.mutate({ documents: uploadedItems });
+    uploadMutation.mutate({
+      documents: uploadedItems,
+      projectId: activeProjectId ?? undefined,
+    });
   };
 
   const updatePending = (index: number, field: keyof Omit<PendingFile, "file">, value: string) => {
@@ -323,6 +332,7 @@ export default function KnowledgeBasePage() {
       </div>
 
       <main className="flex-1 container py-8 space-y-8">
+        <ProjectScopeBanner describe={(name) => `A Tudástár jelenleg a(z) ${name} projekt dokumentumait mutatja, és az új feltöltések is ide kerülnek.`} />
         {/* Upload section */}
         <section>
           <h2 className="text-base font-semibold text-gray-800 mb-4">Dokumentum feltöltése</h2>

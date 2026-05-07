@@ -1,10 +1,15 @@
 # M Mérnöki – Tervmegfelelőség-ellenőrző: Fejlesztői Kézikönyv
 
-> **Verzió:** V11.1 (2026. május 7.)
+> **Verzió:** V11.2 (2026. május 7.)
 > **Projekt:** `compliance-checker`
 > **Élő URL:** https://compliance-lkoz8hck.manus.space
 > **Stack:** React 19 + Vite 7 + Express 4 + tRPC 11 + Drizzle ORM + MySQL/TiDB
 > **Platform:** Manus WebDev (hosting + auth + DB + S3 storage)
+>
+> **V11.2 változásnapló (V11.1-hez képest):**
+> - **Globális "aktív projekt" context:** új `ProjectContext` provider (`client/src/contexts/ProjectContext.tsx`) localStorage-perzisztált aktív-projekt id-vel. A `Header`-be új `ActiveProjectSelector` dropdown került (asztalon a nav-bar jobb oldalán, mobilon a hamburger-menüben), ami listázza a `projects.list` eredményét és engedi a switch-et / "Minden projekt" feloldást.
+> - **Page-szintű automatikus szűrés:** ha be van állítva aktív projekt, a `DashboardPage`, `ReportsPage`, `KnowledgeBasePage`, `SearchHistoryPage` listázásai automatikusan erre szűrnek (a `projectId` opcionális paramétert átadják a backend listing endpointoknak). A `StandardsSearchPage` és `AnalysisPage` create-flow-i alapértelmezetten az aktív projekthez kötik az új keresést / analízist.
+> - **Project-scope banner:** új `ProjectScopeBanner` komponens (`client/src/components/ProjectScopeBanner.tsx`) — egységes kék sáv a szűrt oldalak tetején, "Projekt megnyitása" linkkel és "Feloldás" gombbal.
 >
 > **V11.1 változásnapló (V11.0-hoz képest):**
 > - **/regulations route drift-fix (G + H):** A `RegulationLibraryPage` immár ténylegesen a `regulation_sources` táblát kezeli, nem a Tudástárt. Funkciók: lista, "Új jogszabály" dialog (URL alapú), per-source "Letöltés" (fetchContent), "Embeddings" (regenerateEmbeddings, V11.C), "Törlés", stale-warning badge, "Mind frissítése (30+ nap)" bulk gomb.
@@ -65,8 +70,12 @@ compliance-checker/
 ├── client/
 │   ├── src/
 │   │   ├── _core/hooks/useAuth.ts        ← Auth hook (useAuth())
+│   │   ├── contexts/
+│   │   │   ├── ThemeContext.tsx          ← Téma (light/dark)
+│   │   │   └── ProjectContext.tsx        ← Aktív projekt globális state (V11.2)
 │   │   ├── components/
-│   │   │   ├── Header.tsx                ← Navigáció (5 menüpont)
+│   │   │   ├── Header.tsx                ← Navigáció (6 menüpont) + aktív-projekt selector (V11.2)
+│   │   │   ├── ProjectScopeBanner.tsx    ← Sárga sáv listázó oldalakon (V11.2)
 │   │   │   ├── DashboardLayout.tsx       ← Sidebar layout (nem használt aktívan)
 │   │   │   └── ui/                       ← shadcn/ui komponensek
 │   │   ├── pages/
@@ -360,6 +369,12 @@ Az alkalmazás navigációja a `client/src/components/Header.tsx`-ben van defini
 | Előzmények | `/search-history` | Keresési előzmények |
 
 A `/projects/:id` route a projekt-részletes oldal, négy adat-tabbal (Elemzések, Tudástár, Keresések, Tagok) és egy beállítások-tabbal. A Tagok-tab az owner számára add/changeRole/remove műveleteket biztosít.
+
+**Aktív projekt (V11.2):** A header jobb oldalán lévő dropdown (`ActiveProjectSelector`) megengedi, hogy a felhasználó kiválassza melyik projekttel dolgozik. Az aktív projekt localStorage-ben perzisztálódik (`active-project-id` kulcs alatt). Hatása:
+- `Dashboard`, `Riportok`, `Tudástár`, `Előzmények` listázásai automatikusan szűrnek az aktív projektre.
+- Új analízis (`/analysis`) és új keresés (`/search`) automatikusan ehhez a projekthez rendelődik.
+- A szűrt oldalakon kék `ProjectScopeBanner` jelzi az aktív projektet, "Feloldás" gombbal a teljes nézethez visszatéréshez.
+- A `Projektek` és `Jogszabályok` oldalakat nem érinti — workspace-szintűek.
 
 A főoldal (`/`) egy landing page CTA-val, amely a `/search` oldalra irányít. A `/analysis` oldalon lehet új elemzést indítani, a `/result/:id` oldalon az eredményeket megtekinteni, a `/reports` oldalon a korábbi elemzéseket listázni.
 
