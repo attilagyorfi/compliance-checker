@@ -11,6 +11,7 @@ import {
   FolderOpen, ArrowLeft, Loader2, AlertTriangle,
   ClipboardList, Database, Search, Users, Settings,
   FileText, Calendar, Inbox, UserPlus, Trash2, Crown, ShieldCheck, Eye,
+  Download, ListChecks,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -288,6 +289,86 @@ function AddMemberDialog({ projectId }: { projectId: number }) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SettingsTab({ projectId, projectName }: { projectId: number; projectName: string }) {
+  const exportMut = trpc.projects.export.useMutation({
+    onSuccess: (data) => {
+      try {
+        const slug = projectName
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/gi, "-")
+          .replace(/^-|-$/g, "")
+          .slice(0, 40) || `project-${projectId}`;
+        const date = new Date().toISOString().slice(0, 10);
+        const filename = `${slug}-export-${date}.json`;
+        const json = JSON.stringify(data, null, 2);
+        const blob = new Blob([json], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast.success(`Export letöltve (${filename})`);
+      } catch (err) {
+        toast.error(`Letöltési hiba: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+    onError: (err) => toast.error(`Export hiba: ${err.message}`),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border bg-white p-5" style={{ borderColor: "#e5e7eb" }}>
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center">
+            <Download size={20} className="text-blue-600" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-semibold text-gray-900 text-sm">Adatok exportálása</h3>
+            <p className="text-xs text-gray-500 mt-1 max-w-xl">
+              JSON formátumban letölti a projekthez tartozó összes adatot: projekt-metaadat, tagok,
+              elemzések (eredményekkel együtt), Tudástár-dokumentumok metaadata-ja és kinyert
+              szövegek, keresési előzmények. Az S3-on tárolt fájlok bináris tartalma nem kerül bele.
+              Az export minden eseménye audit-logba kerül.
+            </p>
+            <Button
+              size="sm"
+              className="gap-2 mt-3"
+              style={{ backgroundColor: "#7CA9D3" }}
+              onClick={() => exportMut.mutate({ id: projectId })}
+              disabled={exportMut.isPending}
+            >
+              {exportMut.isPending ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Download size={14} />
+              )}
+              JSON letöltése
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border bg-white p-5" style={{ borderColor: "#e5e7eb" }}>
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center">
+            <ListChecks size={20} className="text-gray-500" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-semibold text-gray-900 text-sm">További beállítások</h3>
+            <p className="text-xs text-gray-500 mt-1">
+              Átnevezés, archiválás, workflow-státusz módosítás és törlés bekötése későbbi körben
+              érkezik. Addig a Projektek listán a kontextusmenüből (kuka ikon) tudod törölni.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -570,11 +651,7 @@ export default function ProjectDetailPage() {
           </TabsContent>
 
           <TabsContent value="settings" className="mt-4">
-            <PlaceholderTab
-              icon={Settings}
-              title="Projekt-beállítások"
-              message="Itt lehet majd átnevezni, archiválni vagy törölni a projektet, és módosítani a workflow-státuszt."
-            />
+            <SettingsTab projectId={projectId} projectName={project.name} />
           </TabsContent>
         </Tabs>
       </div>

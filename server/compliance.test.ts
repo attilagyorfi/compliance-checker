@@ -446,6 +446,12 @@ describe("projects router", () => {
     const caller = appRouter.createCaller(createPublicContext());
     await expect(caller.projects.update({ id: 1, name: "x" })).rejects.toThrow();
   });
+
+  it("export requires authentication (UNAUTHORIZED for public context)", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.projects.export({ id: 1 })).rejects.toThrow();
+  });
 });
 
 // ── Project members router tests (V10.A4) ─────────────────────────────────────

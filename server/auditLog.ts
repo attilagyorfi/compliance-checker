@@ -31,6 +31,10 @@ export type AuditEventType =
   | "project_create"
   | "project_update"
   | "project_archive"
+  | "project_export"
+  | "project_member_add"
+  | "project_member_remove"
+  | "project_member_change_role"
   | "finding_status_change"
   | "workflow_status_change";
 

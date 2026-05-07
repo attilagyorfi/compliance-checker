@@ -12,8 +12,12 @@ import { TRPCError } from "@trpc/server";
 import { and, desc, eq, ne } from "drizzle-orm";
 import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
-import { projects, projectMembers } from "../../drizzle/schema";
-import { requireOwnerForProject } from "./projectMembers";
+import {
+  projects, projectMembers, users,
+  analyses, knowledgeBaseDocuments, searchQueries,
+} from "../../drizzle/schema";
+import { requireOwnerForProject, requireMembership } from "./projectMembers";
+import { auditLog } from "../auditLog";
 
 const disciplineEnum = z.enum([
   "altalanos", "epiteszet", "tuzvedelmi", "energetika",
@@ -142,5 +146,81 @@ export const projectsRouter = router({
         .set({ status: "deleted" })
         .where(and(eq(projects.id, input.id), ne(projects.status, "deleted")));
       return { success: true };
+    }),
+
+  /**
+   * Export all per-project data as a single JSON snapshot. Members-only access.
+   * Use case: handing the project state to another tool (or backup before
+   * archiving). The file content of S3-uploaded Tudástár documents is NOT
+   * included — only metadata + extractedText. The export is audit-logged.
+   */
+  export: protectedProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Adatbázis nem elérhető." });
+
+      const projectRows = await db.select().from(projects).where(eq(projects.id, input.id)).limit(1);
+      const project = projectRows[0];
+      if (!project) throw new TRPCError({ code: "NOT_FOUND", message: "Projekt nem található." });
+
+      await requireMembership(db, input.id, ctx.user.id);
+
+      const memberRows = await db
+        .select({
+          userId: projectMembers.userId,
+          role: projectMembers.role,
+          joinedAt: projectMembers.createdAt,
+          userName: users.name,
+          userEmail: users.email,
+        })
+        .from(projectMembers)
+        .leftJoin(users, eq(projectMembers.userId, users.id))
+        .where(eq(projectMembers.projectId, input.id));
+
+      const projectAnalyses = await db
+        .select()
+        .from(analyses)
+        .where(eq(analyses.projectId, input.id))
+        .orderBy(desc(analyses.createdAt));
+
+      const projectKb = await db
+        .select()
+        .from(knowledgeBaseDocuments)
+        .where(eq(knowledgeBaseDocuments.projectId, input.id))
+        .orderBy(desc(knowledgeBaseDocuments.uploadedAt));
+
+      const projectSearches = await db
+        .select()
+        .from(searchQueries)
+        .where(eq(searchQueries.projectId, input.id))
+        .orderBy(desc(searchQueries.createdAt));
+
+      const exportedAt = new Date();
+      await auditLog({
+        userId: ctx.user.id,
+        userEmail: ctx.user.email ?? undefined,
+        eventType: "project_export",
+        resourceType: "project",
+        resourceId: input.id,
+        description: `Projekt exportálva: ${project.name}`,
+        metadata: {
+          projectId: input.id,
+          analysesCount: projectAnalyses.length,
+          knowledgeBaseCount: projectKb.length,
+          searchQueriesCount: projectSearches.length,
+        },
+      });
+
+      return {
+        format: "compliance-checker-project-export-v1",
+        exportedAt,
+        exportedBy: { id: ctx.user.id, email: ctx.user.email ?? null, name: ctx.user.name ?? null },
+        project,
+        members: memberRows,
+        analyses: projectAnalyses,
+        knowledgeBaseDocuments: projectKb,
+        searchQueries: projectSearches,
+      };
     }),
 });
