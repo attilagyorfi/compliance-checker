@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { publicProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { knowledgeBaseDocuments, chunkEmbeddings } from "../../drizzle/schema";
-import { and, eq, like, or, desc } from "drizzle-orm";
+import { and, eq, like, or, desc, sql } from "drizzle-orm";
 import { storagePut } from "../storage";
 import { extractDocumentText, type ExtractionResult } from "../documentExtractor";
 import { chunkAndEmbed } from "../embeddings";
@@ -127,6 +127,28 @@ export const knowledgeBaseRouter = router({
         .where(and(eq(chunkEmbeddings.sourceType, "knowledge_base"), eq(chunkEmbeddings.sourceId, input.id)));
       return { success: true };
     }),
+
+  /**
+   * Per-document chunk-embedding counts, mirroring regulationSources.getEmbeddingCounts.
+   */
+  getEmbeddingCounts: publicProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) return [] as Array<{ sourceId: number; chunkCount: number }>;
+    try {
+      const rows = await db
+        .select({
+          sourceId: chunkEmbeddings.sourceId,
+          chunkCount: sql<number>`count(*)`,
+        })
+        .from(chunkEmbeddings)
+        .where(eq(chunkEmbeddings.sourceType, "knowledge_base"))
+        .groupBy(chunkEmbeddings.sourceId);
+      return rows.map((r) => ({ sourceId: r.sourceId, chunkCount: Number(r.chunkCount) }));
+    } catch (err) {
+      console.error("[knowledgeBase] getEmbeddingCounts skipped:", err);
+      return [];
+    }
+  }),
 
   /**
    * Generate (or regenerate) chunk embeddings for a Knowledge Base document.

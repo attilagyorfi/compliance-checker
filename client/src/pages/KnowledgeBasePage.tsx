@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback } from "react";
 import {
   Database, Upload, FileText, Trash2, Search, Loader2,
-  FileSpreadsheet, File, X, Tag, Calendar, HardDrive, CheckCircle2
+  FileSpreadsheet, File, X, Tag, Calendar, HardDrive, CheckCircle2,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -83,9 +84,15 @@ function UploadZone({ onFilesSelected }: { onFilesSelected: (files: File[]) => v
 function DocumentCard({
   doc,
   onDelete,
+  embeddingCount,
+  onRegenerateEmbeddings,
+  isRegenerating,
 }: {
   doc: { id: number; name: string; originalName: string; fileType: string; fileSize: number; description: string | null; tags: string | null; uploadedAt: Date };
   onDelete: (id: number) => void;
+  embeddingCount: number;
+  onRegenerateEmbeddings: (id: number) => void;
+  isRegenerating: boolean;
 }) {
   const tags = doc.tags ? doc.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
 
@@ -109,6 +116,11 @@ function DocumentCard({
             <Calendar size={10} />
             {new Date(doc.uploadedAt).toLocaleDateString("hu-HU")}
           </span>
+          {embeddingCount > 0 && (
+            <span className="text-xs text-purple-700 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-purple-50">
+              <Sparkles size={9} /> {embeddingCount} chunk
+            </span>
+          )}
           {tags.map(tag => (
             <Badge key={tag} variant="secondary" className="text-xs px-1.5 py-0 h-5">
               <Tag size={9} className="mr-1" />
@@ -117,13 +129,23 @@ function DocumentCard({
           ))}
         </div>
       </div>
-      <button
-        onClick={() => onDelete(doc.id)}
-        className="flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-        title="Törlés"
-      >
-        <Trash2 size={15} />
-      </button>
+      <div className="flex flex-col gap-1.5">
+        <button
+          onClick={() => onRegenerateEmbeddings(doc.id)}
+          className="flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-purple-600 hover:bg-purple-50 transition-colors disabled:opacity-50"
+          title={embeddingCount > 0 ? "Embeddings újragenerálása" : "Embeddings generálása szemantikus kereséshez"}
+          disabled={isRegenerating}
+        >
+          {isRegenerating ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+        </button>
+        <button
+          onClick={() => onDelete(doc.id)}
+          className="flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+          title="Törlés"
+        >
+          <Trash2 size={15} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -201,6 +223,9 @@ export default function KnowledgeBasePage() {
   const [uploading, setUploading] = useState(false);
 
   const { data: documents, isLoading, refetch } = trpc.knowledgeBase.list.useQuery({ search: searchQuery });
+  const countsQuery = trpc.knowledgeBase.getEmbeddingCounts.useQuery();
+  const utils = trpc.useUtils();
+  const countMap = new Map((countsQuery.data ?? []).map((c) => [c.sourceId, c.chunkCount]));
 
   const uploadMutation = trpc.knowledgeBase.upload.useMutation({
     onSuccess: () => {
@@ -216,9 +241,26 @@ export default function KnowledgeBasePage() {
     onSuccess: () => {
       toast.success("Dokumentum törölve");
       refetch();
+      utils.knowledgeBase.getEmbeddingCounts.invalidate();
     },
     onError: (err) => toast.error(`Törlési hiba: ${err.message}`),
   });
+
+  const [embedRegeneratingId, setEmbedRegeneratingId] = useState<number | null>(null);
+  const regenerateMutation = trpc.knowledgeBase.regenerateEmbeddings.useMutation({
+    onSuccess: (data) => {
+      if (data.embeddingApiUnavailable) toast.warning(data.message ?? "Embedding API nem elérhető");
+      else if (data.chunkCount === 0) toast.info(data.message ?? "Nincs tartalom a beágyazáshoz");
+      else toast.success(`${data.chunkCount} chunk beágyazva`);
+      utils.knowledgeBase.getEmbeddingCounts.invalidate();
+    },
+    onError: (err) => toast.error(`Embeddings sikertelen: ${err.message}`),
+    onSettled: () => setEmbedRegeneratingId(null),
+  });
+  const handleRegenerate = (id: number) => {
+    setEmbedRegeneratingId(id);
+    regenerateMutation.mutate({ id });
+  };
 
   const handleFilesSelected = (files: File[]) => {
     const newPending: PendingFile[] = files.map(f => ({
@@ -371,6 +413,9 @@ export default function KnowledgeBasePage() {
                   key={doc.id}
                   doc={doc}
                   onDelete={(id) => deleteMutation.mutate({ id })}
+                  embeddingCount={countMap.get(doc.id) ?? 0}
+                  onRegenerateEmbeddings={handleRegenerate}
+                  isRegenerating={embedRegeneratingId === doc.id}
                 />
               ))}
             </div>

@@ -541,6 +541,20 @@ describe("embeddings helpers", () => {
     }
   });
 
+  it("regulationSources.getEmbeddingCounts returns array (gracefully empty when DB null)", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    const result = await caller.regulationSources.getEmbeddingCounts();
+    expect(Array.isArray(result)).toBe(true);
+  });
+
+  it("knowledgeBase.getEmbeddingCounts returns array (gracefully empty when DB null)", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    const result = await caller.knowledgeBase.getEmbeddingCounts();
+    expect(Array.isArray(result)).toBe(true);
+  });
+
   it("getEmbedding returns null without API key (graceful degradation)", async () => {
     const { _resetEmbeddingApiStateForTests, getEmbedding } = await import("./embeddings");
     _resetEmbeddingApiStateForTests();

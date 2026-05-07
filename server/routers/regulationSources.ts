@@ -6,6 +6,7 @@
 import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
+import { sql } from "drizzle-orm";
 import { getDb } from "../db";
 import { regulationSources, chunkEmbeddings } from "../../drizzle/schema";
 import { and, eq, desc, asc } from "drizzle-orm";
@@ -27,6 +28,31 @@ export const regulationSourcesRouter = router({
     const db = await getDb();
     if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
     return db.select().from(regulationSources).orderBy(asc(regulationSources.discipline), asc(regulationSources.name));
+  }),
+
+  /**
+   * Per-source chunk-embedding counts. Used by RegulationLibraryPage to show
+   * a "X chunk embedding" badge next to each source. Returns an empty array
+   * if the chunk_embeddings table doesn't exist yet (db:push not run on this
+   * environment) so the UI can render gracefully without semantic-search data.
+   */
+  getEmbeddingCounts: publicProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) return [] as Array<{ sourceId: number; chunkCount: number }>;
+    try {
+      const rows = await db
+        .select({
+          sourceId: chunkEmbeddings.sourceId,
+          chunkCount: sql<number>`count(*)`,
+        })
+        .from(chunkEmbeddings)
+        .where(eq(chunkEmbeddings.sourceType, "regulation"))
+        .groupBy(chunkEmbeddings.sourceId);
+      return rows.map((r) => ({ sourceId: r.sourceId, chunkCount: Number(r.chunkCount) }));
+    } catch (err) {
+      console.error("[regulationSources] getEmbeddingCounts skipped:", err);
+      return [];
+    }
   }),
 
   /**
