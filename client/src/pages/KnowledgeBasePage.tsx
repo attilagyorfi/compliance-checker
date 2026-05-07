@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from "react";
 import {
   Database, Upload, FileText, Trash2, Search, Loader2,
   FileSpreadsheet, File, X, Tag, Calendar, HardDrive, CheckCircle2,
-  Sparkles,
+  Sparkles, CheckSquare, Square, MinusSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -89,17 +89,32 @@ function DocumentCard({
   embeddingCount,
   onRegenerateEmbeddings,
   isRegenerating,
+  selected,
+  onToggleSelect,
 }: {
   doc: { id: number; name: string; originalName: string; fileType: string; fileSize: number; description: string | null; tags: string | null; uploadedAt: Date };
   onDelete: (id: number) => void;
   embeddingCount: number;
   onRegenerateEmbeddings: (id: number) => void;
   isRegenerating: boolean;
+  selected: boolean;
+  onToggleSelect: (id: number) => void;
 }) {
   const tags = doc.tags ? doc.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
 
   return (
-    <div className="rounded-xl border bg-white p-4 flex items-start gap-4 hover:shadow-sm transition-shadow" style={{ borderColor: "#e5e7eb" }}>
+    <div
+      className={`rounded-xl border bg-white p-4 flex items-start gap-3 hover:shadow-sm transition-all ${selected ? "ring-2" : ""}`}
+      style={{ borderColor: selected ? "#7CA9D3" : "#e5e7eb", boxShadow: selected ? "inset 0 0 0 1px #7CA9D3" : undefined }}
+    >
+      <button
+        onClick={() => onToggleSelect(doc.id)}
+        className={`flex-shrink-0 mt-1 transition-colors ${selected ? "text-[#7CA9D3]" : "text-gray-300 hover:text-gray-500"}`}
+        aria-label={selected ? "Kijelölés megszüntetése" : "Kijelölés"}
+        title={selected ? "Kijelölés megszüntetése" : "Kijelölés"}
+      >
+        {selected ? <CheckSquare size={18} /> : <Square size={18} />}
+      </button>
       <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center">
         <FileTypeIcon fileType={doc.fileType} size={20} />
       </div>
@@ -223,6 +238,8 @@ export default function KnowledgeBasePage() {
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkRegenProgress, setBulkRegenProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
 
   const { activeProjectId } = useActiveProject();
   const { data: documents, isLoading, refetch } = trpc.knowledgeBase.list.useQuery({
@@ -267,6 +284,97 @@ export default function KnowledgeBasePage() {
   const handleRegenerate = (id: number) => {
     setEmbedRegeneratingId(id);
     regenerateMutation.mutate({ id });
+  };
+
+  // ── Bulk operations ────────────────────────────────────────────────────────
+  // Silent variant for bulk loops — no per-call toast (we summarize at the end).
+  const bulkRegenerateMut = trpc.knowledgeBase.regenerateEmbeddings.useMutation();
+  const deleteManyMutation = trpc.knowledgeBase.deleteMany.useMutation({
+    onSuccess: (data) => {
+      toast.success(
+        data.deletedCount === data.requestedCount
+          ? `${data.deletedCount} dokumentum törölve`
+          : `${data.deletedCount} törölve, ${data.requestedCount - data.deletedCount} már nem létezett`
+      );
+      setSelectedIds(new Set());
+      refetch();
+      utils.knowledgeBase.getEmbeddingCounts.invalidate();
+    },
+    onError: (err) => toast.error(`Bulk törlés sikertelen: ${err.message}`),
+  });
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const visibleDocIds = (documents ?? []).map((d) => d.id);
+  const allVisibleSelected = visibleDocIds.length > 0 && visibleDocIds.every((id) => selectedIds.has(id));
+  const someVisibleSelected = visibleDocIds.some((id) => selectedIds.has(id));
+
+  const toggleAllVisible = () => {
+    if (allVisibleSelected) {
+      // unselect only the visible ones (preserves selection on filtered-out docs)
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of visibleDocIds) next.delete(id);
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of visibleDocIds) next.add(id);
+        return next;
+      });
+    }
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const bulkDelete = () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (!confirm(`Biztosan törlöd a kijelölt ${ids.length} dokumentumot? A művelet visszavonhatatlan.`)) return;
+    deleteManyMutation.mutate({ ids });
+  };
+
+  const bulkRegenerate = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (!confirm(`Embeddings generálása ${ids.length} dokumentumhoz? Ez eltarthat néhány percig.`)) return;
+
+    setBulkRegenProgress({ done: 0, total: ids.length, failed: 0 });
+    let done = 0, failed = 0, apiUnavailable = false;
+    for (const id of ids) {
+      try {
+        const result = await bulkRegenerateMut.mutateAsync({ id });
+        if (result.embeddingApiUnavailable) {
+          apiUnavailable = true;
+          failed++;
+        } else if (result.chunkCount > 0) {
+          done++;
+        } else {
+          // chunk count 0 (no content) — count as silent skip, not failure
+        }
+      } catch {
+        failed++;
+      }
+      setBulkRegenProgress({ done, total: ids.length, failed });
+    }
+    setBulkRegenProgress(null);
+    utils.knowledgeBase.getEmbeddingCounts.invalidate();
+
+    if (apiUnavailable) {
+      toast.warning(`Embedding API nem elérhető — ${done} sikeres, ${failed} kihagyva`);
+    } else if (failed > 0) {
+      toast.warning(`${done} chunk-csoport beágyazva, ${failed} sikertelen`);
+    } else {
+      toast.success(`${done} dokumentum beágyazva`);
+    }
   };
 
   const handleFilesSelected = (files: File[]) => {
@@ -419,6 +527,73 @@ export default function KnowledgeBasePage() {
             </div>
           ) : (
             <div className="space-y-3">
+              {/* Bulk action bar */}
+              {(selectedIds.size > 0 || bulkRegenProgress != null) && (
+                <div
+                  className="rounded-xl border bg-white px-4 py-3 flex items-center gap-3 sticky top-2 z-10"
+                  style={{ borderColor: "#7CA9D3", backgroundColor: "#F0F7FB" }}
+                >
+                  <button
+                    onClick={toggleAllVisible}
+                    className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-900"
+                    title={allVisibleSelected ? "Kijelölés megszüntetése" : "Mind kijelölése"}
+                  >
+                    {allVisibleSelected ? (
+                      <CheckSquare size={15} style={{ color: "#7CA9D3" }} />
+                    ) : someVisibleSelected ? (
+                      <MinusSquare size={15} style={{ color: "#7CA9D3" }} />
+                    ) : (
+                      <Square size={15} className="text-gray-400" />
+                    )}
+                    <span className="font-medium">
+                      {selectedIds.size} kijelölve
+                    </span>
+                  </button>
+
+                  {bulkRegenProgress ? (
+                    <div className="flex items-center gap-2 text-xs text-gray-600 ml-auto">
+                      <Loader2 size={13} className="animate-spin" />
+                      Beágyazás: {bulkRegenProgress.done + bulkRegenProgress.failed} / {bulkRegenProgress.total}
+                      {bulkRegenProgress.failed > 0 && (
+                        <span className="text-amber-700">({bulkRegenProgress.failed} hiba)</span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 ml-auto">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-2 h-8 text-xs"
+                        onClick={bulkRegenerate}
+                        disabled={selectedIds.size === 0}
+                      >
+                        <Sparkles size={12} />
+                        Embeddings ({selectedIds.size})
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-2 h-8 text-xs border-red-200 text-red-700 hover:bg-red-50"
+                        onClick={bulkDelete}
+                        disabled={selectedIds.size === 0 || deleteManyMutation.isPending}
+                      >
+                        {deleteManyMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                        Törlés ({selectedIds.size})
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 text-xs"
+                        onClick={clearSelection}
+                      >
+                        <X size={12} className="mr-1" />
+                        Mégse
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {documents.map(doc => (
                 <DocumentCard
                   key={doc.id}
@@ -432,6 +607,8 @@ export default function KnowledgeBasePage() {
                   embeddingCount={countMap.get(doc.id) ?? 0}
                   onRegenerateEmbeddings={handleRegenerate}
                   isRegenerating={embedRegeneratingId === doc.id}
+                  selected={selectedIds.has(doc.id)}
+                  onToggleSelect={toggleSelect}
                 />
               ))}
             </div>

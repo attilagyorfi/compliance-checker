@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { publicProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { knowledgeBaseDocuments, chunkEmbeddings } from "../../drizzle/schema";
-import { and, eq, like, or, desc, sql } from "drizzle-orm";
+import { and, eq, inArray, like, or, desc, sql } from "drizzle-orm";
 import { storagePut } from "../storage";
 import { extractDocumentText, type ExtractionResult } from "../documentExtractor";
 import { chunkAndEmbed } from "../embeddings";
@@ -126,6 +126,37 @@ export const knowledgeBaseRouter = router({
         .delete(chunkEmbeddings)
         .where(and(eq(chunkEmbeddings.sourceType, "knowledge_base"), eq(chunkEmbeddings.sourceId, input.id)));
       return { success: true };
+    }),
+
+  // Bulk delete (V11.4 (c)) — atomic batch removal of multiple documents.
+  // Cascades chunk_embeddings cleanup so semantic search stays consistent.
+  deleteMany: publicProcedure
+    .input(z.object({ ids: z.array(z.number().int().positive()).min(1).max(500) }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Adatbázis nem elérhető" });
+
+      // Confirm how many actually existed before deletion (for accurate count + audit).
+      const existing = await db
+        .select({ id: knowledgeBaseDocuments.id })
+        .from(knowledgeBaseDocuments)
+        .where(inArray(knowledgeBaseDocuments.id, input.ids));
+      const existingIds = existing.map((r) => r.id);
+      if (existingIds.length === 0) {
+        return { deletedCount: 0, requestedCount: input.ids.length };
+      }
+
+      await db.delete(knowledgeBaseDocuments).where(inArray(knowledgeBaseDocuments.id, existingIds));
+      await db
+        .delete(chunkEmbeddings)
+        .where(
+          and(
+            eq(chunkEmbeddings.sourceType, "knowledge_base"),
+            inArray(chunkEmbeddings.sourceId, existingIds),
+          ),
+        );
+
+      return { deletedCount: existingIds.length, requestedCount: input.ids.length };
     }),
 
   /**

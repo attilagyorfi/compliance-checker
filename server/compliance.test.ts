@@ -605,6 +605,19 @@ describe("embeddings helpers", () => {
     expect(Array.isArray(result)).toBe(true);
   });
 
+  it("knowledgeBase.deleteMany throws when DB unavailable (mocked)", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    // mocked getDb returns null → router throws INTERNAL_SERVER_ERROR
+    await expect(caller.knowledgeBase.deleteMany({ ids: [1, 2, 3] })).rejects.toThrow();
+  });
+
+  it("knowledgeBase.deleteMany rejects empty id list at the schema layer", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.knowledgeBase.deleteMany({ ids: [] })).rejects.toThrow();
+  });
+
   it("getEmbedding returns null without API key (graceful degradation)", async () => {
     const { _resetEmbeddingApiStateForTests, getEmbedding } = await import("./embeddings");
     _resetEmbeddingApiStateForTests();
