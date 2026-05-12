@@ -672,6 +672,24 @@ describe("embeddings helpers", () => {
     await expect(caller.regulationSources.permanentDelete({ id: 1 })).rejects.toThrow();
   });
 
+  it("regulationSources.deleteMany throws when DB unavailable", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.regulationSources.deleteMany({ ids: [1, 2] })).rejects.toThrow();
+  });
+
+  it("regulationSources.deleteMany rejects empty id list at the schema layer", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.regulationSources.deleteMany({ ids: [] })).rejects.toThrow();
+  });
+
+  it("regulationSources.restoreMany throws when DB unavailable", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.regulationSources.restoreMany({ ids: [1, 2] })).rejects.toThrow();
+  });
+
   it("getEmbedding returns null without API key (graceful degradation)", async () => {
     const { _resetEmbeddingApiStateForTests, getEmbedding } = await import("./embeddings");
     _resetEmbeddingApiStateForTests();

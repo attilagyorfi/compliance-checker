@@ -9,7 +9,7 @@ import { TRPCError } from "@trpc/server";
 import { sql, isNull } from "drizzle-orm";
 import { getDb } from "../db";
 import { regulationSources, chunkEmbeddings } from "../../drizzle/schema";
-import { and, eq, desc, asc } from "drizzle-orm";
+import { and, eq, desc, asc, inArray } from "drizzle-orm";
 import { fetchRegulationText } from "../regulationScraper";
 import { chunkAndEmbed } from "../embeddings";
 
@@ -177,6 +177,61 @@ export const regulationSourcesRouter = router({
         .set({ deletedAt: null })
         .where(eq(regulationSources.id, input.id));
       return { success: true };
+    }),
+
+  /**
+   * Bulk soft-delete (V11.8) — same semantics as `delete`, atomic over many ids.
+   * Cascades chunk_embeddings cleanup.
+   */
+  deleteMany: publicProcedure
+    .input(z.object({ ids: z.array(z.number().int().positive()).min(1).max(500) }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+
+      const existing = await db
+        .select({ id: regulationSources.id })
+        .from(regulationSources)
+        .where(inArray(regulationSources.id, input.ids));
+      const existingIds = existing.map((r) => r.id);
+      if (existingIds.length === 0) {
+        return { deletedCount: 0, requestedCount: input.ids.length };
+      }
+
+      try {
+        await db
+          .update(regulationSources)
+          .set({ deletedAt: new Date() })
+          .where(inArray(regulationSources.id, existingIds));
+      } catch (err) {
+        console.warn("[regulationSources.deleteMany] soft-delete fallback to hard:", err);
+        await db.delete(regulationSources).where(inArray(regulationSources.id, existingIds));
+      }
+      await db
+        .delete(chunkEmbeddings)
+        .where(
+          and(
+            eq(chunkEmbeddings.sourceType, "regulation"),
+            inArray(chunkEmbeddings.sourceId, existingIds),
+          ),
+        );
+
+      return { deletedCount: existingIds.length, requestedCount: input.ids.length };
+    }),
+
+  /**
+   * Bulk restore (V11.8) — sets deletedAt = null for every id in the batch.
+   */
+  restoreMany: publicProcedure
+    .input(z.object({ ids: z.array(z.number().int().positive()).min(1).max(500) }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+      await db
+        .update(regulationSources)
+        .set({ deletedAt: null })
+        .where(inArray(regulationSources.id, input.ids));
+      return { restoredCount: input.ids.length };
     }),
 
   /**

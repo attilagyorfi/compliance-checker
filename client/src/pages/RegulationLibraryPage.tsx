@@ -12,6 +12,7 @@ import {
   BookOpen, Plus, Trash2, RefreshCw, Sparkles, Loader2, Search,
   Calendar, Link as LinkIcon, AlertTriangle, CheckCircle2, Info,
   FileText, Database, Cpu, RotateCcw, Archive,
+  CheckSquare, Square, MinusSquare, X as XIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -183,11 +184,13 @@ interface SourceRow {
 }
 
 function SourceCard({
-  source, embeddingCount, onChanged,
+  source, embeddingCount, onChanged, selected, onToggleSelect,
 }: {
   source: SourceRow;
   embeddingCount: number;
   onChanged: () => void;
+  selected: boolean;
+  onToggleSelect: (id: number) => void;
 }) {
   const dCfg = DISCIPLINE_CONFIG[source.discipline] ?? DISCIPLINE_CONFIG.altalanos;
   const stale = isStale(source);
@@ -240,11 +243,19 @@ function SourceCard({
 
   return (
     <div
-      className={`rounded-xl border overflow-hidden transition-shadow hover:shadow-sm ${isDeleted ? "bg-page-bg-subtle" : "bg-surface"}`}
-      style={{ borderColor: "var(--line)", opacity: isDeleted ? 0.75 : 1 }}
+      className={`rounded-xl border overflow-hidden transition-shadow hover:shadow-sm ${isDeleted ? "bg-page-bg-subtle" : "bg-surface"} ${selected ? "ring-2" : ""}`}
+      style={{ borderColor: selected ? "#7CA9D3" : "var(--line)", opacity: isDeleted ? 0.75 : 1, boxShadow: selected ? "inset 0 0 0 1px #7CA9D3" : undefined }}
     >
       <div className="p-4">
         <div className="flex items-start gap-3">
+          <button
+            onClick={() => onToggleSelect(source.id)}
+            className={`flex-shrink-0 mt-1 transition-colors ${selected ? "text-[#7CA9D3]" : "text-gray-300 hover:text-text-muted"}`}
+            aria-label={selected ? "Kijelölés megszüntetése" : "Kijelölés"}
+            title={selected ? "Kijelölés megszüntetése" : "Kijelölés"}
+          >
+            {selected ? <CheckSquare size={18} /> : <Square size={18} />}
+          </button>
           <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-page-bg-subtle border border-line-subtle flex items-center justify-center">
             <FileText size={20} style={{ color: "#7CA9D3" }} />
           </div>
@@ -403,10 +414,39 @@ export default function RegulationLibraryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeDiscipline, setActiveDiscipline] = useState("osszes");
   const [showDeleted, setShowDeleted] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkRegenProgress, setBulkRegenProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
 
   const listQuery = trpc.regulationSources.list.useQuery({ includeDeleted: showDeleted });
   const countsQuery = trpc.regulationSources.getEmbeddingCounts.useQuery();
   const utils = trpc.useUtils();
+
+  // Bulk mutations
+  const bulkDeleteMut = trpc.regulationSources.deleteMany.useMutation({
+    onSuccess: (data) => {
+      toast.success(
+        data.deletedCount === data.requestedCount
+          ? `${data.deletedCount} forrás törölve`
+          : `${data.deletedCount} törölve, ${data.requestedCount - data.deletedCount} már nem létezett`
+      );
+      setSelectedIds(new Set());
+      utils.regulationSources.list.invalidate();
+      utils.regulationSources.getEmbeddingCounts.invalidate();
+    },
+    onError: (err) => toast.error(`Bulk törlés sikertelen: ${err.message}`),
+  });
+
+  const bulkRestoreMut = trpc.regulationSources.restoreMany.useMutation({
+    onSuccess: (data) => {
+      toast.success(`${data.restoredCount} forrás visszaállítva`);
+      setSelectedIds(new Set());
+      utils.regulationSources.list.invalidate();
+    },
+    onError: (err) => toast.error(`Bulk visszaállítás sikertelen: ${err.message}`),
+  });
+
+  // Silent regen mutation for the bulk loop (no per-call toast)
+  const bulkRegenerateMut = trpc.regulationSources.regenerateEmbeddings.useMutation();
 
   const refreshAllMut = trpc.regulationSources.refreshAllStale.useMutation({
     onSuccess: (data) => {
@@ -424,6 +464,55 @@ export default function RegulationLibraryPage() {
 
   const sources = (listQuery.data ?? []) as SourceRow[];
   const countMap = new Map((countsQuery.data ?? []).map((c) => [c.sourceId, c.chunkCount]));
+
+  // Selection helpers (V11.8)
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const bulkDelete = () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (!confirm(`Biztosan törlöd a kijelölt ${ids.length} forrást? Visszaállítható a "Aktívak + törölt" nézetben.`)) return;
+    bulkDeleteMut.mutate({ ids });
+  };
+
+  const bulkRestore = () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    bulkRestoreMut.mutate({ ids });
+  };
+
+  const bulkRegenerate = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (!confirm(`Embeddings generálása ${ids.length} jogszabályhoz? Ez eltarthat néhány percig.`)) return;
+
+    setBulkRegenProgress({ done: 0, total: ids.length, failed: 0 });
+    let done = 0, failed = 0, apiUnavailable = false;
+    for (const id of ids) {
+      try {
+        const result = await bulkRegenerateMut.mutateAsync({ id });
+        if (result.embeddingApiUnavailable) { apiUnavailable = true; failed++; }
+        else if (result.chunkCount > 0) done++;
+        // chunkCount 0 = silent skip (no content)
+      } catch {
+        failed++;
+      }
+      setBulkRegenProgress({ done, total: ids.length, failed });
+    }
+    setBulkRegenProgress(null);
+    utils.regulationSources.getEmbeddingCounts.invalidate();
+    if (apiUnavailable) toast.warning(`Embedding API nem elérhető — ${done} sikeres, ${failed} kihagyva`);
+    else if (failed > 0) toast.warning(`${done} forrás beágyazva, ${failed} sikertelen`);
+    else toast.success(`${done} forrás beágyazva`);
+  };
 
   const filtered = sources.filter((s) => {
     if (activeDiscipline !== "osszes" && s.discipline !== activeDiscipline) return false;
@@ -547,11 +636,118 @@ export default function RegulationLibraryPage() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {filtered.map((s) => (
-              <SourceCard key={s.id} source={s} embeddingCount={countMap.get(s.id) ?? 0} onChanged={onChanged} />
-            ))}
-          </div>
+          <>
+            {/* Bulk action bar */}
+            {(selectedIds.size > 0 || bulkRegenProgress != null) && (() => {
+              const visibleIds = filtered.map((s) => s.id);
+              const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+              const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id));
+              const toggleAllVisible = () => {
+                setSelectedIds((prev) => {
+                  const next = new Set(prev);
+                  if (allVisibleSelected) for (const id of visibleIds) next.delete(id);
+                  else for (const id of visibleIds) next.add(id);
+                  return next;
+                });
+              };
+              // Determine selection mode (all soft-deleted OR all active OR mixed)
+              const selectedSources = sources.filter((s) => selectedIds.has(s.id));
+              const allDeleted = selectedSources.length > 0 && selectedSources.every((s) => s.deletedAt != null);
+              const allActive = selectedSources.length > 0 && selectedSources.every((s) => s.deletedAt == null);
+
+              return (
+                <div
+                  className="rounded-xl border bg-surface px-4 py-3 flex items-center gap-3 sticky top-2 z-10 mb-3"
+                  style={{ borderColor: "#7CA9D3", backgroundColor: "var(--info-bg)" }}
+                >
+                  <button
+                    onClick={toggleAllVisible}
+                    className="flex items-center gap-1.5 text-xs text-text-default hover:text-text-strong"
+                    title={allVisibleSelected ? "Kijelölés megszüntetése (látható)" : "Mind kijelölése (látható)"}
+                  >
+                    {allVisibleSelected ? (
+                      <CheckSquare size={15} style={{ color: "#7CA9D3" }} />
+                    ) : someVisibleSelected ? (
+                      <MinusSquare size={15} style={{ color: "#7CA9D3" }} />
+                    ) : (
+                      <Square size={15} className="text-text-faint" />
+                    )}
+                    <span className="font-medium">{selectedIds.size} kijelölve</span>
+                  </button>
+
+                  {bulkRegenProgress ? (
+                    <div className="flex items-center gap-2 text-xs text-text-muted ml-auto">
+                      <Loader2 size={13} className="animate-spin" />
+                      Beágyazás: {bulkRegenProgress.done + bulkRegenProgress.failed} / {bulkRegenProgress.total}
+                      {bulkRegenProgress.failed > 0 && (
+                        <span className="text-amber-700">({bulkRegenProgress.failed} hiba)</span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 ml-auto">
+                      {allActive && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-2 h-8 text-xs"
+                            onClick={bulkRegenerate}
+                          >
+                            <Sparkles size={12} />
+                            Embeddings ({selectedIds.size})
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-2 h-8 text-xs border-red-200 text-red-700 hover:bg-red-50"
+                            onClick={bulkDelete}
+                            disabled={bulkDeleteMut.isPending}
+                          >
+                            {bulkDeleteMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                            Törlés ({selectedIds.size})
+                          </Button>
+                        </>
+                      )}
+                      {allDeleted && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-2 h-8 text-xs"
+                          onClick={bulkRestore}
+                          disabled={bulkRestoreMut.isPending}
+                        >
+                          {bulkRestoreMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+                          Visszaállítás ({selectedIds.size})
+                        </Button>
+                      )}
+                      {!allActive && !allDeleted && selectedIds.size > 0 && (
+                        <span className="text-xs text-text-muted">
+                          Vegyes kijelölés (aktív + törölt) — csak külön-külön kezelhető.
+                        </span>
+                      )}
+                      <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={clearSelection}>
+                        <XIcon size={12} className="mr-1" />
+                        Mégse
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {filtered.map((s) => (
+                <SourceCard
+                  key={s.id}
+                  source={s}
+                  embeddingCount={countMap.get(s.id) ?? 0}
+                  onChanged={onChanged}
+                  selected={selectedIds.has(s.id)}
+                  onToggleSelect={toggleSelect}
+                />
+              ))}
+            </div>
+          </>
         )}
 
         {/* Footer hint about embeddings + semantic search */}
