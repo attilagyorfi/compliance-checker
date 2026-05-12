@@ -45,7 +45,7 @@ function SearchModeBadge({ mode }: { mode: string }) {
     combined: "Kombinált",
   };
   return (
-    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">
+    <span className="text-xs px-2 py-0.5 rounded-full bg-hover text-text-default border border-line">
       {labels[mode] ?? mode}
     </span>
   );
@@ -74,10 +74,10 @@ function HistoryItem({ item, onDelete }: {
   const sources = (item.sources as SearchSource[]) ?? [];
 
   return (
-    <div className="rounded-xl border bg-white overflow-hidden transition-shadow hover:shadow-sm" style={{ borderColor: "#e5e7eb" }}>
+    <div className="rounded-xl border bg-surface overflow-hidden transition-shadow hover:shadow-sm" style={{ borderColor: "var(--line)" }}>
       {/* Header row */}
       <div
-        className="flex items-start gap-3 p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+        className="flex items-start gap-3 p-4 cursor-pointer hover:bg-page-bg-subtle transition-colors"
         onClick={() => setExpanded((v) => !v)}
       >
         <div
@@ -87,9 +87,9 @@ function HistoryItem({ item, onDelete }: {
           <Search size={14} style={{ color: "#7CA9D3" }} />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-900 leading-snug">{item.question}</p>
+          <p className="text-sm font-medium text-text-strong leading-snug">{item.question}</p>
           <div className="flex flex-wrap items-center gap-2 mt-1.5">
-            <span className="flex items-center gap-1 text-xs text-gray-400">
+            <span className="flex items-center gap-1 text-xs text-text-faint">
               <Clock size={10} />
               {new Date(item.createdAt).toLocaleString("hu-HU", {
                 year: "numeric", month: "short", day: "numeric",
@@ -105,7 +105,7 @@ function HistoryItem({ item, onDelete }: {
               </span>
             )}
             {item.projectName && (
-              <span className="text-xs text-gray-400 italic">{item.projectName}</span>
+              <span className="text-xs text-text-faint italic">{item.projectName}</span>
             )}
           </div>
         </div>
@@ -117,13 +117,13 @@ function HistoryItem({ item, onDelete }: {
           >
             <Trash2 size={13} />
           </button>
-          {expanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+          {expanded ? <ChevronUp size={14} className="text-text-faint" /> : <ChevronDown size={14} className="text-text-faint" />}
         </div>
       </div>
 
       {/* Expanded content */}
       {expanded && (
-        <div className="border-t" style={{ borderColor: "#e5e7eb" }}>
+        <div className="border-t" style={{ borderColor: "var(--line)" }}>
           {/* Rewritten question */}
           {item.rewrittenQuestion && item.rewrittenQuestion !== item.question && (
             <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 flex items-start gap-2">
@@ -147,11 +147,11 @@ function HistoryItem({ item, onDelete }: {
           {/* Answer */}
           <div className="p-4">
             {item.answer ? (
-              <div className="prose prose-sm max-w-none text-gray-800">
+              <div className="prose prose-sm max-w-none text-text-strong">
                 <Streamdown>{item.answer}</Streamdown>
               </div>
             ) : (
-              <p className="text-sm text-gray-400 italic">Nincs mentett válasz.</p>
+              <p className="text-sm text-text-faint italic">Nincs mentett válasz.</p>
             )}
           </div>
 
@@ -159,13 +159,13 @@ function HistoryItem({ item, onDelete }: {
           {sources.length > 0 && (
             <div className="px-4 pb-4">
               <Separator className="mb-3" />
-              <p className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1.5">
+              <p className="text-xs font-semibold text-text-muted mb-2 flex items-center gap-1.5">
                 <BookOpen size={11} style={{ color: "#7CA9D3" }} />
                 Hivatkozások ({sources.length})
               </p>
               <div className="space-y-1.5">
                 {sources.map((src, i) => (
-                  <div key={i} className="flex items-start gap-2 text-xs text-gray-600 bg-gray-50 rounded-lg p-2 border border-gray-100">
+                  <div key={i} className="flex items-start gap-2 text-xs text-text-default bg-page-bg-subtle rounded-lg p-2 border border-line-subtle">
                     <span
                       className="w-4 h-4 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
                       style={{ backgroundColor: "#7CA9D3", fontSize: "9px" }}
@@ -173,12 +173,12 @@ function HistoryItem({ item, onDelete }: {
                       {i + 1}
                     </span>
                     <div className="flex-1 min-w-0">
-                      <span className="font-medium text-gray-700">{src.documentName}</span>
-                      {src.page && <span className="text-gray-400 ml-2">{src.page}. oldal</span>}
-                      {src.chapter && <span className="text-gray-400 ml-2">{src.chapter}</span>}
+                      <span className="font-medium text-text-default">{src.documentName}</span>
+                      {src.page && <span className="text-text-faint ml-2">{src.page}. oldal</span>}
+                      {src.chapter && <span className="text-text-faint ml-2">{src.chapter}</span>}
                     </div>
                     {src.url && (
-                      <a href={src.url} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-600">
+                      <a href={src.url} target="_blank" rel="noopener noreferrer" className="text-text-faint hover:text-text-default">
                         <ExternalLink size={11} />
                       </a>
                     )}
@@ -223,11 +223,11 @@ export default function SearchHistoryPage() {
   const items = data?.items ?? [];
 
   return (
-    <div className="min-h-screen flex flex-col bg-white">
+    <div className="min-h-screen flex flex-col bg-surface">
       <Header />
 
       {/* Page header */}
-      <div className="border-b" style={{ borderColor: "#e5e7eb", backgroundColor: "#F8FAFC" }}>
+      <div className="border-b" style={{ borderColor: "var(--line)", backgroundColor: "var(--page-bg-subtle)" }}>
         <div className="container py-8">
           <div className="flex items-center justify-between">
             <div>
@@ -235,9 +235,9 @@ export default function SearchHistoryPage() {
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#7CA9D3" }}>
                   <History size={16} className="text-white" />
                 </div>
-                <h1 className="text-2xl font-bold" style={{ color: "#161718" }}>Keresési előzmények</h1>
+                <h1 className="text-2xl font-bold" style={{ color: "var(--text-strong)" }}>Keresési előzmények</h1>
               </div>
-              <p className="text-gray-500 text-sm ml-11">
+              <p className="text-text-muted text-sm ml-11">
                 Korábbi szabványkeresések és generált válaszok visszakereshetőek.
               </p>
             </div>
@@ -256,16 +256,16 @@ export default function SearchHistoryPage() {
         {/* Search bar */}
         <div className="flex items-center gap-3 mb-6">
           <div className="relative flex-1 max-w-md">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint" />
             <Input
               placeholder="Keresés az előzmények között..."
               value={searchTerm}
               onChange={(e) => handleSearchChange(e.target.value)}
-              className="pl-9 border-gray-200 text-sm h-9"
+              className="pl-9 border-line text-sm h-9"
             />
           </div>
           {items.length > 0 && (
-            <span className="text-sm text-gray-400">{items.length} találat</span>
+            <span className="text-sm text-text-faint">{items.length} találat</span>
           )}
         </div>
 
@@ -279,10 +279,10 @@ export default function SearchHistoryPage() {
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: "#EBF3FA" }}>
               <History size={28} style={{ color: "#7CA9D3" }} />
             </div>
-            <h3 className="text-lg font-semibold text-gray-700 mb-2">
+            <h3 className="text-lg font-semibold text-text-default mb-2">
               {debouncedSearch ? "Nincs találat" : "Még nincs keresési előzmény"}
             </h3>
-            <p className="text-sm text-gray-400 max-w-sm mb-6">
+            <p className="text-sm text-text-faint max-w-sm mb-6">
               {debouncedSearch
                 ? "Próbáljon más keresési kifejezést."
                 : "Indítson el egy szabványkeresést, és az itt fog megjelenni."}

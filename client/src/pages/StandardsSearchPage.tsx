@@ -64,11 +64,11 @@ function SourceCard({ source, index }: { source: SearchSource; index: number }) 
 
   return (
     <div
-      className="rounded-lg border bg-white"
+      className="rounded-lg border bg-surface"
       style={{ borderColor: isWeb ? "#a5d6a7" : "#e5e7eb" }}
     >
       <div
-        className="flex items-start gap-3 p-3 cursor-pointer hover:bg-gray-50 transition-colors"
+        className="flex items-start gap-3 p-3 cursor-pointer hover:bg-page-bg-subtle transition-colors"
         onClick={() => setExpanded((v) => !v)}
       >
         <span
@@ -79,7 +79,7 @@ function SourceCard({ source, index }: { source: SearchSource; index: number }) 
         </span>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
-            <p className="text-sm font-medium text-gray-900 leading-tight">{source.documentName}</p>
+            <p className="text-sm font-medium text-text-strong leading-tight">{source.documentName}</p>
             <div className="flex items-center gap-1 flex-shrink-0">
               {source.url && (
                 <a
@@ -87,13 +87,13 @@ function SourceCard({ source, index }: { source: SearchSource; index: number }) 
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+                  className="p-1 rounded hover:bg-hover text-text-faint hover:text-text-default"
                   title="Megnyitás"
                 >
                   <ExternalLink size={13} />
                 </a>
               )}
-              {expanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+              {expanded ? <ChevronUp size={14} className="text-text-faint" /> : <ChevronDown size={14} className="text-text-faint" />}
             </div>
           </div>
           <div className="flex flex-wrap gap-2 mt-1">
@@ -104,16 +104,16 @@ function SourceCard({ source, index }: { source: SearchSource; index: number }) 
               </span>
             )}
             {source.page && (
-              <span className="text-xs text-gray-500 flex items-center gap-1">
+              <span className="text-xs text-text-muted flex items-center gap-1">
                 <FileText size={10} />
                 {source.page}. oldal
               </span>
             )}
             {source.chapter && (
-              <span className="text-xs text-gray-500">{source.chapter}</span>
+              <span className="text-xs text-text-muted">{source.chapter}</span>
             )}
             {source.relevanceScore !== undefined && (
-              <span className="text-xs text-gray-400">
+              <span className="text-xs text-text-faint">
                 Relevancia: {Math.round(source.relevanceScore * 100)}%
               </span>
             )}
@@ -123,7 +123,7 @@ function SourceCard({ source, index }: { source: SearchSource; index: number }) 
       {expanded && (
         <div className="px-3 pb-3 pt-0">
           <Separator className="mb-3" />
-          <p className="text-xs text-gray-600 leading-relaxed font-mono bg-gray-50 rounded p-2 border border-gray-100">
+          <p className="text-xs text-text-default leading-relaxed font-mono bg-page-bg-subtle rounded p-2 border border-line-subtle">
             {source.excerpt}
           </p>
         </div>
@@ -144,14 +144,14 @@ function SettingsPanel({
   operationMode: OperationMode; setOperationMode: (v: OperationMode) => void;
 }) {
   return (
-    <div className="rounded-xl border bg-white p-4 space-y-4" style={{ borderColor: "#e5e7eb" }}>
-      <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+    <div className="rounded-xl border bg-surface p-4 space-y-4" style={{ borderColor: "var(--line)" }}>
+      <h3 className="text-sm font-semibold text-text-default flex items-center gap-2">
         <Settings2 size={14} style={{ color: "#7CA9D3" }} />
         Keresési beállítások
       </h3>
 
       <div>
-        <label className="text-xs font-medium text-gray-500 mb-1.5 block uppercase tracking-wide">Keresési logika</label>
+        <label className="text-xs font-medium text-text-muted mb-1.5 block uppercase tracking-wide">Keresési logika</label>
         <div className="grid grid-cols-2 gap-1.5">
           {([
             { value: "mszt", label: "MSZT", icon: <BookOpen size={12} />, desc: "Csak importált MSZT" },
@@ -168,14 +168,14 @@ function SettingsPanel({
               } flex items-center gap-2 p-2.5 rounded-lg border text-xs font-medium transition-all ${
                 searchMode === value
                   ? "text-white border-transparent"
-                  : "text-gray-600 border-gray-200 bg-white hover:border-gray-300"
+                  : "text-text-default border-line bg-surface hover:border-gray-300"
               }`}
               style={searchMode === value ? { backgroundColor: value === "web" || value === "combined_with_web" ? "#4caf50" : "#7CA9D3" } : {}}
             >
               {icon}
               <span className="flex flex-col items-start">
                 <span>{label}</span>
-                <span className={`text-xs ${searchMode === value ? "opacity-80" : "text-gray-400"}`}>{desc}</span>
+                <span className={`text-xs ${searchMode === value ? "opacity-80" : "text-text-faint"}`}>{desc}</span>
               </span>
             </button>
           ))}
@@ -191,9 +191,9 @@ function SettingsPanel({
       </div>
 
       <div>
-        <label className="text-xs font-medium text-gray-500 mb-1.5 block uppercase tracking-wide">Válasz hossza</label>
+        <label className="text-xs font-medium text-text-muted mb-1.5 block uppercase tracking-wide">Válasz hossza</label>
         <Select value={answerLength} onValueChange={(v) => setAnswerLength(v as AnswerLength)}>
-          <SelectTrigger className="border-gray-200 text-sm h-9">
+          <SelectTrigger className="border-line text-sm h-9">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -205,7 +205,7 @@ function SettingsPanel({
       </div>
 
       <div>
-        <label className="text-xs font-medium text-gray-500 mb-1.5 block uppercase tracking-wide">Működési mód</label>
+        <label className="text-xs font-medium text-text-muted mb-1.5 block uppercase tracking-wide">Működési mód</label>
         <div className="grid grid-cols-2 gap-1.5">
           {([
             { value: "fast", label: "Gyors", desc: "Kevesebb ellenőrzés", icon: <Zap size={12} /> },
@@ -217,12 +217,12 @@ function SettingsPanel({
               className={`flex flex-col items-start gap-0.5 p-2.5 rounded-lg border text-xs transition-all ${
                 operationMode === value
                   ? "text-white border-transparent"
-                  : "text-gray-600 border-gray-200 bg-white hover:border-gray-300"
+                  : "text-text-default border-line bg-surface hover:border-gray-300"
               }`}
               style={operationMode === value ? { backgroundColor: "#7CA9D3" } : {}}
             >
               <span className="flex items-center gap-1 font-medium">{icon}{label}</span>
-              <span className={`text-xs ${operationMode === value ? "text-white/80" : "text-gray-400"}`}>{desc}</span>
+              <span className={`text-xs ${operationMode === value ? "text-white/80" : "text-text-faint"}`}>{desc}</span>
             </button>
           ))}
         </div>
@@ -317,11 +317,11 @@ export default function StandardsSearchPage() {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-white">
+    <div className="min-h-screen flex flex-col bg-surface">
       <Header />
 
       {/* Page header */}
-      <div className="border-b" style={{ borderColor: "#e5e7eb", backgroundColor: "#F8FAFC" }}>
+      <div className="border-b" style={{ borderColor: "var(--line)", backgroundColor: "var(--page-bg-subtle)" }}>
         <div className="container py-8">
           <div className="flex items-center justify-between">
             <div>
@@ -329,14 +329,14 @@ export default function StandardsSearchPage() {
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#7CA9D3" }}>
                   <Search size={16} className="text-white" />
                 </div>
-                <h1 className="text-2xl font-bold" style={{ color: "#161718" }}>Szabványkereső</h1>
+                <h1 className="text-2xl font-bold" style={{ color: "var(--text-strong)" }}>Szabványkereső</h1>
               </div>
-              <p className="text-gray-500 text-sm ml-11">
+              <p className="text-text-muted text-sm ml-11">
                 Tegyen fel természetes nyelvű kérdést – az AI megkeresi a releváns szabványokat és strukturált választ generál.
               </p>
             </div>
             <Link href="/search-history">
-              <Button variant="outline" className="gap-2 text-sm border-gray-200">
+              <Button variant="outline" className="gap-2 text-sm border-line">
                 <History size={14} />
                 Előzmények
               </Button>
@@ -350,8 +350,8 @@ export default function StandardsSearchPage() {
           {/* Main content */}
           <div className="space-y-6">
             {/* Search input */}
-            <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#e5e7eb" }}>
-              <label className="text-sm font-semibold text-gray-700 mb-2 block">
+            <div className="rounded-xl border bg-surface p-4" style={{ borderColor: "var(--line)" }}>
+              <label className="text-sm font-semibold text-text-default mb-2 block">
                 Kérdés természetes nyelven
               </label>
               <Textarea
@@ -360,13 +360,13 @@ export default function StandardsSearchPage() {
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="min-h-[100px] border-gray-200 focus-visible:ring-[#7CA9D3] resize-none text-sm"
+                className="min-h-[100px] border-line focus-visible:ring-[#7CA9D3] resize-none text-sm"
               />
 
               {/* URL input – only shown in web / combined_with_web mode */}
               {isWebMode && (
                 <div className="mt-3 space-y-1.5">
-                  <label className="text-xs font-semibold text-gray-600 flex items-center gap-1.5">
+                  <label className="text-xs font-semibold text-text-default flex items-center gap-1.5">
                     <Globe size={12} style={{ color: "#4caf50" }} />
                     URL-ek (soronként vagy vesszővel elválasztva)
                     <span className="text-red-500">*</span>
@@ -377,14 +377,14 @@ export default function StandardsSearchPage() {
                     onChange={(e) => setUrlInput(e.target.value)}
                     className="min-h-[72px] border-green-200 focus-visible:ring-green-400 resize-none text-xs font-mono"
                   />
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs text-text-faint">
                     A rendszer letölti az oldalak tartalomát és a kérdés alapján választ generál.
                   </p>
                 </div>
               )}
 
               <div className="flex items-center justify-between mt-3">
-                <p className="text-xs text-gray-400">Ctrl+Enter a kereséshez</p>
+                <p className="text-xs text-text-faint">Ctrl+Enter a kereséshez</p>
                 <Button
                   onClick={handleSearch}
                   disabled={!question.trim() || (isWebMode && !urlInput.trim()) || searchMutation.isPending}
@@ -404,14 +404,14 @@ export default function StandardsSearchPage() {
 
               {/* Example questions */}
               {!result && !searchMutation.isPending && (
-                <div className="mt-4 pt-4 border-t border-gray-100">
-                  <p className="text-xs text-gray-400 mb-2 font-medium">Példa kérdések:</p>
+                <div className="mt-4 pt-4 border-t border-line-subtle">
+                  <p className="text-xs text-text-faint mb-2 font-medium">Példa kérdések:</p>
                   <div className="flex flex-wrap gap-2">
                     {exampleQuestions.map((q) => (
                       <button
                         key={q}
                         onClick={() => setQuestion(q)}
-                        className="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:border-[#7CA9D3] hover:text-[#7CA9D3] transition-colors bg-white"
+                        className="text-xs px-3 py-1.5 rounded-full border border-line text-text-default hover:border-[#7CA9D3] hover:text-[#7CA9D3] transition-colors bg-surface"
                       >
                         {q}
                       </button>
@@ -423,15 +423,15 @@ export default function StandardsSearchPage() {
 
             {/* Loading state */}
             {searchMutation.isPending && (
-              <div className="rounded-xl border bg-white p-8 flex flex-col items-center gap-4" style={{ borderColor: "#e5e7eb" }}>
+              <div className="rounded-xl border bg-surface p-8 flex flex-col items-center gap-4" style={{ borderColor: "var(--line)" }}>
                 <div className="relative">
-                  <div className="w-12 h-12 rounded-full border-2 border-gray-100 flex items-center justify-center">
+                  <div className="w-12 h-12 rounded-full border-2 border-line-subtle flex items-center justify-center">
                     <Loader2 size={22} className="animate-spin" style={{ color: "#7CA9D3" }} />
                   </div>
                 </div>
                 <div className="text-center">
-                  <p className="font-medium text-gray-700">Keresés folyamatban...</p>
-                  <p className="text-sm text-gray-400 mt-1">
+                  <p className="font-medium text-text-default">Keresés folyamatban...</p>
+                  <p className="text-sm text-text-faint mt-1">
                     {searchMode === "web"
                       ? "Internetes keresés folyamatban → Tartalom letöltés → Válasz generálás"
                       : searchMode === "combined_with_web"
@@ -448,10 +448,10 @@ export default function StandardsSearchPage() {
             {result && !searchMutation.isPending && (
               <div className="space-y-4">
                 {/* Answer header */}
-                <div className="rounded-xl border bg-white overflow-hidden" style={{ borderColor: "#e5e7eb" }}>
-                  <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: "#e5e7eb", backgroundColor: "#F8FAFC" }}>
+                <div className="rounded-xl border bg-surface overflow-hidden" style={{ borderColor: "var(--line)" }}>
+                  <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: "var(--line)", backgroundColor: "var(--page-bg-subtle)" }}>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-semibold text-gray-700">Válasz</span>
+                      <span className="text-sm font-semibold text-text-default">Válasz</span>
                       <ConfidenceBadge confidence={result.confidence} />
                       {!result.selfCheckPassed && (
                         <span className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-full">
@@ -469,7 +469,7 @@ export default function StandardsSearchPage() {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={handleCopy}
-                        className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                        className="p-1.5 rounded hover:bg-hover text-text-faint hover:text-text-default transition-colors"
                         title="Másolás"
                       >
                         {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
@@ -480,7 +480,7 @@ export default function StandardsSearchPage() {
                           setQuestion("");
                           textareaRef.current?.focus();
                         }}
-                        className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                        className="p-1.5 rounded hover:bg-hover text-text-faint hover:text-text-default transition-colors"
                         title="Új keresés"
                       >
                         <RefreshCw size={14} />
@@ -511,19 +511,19 @@ export default function StandardsSearchPage() {
                   {/* Answer text */}
                   <div className="p-4">
                     {result.hasSufficientSources ? (
-                      <div className="prose prose-sm max-w-none text-gray-800">
+                      <div className="prose prose-sm max-w-none text-text-strong">
                         <Streamdown>{showExtended && extendMutation.data?.extendedAnswer
                           ? extendMutation.data.extendedAnswer
                           : result.answer}
                         </Streamdown>
                       </div>
                     ) : (
-                      <div className="flex items-start gap-3 p-4 rounded-lg bg-gray-50 border border-gray-200">
-                        <XCircle size={18} className="text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div className="flex items-start gap-3 p-4 rounded-lg bg-page-bg-subtle border border-line">
+                        <XCircle size={18} className="text-text-faint mt-0.5 flex-shrink-0" />
                         <div>
-                          <p className="font-medium text-gray-700 text-sm">Nem található elegendő információ</p>
-                          <p className="text-sm text-gray-500 mt-1">{result.answer}</p>
-                          <p className="text-xs text-gray-400 mt-2">
+                          <p className="font-medium text-text-default text-sm">Nem található elegendő információ</p>
+                          <p className="text-sm text-text-muted mt-1">{result.answer}</p>
+                          <p className="text-xs text-text-faint mt-2">
                             Javaslat: Töltse fel a releváns szabványokat a{" "}
                             <Link href="/regulations" className="underline" style={{ color: "#7CA9D3" }}>
                               Jogszabály könyvtárba
@@ -546,7 +546,7 @@ export default function StandardsSearchPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="gap-2 text-xs border-gray-200"
+                          className="gap-2 text-xs border-line"
                           disabled={extendMutation.isPending}
                           onClick={() => {
                             if (extendMutation.data?.extendedAnswer) {
@@ -567,7 +567,7 @@ export default function StandardsSearchPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="gap-2 text-xs border-gray-200"
+                          className="gap-2 text-xs border-line"
                           onClick={() => setShowExtended(false)}
                         >
                           <ChevronUp size={12} />
@@ -581,7 +581,7 @@ export default function StandardsSearchPage() {
                 {/* Sources */}
                 {result.sources.length > 0 && (
                   <div>
-                    <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-text-default mb-3 flex items-center gap-2">
                       <BookOpen size={14} style={{ color: "#7CA9D3" }} />
                       Hivatkozások ({result.sources.length} forrás)
                     </h3>
@@ -605,8 +605,8 @@ export default function StandardsSearchPage() {
             />
 
             {/* Info box */}
-            <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: "#e5e7eb", backgroundColor: "#F8FAFC" }}>
-              <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Hogyan működik?</h4>
+            <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: "var(--line)", backgroundColor: "var(--page-bg-subtle)" }}>
+              <h4 className="text-xs font-semibold text-text-default uppercase tracking-wide">Hogyan működik?</h4>
               <div className="space-y-2">
                 {[
                   { step: "1", text: "Kérdés pontosítása AI-val" },
@@ -621,17 +621,17 @@ export default function StandardsSearchPage() {
                     >
                       {step}
                     </span>
-                    <span className="text-xs text-gray-600">{text}</span>
+                    <span className="text-xs text-text-default">{text}</span>
                   </div>
                 ))}
               </div>
             </div>
 
             {/* MSZT link */}
-            <div className="rounded-xl border p-4" style={{ borderColor: "#e5e7eb" }}>
-              <p className="text-xs text-gray-500 mb-2">MSZT szabványtár kapcsolat:</p>
+            <div className="rounded-xl border p-4" style={{ borderColor: "var(--line)" }}>
+              <p className="text-xs text-text-muted mb-2">MSZT szabványtár kapcsolat:</p>
               <Link href="/platforms">
-                <Button variant="outline" size="sm" className="w-full gap-2 text-xs border-gray-200">
+                <Button variant="outline" size="sm" className="w-full gap-2 text-xs border-line">
                   <Settings2 size={12} />
                   Platform beállítások
                 </Button>

@@ -220,19 +220,19 @@ function SourceCard({
   });
 
   return (
-    <div className="rounded-xl border bg-white overflow-hidden transition-shadow hover:shadow-sm" style={{ borderColor: "#e5e7eb" }}>
+    <div className="rounded-xl border bg-surface overflow-hidden transition-shadow hover:shadow-sm" style={{ borderColor: "var(--line)" }}>
       <div className="p-4">
         <div className="flex items-start gap-3">
-          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center">
+          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-page-bg-subtle border border-line-subtle flex items-center justify-center">
             <FileText size={20} style={{ color: "#7CA9D3" }} />
           </div>
 
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-gray-900 text-sm truncate">{source.name}</p>
+                <p className="font-semibold text-text-strong text-sm truncate">{source.name}</p>
                 {source.shortCode && (
-                  <p className="text-xs text-gray-400 mt-0.5">{source.shortCode}</p>
+                  <p className="text-xs text-text-faint mt-0.5">{source.shortCode}</p>
                 )}
               </div>
               <Badge className="text-xs px-2 py-0.5 rounded-full font-medium border-0 flex-shrink-0" style={{ backgroundColor: dCfg.bg, color: dCfg.color }}>
@@ -241,7 +241,7 @@ function SourceCard({
             </div>
 
             <div className="flex flex-wrap items-center gap-2 mt-3">
-              <span className="text-xs text-gray-500 uppercase font-medium">{SOURCE_TYPE_LABELS[source.sourceType] ?? source.sourceType}</span>
+              <span className="text-xs text-text-muted uppercase font-medium">{SOURCE_TYPE_LABELS[source.sourceType] ?? source.sourceType}</span>
 
               {source.content && !stale && (
                 <span className="text-xs text-green-700 flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50">
@@ -263,7 +263,7 @@ function SourceCard({
                 </span>
               )}
               {!source.content && !["mszt", "jogtar", "epitesijog"].includes(source.sourceType) && (
-                <span className="text-xs text-gray-500 flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-50">
+                <span className="text-xs text-text-muted flex items-center gap-1 px-2 py-0.5 rounded-full bg-page-bg-subtle">
                   <Info size={10} /> Tartalom nélkül
                 </span>
               )}
@@ -278,7 +278,7 @@ function SourceCard({
                 </span>
               )}
 
-              <span className="text-xs text-gray-400 flex items-center gap-1 ml-auto">
+              <span className="text-xs text-text-faint flex items-center gap-1 ml-auto">
                 <Calendar size={10} />
                 {formatDate(source.lastSyncAt ?? source.contentFetchedAt ?? source.createdAt)}
               </span>
@@ -296,7 +296,7 @@ function SourceCard({
               </a>
             )}
 
-            <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t" style={{ borderColor: "#f3f4f6" }}>
+            <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t" style={{ borderColor: "var(--line-subtle)" }}>
               <Button
                 size="sm"
                 variant="outline"
@@ -322,7 +322,7 @@ function SourceCard({
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-7 text-xs gap-1.5 text-gray-400 hover:text-red-600 ml-auto"
+                className="h-7 text-xs gap-1.5 text-text-faint hover:text-red-600 ml-auto"
                 onClick={() => {
                   if (confirm(`Biztosan törlöd a "${source.name}" forrást?`)) {
                     deleteMut.mutate({ id: source.id });
@@ -391,10 +391,10 @@ export default function RegulationLibraryPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-white">
+    <div className="min-h-screen flex flex-col bg-surface">
       <Header />
 
-      <div className="border-b" style={{ borderColor: "#e5e7eb", backgroundColor: "#F8FAFC" }}>
+      <div className="border-b" style={{ borderColor: "var(--line)", backgroundColor: "var(--page-bg-subtle)" }}>
         <div className="container py-8">
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -402,9 +402,9 @@ export default function RegulationLibraryPage() {
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#7CA9D3" }}>
                   <BookOpen size={16} className="text-white" />
                 </div>
-                <h1 className="text-2xl font-bold" style={{ color: "#161718" }}>Jogszabályi könyvtár</h1>
+                <h1 className="text-2xl font-bold" style={{ color: "var(--text-strong)" }}>Jogszabályi könyvtár</h1>
               </div>
-              <p className="text-gray-500 text-sm ml-11">
+              <p className="text-text-muted text-sm ml-11">
                 {sources.length} forrás &middot; {totalChunks > 0 ? `${totalChunks} chunk embedding` : "nincs még embedding"}
                 {staleCount > 0 && (
                   <span className="text-amber-700 ml-2">&middot; {staleCount} elavult</span>
@@ -420,12 +420,12 @@ export default function RegulationLibraryPage() {
         {/* Search + bulk-refresh row */}
         <div className="flex items-center gap-3 flex-wrap">
           <div className="relative flex-1 max-w-sm">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint" />
             <Input
               placeholder="Keresés név, kód, URL alapján..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 h-9 text-sm border-gray-200"
+              className="pl-8 h-9 text-sm border-line"
             />
           </div>
           {staleCount > 0 && (
@@ -452,7 +452,7 @@ export default function RegulationLibraryPage() {
                 key={d}
                 onClick={() => setActiveDiscipline(d)}
                 className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
-                  isActive ? "text-white border-transparent" : "text-gray-600 border-gray-200 bg-white hover:border-gray-300"
+                  isActive ? "text-white border-transparent" : "text-text-default border-line bg-surface hover:border-gray-300"
                 }`}
                 style={isActive ? { backgroundColor: config?.color ?? "#7CA9D3", borderColor: config?.color ?? "#7CA9D3" } : {}}
               >
@@ -464,16 +464,16 @@ export default function RegulationLibraryPage() {
 
         {/* List */}
         {listQuery.isLoading ? (
-          <div className="flex items-center justify-center py-16 text-gray-400">
+          <div className="flex items-center justify-center py-16 text-text-faint">
             <Loader2 size={20} className="animate-spin mr-2" /> Betöltés…
           </div>
         ) : filtered.length === 0 ? (
-          <div className="rounded-xl border bg-white p-12 flex flex-col items-center gap-3" style={{ borderColor: "#e5e7eb" }}>
+          <div className="rounded-xl border bg-surface p-12 flex flex-col items-center gap-3" style={{ borderColor: "var(--line)" }}>
             <Database size={26} className="text-gray-300" />
-            <p className="font-medium text-gray-700">
+            <p className="font-medium text-text-default">
               {sources.length === 0 ? "Még nincs jogszabály-forrás" : "Nincs ide illő találat"}
             </p>
-            <p className="text-sm text-gray-500 text-center max-w-md">
+            <p className="text-sm text-text-muted text-center max-w-md">
               {sources.length === 0
                 ? "Az 'Új jogszabály' gombbal vehetsz fel URL alapú forrásokat (NJT, net.jogtar, MSZT stb.)."
                 : "Próbáld ki más szakterületre kapcsolva, vagy törölj a kereső szövegéből."}

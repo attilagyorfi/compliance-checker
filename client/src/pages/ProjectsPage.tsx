@@ -180,16 +180,16 @@ function ProjectCard({ project, onDelete }: { project: ProjectRow; onDelete: (id
   const sCfg = STATUS_LABELS[project.status] ?? STATUS_LABELS.active;
 
   return (
-    <div className="rounded-xl border bg-white overflow-hidden hover:shadow-sm transition-shadow group relative" style={{ borderColor: "#e5e7eb" }}>
+    <div className="rounded-xl border bg-surface overflow-hidden hover:shadow-sm transition-shadow group relative" style={{ borderColor: "var(--line)" }}>
       <Link href={`/projects/${project.id}`} className="block p-4">
         <div className="flex items-start gap-3 min-w-0">
-          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center">
+          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-page-bg-subtle border border-line-subtle flex items-center justify-center">
             <FolderOpen size={20} style={{ color: "#7CA9D3" }} />
           </div>
           <div className="min-w-0 flex-1 pr-8">
-            <p className="font-semibold text-gray-900 text-sm truncate">{project.name}</p>
+            <p className="font-semibold text-text-strong text-sm truncate">{project.name}</p>
             {project.description && (
-              <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{project.description}</p>
+              <p className="text-xs text-text-muted mt-0.5 line-clamp-2">{project.description}</p>
             )}
           </div>
         </div>
@@ -201,10 +201,10 @@ function ProjectCard({ project, onDelete }: { project: ProjectRow; onDelete: (id
           <Badge className="text-xs px-2 py-0.5 rounded-full font-medium border-0" style={{ backgroundColor: sCfg.bg, color: sCfg.color }}>
             {sCfg.label}
           </Badge>
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-text-muted">
             {WORKFLOW_LABELS[project.workflowStatus] ?? project.workflowStatus}
           </span>
-          <span className="text-xs text-gray-400 flex items-center gap-1 ml-auto">
+          <span className="text-xs text-text-faint flex items-center gap-1 ml-auto">
             <Calendar size={10} />
             {formatDate(new Date(project.createdAt))}
           </span>
@@ -213,7 +213,7 @@ function ProjectCard({ project, onDelete }: { project: ProjectRow; onDelete: (id
       <Button
         variant="ghost"
         size="icon"
-        className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 text-gray-400 hover:text-red-600"
+        className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 text-text-faint hover:text-red-600"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -246,16 +246,16 @@ export default function ProjectsPage() {
   const projects = (list.data ?? []) as ProjectRow[];
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-page-bg-subtle">
       <Header />
       <div className="container py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-text-strong flex items-center gap-2">
               <FolderOpen style={{ color: "#7CA9D3" }} />
               Projektek
             </h1>
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-sm text-text-muted mt-1">
               {list.isLoading
                 ? "Betöltés…"
                 : `${projects.length} projekt`}
@@ -265,17 +265,17 @@ export default function ProjectsPage() {
         </div>
 
         {list.isLoading ? (
-          <div className="flex items-center justify-center py-16 text-gray-400">
+          <div className="flex items-center justify-center py-16 text-text-faint">
             <Loader2 className="animate-spin mr-2" size={20} />
             Projektek betöltése…
           </div>
         ) : projects.length === 0 ? (
-          <div className="rounded-xl border bg-white p-12 flex flex-col items-center gap-3" style={{ borderColor: "#e5e7eb" }}>
-            <div className="w-14 h-14 rounded-full bg-gray-50 border border-gray-100 flex items-center justify-center">
+          <div className="rounded-xl border bg-surface p-12 flex flex-col items-center gap-3" style={{ borderColor: "var(--line)" }}>
+            <div className="w-14 h-14 rounded-full bg-page-bg-subtle border border-line-subtle flex items-center justify-center">
               <Inbox size={26} className="text-gray-300" />
             </div>
-            <p className="font-medium text-gray-700">Nincs még projekt</p>
-            <p className="text-sm text-gray-500 text-center max-w-md">
+            <p className="font-medium text-text-default">Nincs még projekt</p>
+            <p className="text-sm text-text-muted text-center max-w-md">
               Hozzon létre egy projektet, hogy alá szervezhesse az elemzéseket, a Tudástár dokumentumokat és a kereséseket.
             </p>
           </div>

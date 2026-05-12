@@ -30,7 +30,7 @@ const statusConfig: Record<string, { label: string; color: string; icon: React.E
 };
 
 const workflowConfig: Record<string, { label: string; color: string }> = {
-  uj: { label: "Új", color: "bg-gray-100 text-gray-700" },
+  uj: { label: "Új", color: "bg-hover text-text-default" },
   elemzes_alatt: { label: "Elemzés alatt", color: "bg-blue-100 text-blue-700" },
   ai_eloelenorizve: { label: "AI előellenőrzött", color: "bg-purple-100 text-purple-700" },
   ember_felulvizsgalva: { label: "Ember felülvizsgálta", color: "bg-teal-100 text-teal-700" },
@@ -61,13 +61,13 @@ function StatCard({
   accent: string;
 }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 flex items-center gap-4 shadow-sm">
+    <div className="bg-surface rounded-xl border border-line p-5 flex items-center gap-4 shadow-sm">
       <div className={`w-11 h-11 rounded-lg flex items-center justify-center ${accent}`}>
         <Icon size={20} className="text-white" />
       </div>
       <div>
-        <div className="text-2xl font-bold text-gray-900">{value}</div>
-        <div className="text-xs text-gray-500 font-medium">{label}</div>
+        <div className="text-2xl font-bold text-text-strong">{value}</div>
+        <div className="text-xs text-text-muted font-medium">{label}</div>
       </div>
     </div>
   );
@@ -92,7 +92,7 @@ function AnalysisRow({ analysis }: { analysis: any }) {
 
   return (
     <Link href={`/result/${analysis.id}`}>
-      <div className="flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition-colors cursor-pointer border-b border-gray-100 last:border-0">
+      <div className="flex items-center gap-4 px-5 py-4 hover:bg-page-bg-subtle transition-colors cursor-pointer border-b border-line-subtle last:border-0">
         {/* Status icon */}
         <div className="shrink-0">
           <StIcon
@@ -109,8 +109,8 @@ function AnalysisRow({ analysis }: { analysis: any }) {
 
         {/* Name + date */}
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-gray-900 text-sm truncate">{analysis.title}</div>
-          <div className="text-xs text-gray-400 mt-0.5 truncate">{planName}</div>
+          <div className="font-medium text-text-strong text-sm truncate">{analysis.title}</div>
+          <div className="text-xs text-text-faint mt-0.5 truncate">{planName}</div>
         </div>
 
         {/* Result counts */}
@@ -134,7 +134,7 @@ function AnalysisRow({ analysis }: { analysis: any }) {
         </span>
 
         {/* Date */}
-        <div className="text-xs text-gray-400 shrink-0 hidden lg:block">{formatDate(analysis.createdAt)}</div>
+        <div className="text-xs text-text-faint shrink-0 hidden lg:block">{formatDate(analysis.createdAt)}</div>
 
         <ChevronRight size={14} className="text-gray-300 shrink-0" />
       </div>
@@ -167,7 +167,7 @@ export default function DashboardPage() {
   const totalNemFelel = allResults.filter((r) => r.status === "nem_felel_meg").length;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-page-bg-subtle">
       <div className="container py-8 max-w-6xl mx-auto px-4 space-y-4">
 
         <ProjectScopeBanner describe={(name) => `Az alábbi elemzések csak a(z) ${name} projekthez tartoznak.`} />
@@ -175,8 +175,8 @@ export default function DashboardPage() {
         {/* Page header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Operációs Dashboard</h1>
-            <p className="text-sm text-gray-500 mt-1">Összes tervmegfelelőség-elemzés áttekintése</p>
+            <h1 className="text-2xl font-bold text-text-strong">Operációs Dashboard</h1>
+            <p className="text-sm text-text-muted mt-1">Összes tervmegfelelőség-elemzés áttekintése</p>
           </div>
           <div className="flex items-center gap-3">
             <Button
@@ -207,14 +207,14 @@ export default function DashboardPage() {
         </div>
 
         {/* Analyses table */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="bg-surface rounded-xl border border-line shadow-sm overflow-hidden">
           {/* Table header + filter */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-line-subtle">
             <div className="flex items-center gap-2">
-              <BarChart3 size={16} className="text-gray-400" />
-              <span className="font-semibold text-gray-900 text-sm">Elemzések</span>
+              <BarChart3 size={16} className="text-text-faint" />
+              <span className="font-semibold text-text-strong text-sm">Elemzések</span>
               {total > 0 && (
-                <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{total}</span>
+                <span className="text-xs text-text-faint bg-hover px-2 py-0.5 rounded-full">{total}</span>
               )}
             </div>
             <div className="flex items-center gap-1">
@@ -225,7 +225,7 @@ export default function DashboardPage() {
                   className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
                     filter === f
                       ? "text-white"
-                      : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+                      : "text-text-muted hover:text-text-default hover:bg-hover"
                   }`}
                   style={filter === f ? { backgroundColor: "#7CA9D3" } : {}}
                 >
@@ -237,12 +237,12 @@ export default function DashboardPage() {
 
           {/* Rows */}
           {isLoading ? (
-            <div className="flex items-center justify-center py-16 text-gray-400 gap-3">
+            <div className="flex items-center justify-center py-16 text-text-faint gap-3">
               <Loader2 size={20} className="animate-spin" />
               <span className="text-sm">Betöltés...</span>
             </div>
           ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-gray-400 gap-3">
+            <div className="flex flex-col items-center justify-center py-16 text-text-faint gap-3">
               <FileText size={36} className="opacity-30" />
               <p className="text-sm">
                 {filter === "all"
@@ -275,13 +275,13 @@ export default function DashboardPage() {
             { href: "/search-history", label: "Keresési előzmények", desc: "Korábbi szabványkeresések", icon: Search },
           ].map(({ href, label, desc, icon: Icon }) => (
             <Link key={href} href={href}>
-              <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4 hover:border-[#7CA9D3] hover:shadow-sm transition-all cursor-pointer">
+              <div className="bg-surface rounded-xl border border-line p-4 flex items-center gap-4 hover:border-[#7CA9D3] hover:shadow-sm transition-all cursor-pointer">
                 <div className="w-9 h-9 rounded-lg bg-[#7CA9D3]/10 flex items-center justify-center shrink-0">
                   <Icon size={16} style={{ color: "#7CA9D3" }} />
                 </div>
                 <div className="min-w-0">
-                  <div className="font-medium text-sm text-gray-900">{label}</div>
-                  <div className="text-xs text-gray-400 truncate">{desc}</div>
+                  <div className="font-medium text-sm text-text-strong">{label}</div>
+                  <div className="text-xs text-text-faint truncate">{desc}</div>
                 </div>
                 <ChevronRight size={14} className="text-gray-300 ml-auto shrink-0" />
               </div>

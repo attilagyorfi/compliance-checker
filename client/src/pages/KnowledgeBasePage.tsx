@@ -21,7 +21,7 @@ function FileTypeIcon({ fileType, size = 16 }: { fileType: string; size?: number
   if (ext === "pdf") return <FileText size={size} className="text-red-500" />;
   if (ext === "docx" || ext === "doc") return <FileText size={size} className="text-blue-500" />;
   if (ext === "xlsx" || ext === "xls") return <FileSpreadsheet size={size} className="text-green-600" />;
-  return <File size={size} className="text-gray-400" />;
+  return <File size={size} className="text-text-faint" />;
 }
 
 function formatBytes(bytes: number): string {
@@ -56,7 +56,7 @@ function UploadZone({ onFilesSelected }: { onFilesSelected: (files: File[]) => v
       onDrop={handleDrop}
       onClick={() => inputRef.current?.click()}
       className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center gap-3 cursor-pointer transition-all ${
-        dragging ? "border-[#7CA9D3] bg-blue-50" : "border-gray-200 hover:border-[#7CA9D3] hover:bg-gray-50"
+        dragging ? "border-[#7CA9D3] bg-blue-50" : "border-line hover:border-[#7CA9D3] hover:bg-page-bg-subtle"
       }`}
     >
       <div
@@ -66,8 +66,8 @@ function UploadZone({ onFilesSelected }: { onFilesSelected: (files: File[]) => v
         <Upload size={22} style={{ color: dragging ? "white" : "#7CA9D3" }} />
       </div>
       <div className="text-center">
-        <p className="font-semibold text-gray-700">Húzza ide a fájlokat, vagy kattintson a feltöltéshez</p>
-        <p className="text-sm text-gray-400 mt-1">PDF, DOCX, XLSX, DWG, IFC – max. 50 MB/fájl</p>
+        <p className="font-semibold text-text-default">Húzza ide a fájlokat, vagy kattintson a feltöltéshez</p>
+        <p className="text-sm text-text-faint mt-1">PDF, DOCX, XLSX, DWG, IFC – max. 50 MB/fájl</p>
       </div>
       <input
         ref={inputRef}
@@ -104,32 +104,32 @@ function DocumentCard({
 
   return (
     <div
-      className={`rounded-xl border bg-white p-4 flex items-start gap-3 hover:shadow-sm transition-all ${selected ? "ring-2" : ""}`}
+      className={`rounded-xl border bg-surface p-4 flex items-start gap-3 hover:shadow-sm transition-all ${selected ? "ring-2" : ""}`}
       style={{ borderColor: selected ? "#7CA9D3" : "#e5e7eb", boxShadow: selected ? "inset 0 0 0 1px #7CA9D3" : undefined }}
     >
       <button
         onClick={() => onToggleSelect(doc.id)}
-        className={`flex-shrink-0 mt-1 transition-colors ${selected ? "text-[#7CA9D3]" : "text-gray-300 hover:text-gray-500"}`}
+        className={`flex-shrink-0 mt-1 transition-colors ${selected ? "text-[#7CA9D3]" : "text-gray-300 hover:text-text-muted"}`}
         aria-label={selected ? "Kijelölés megszüntetése" : "Kijelölés"}
         title={selected ? "Kijelölés megszüntetése" : "Kijelölés"}
       >
         {selected ? <CheckSquare size={18} /> : <Square size={18} />}
       </button>
-      <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center">
+      <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-page-bg-subtle border border-line-subtle flex items-center justify-center">
         <FileTypeIcon fileType={doc.fileType} size={20} />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="font-semibold text-gray-900 text-sm truncate">{doc.name || doc.originalName}</p>
+        <p className="font-semibold text-text-strong text-sm truncate">{doc.name || doc.originalName}</p>
         {doc.description && (
-          <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{doc.description}</p>
+          <p className="text-xs text-text-muted mt-0.5 line-clamp-2">{doc.description}</p>
         )}
         <div className="flex flex-wrap items-center gap-2 mt-2">
-          <span className="text-xs text-gray-400 flex items-center gap-1">
+          <span className="text-xs text-text-faint flex items-center gap-1">
             <HardDrive size={10} />
             {formatBytes(doc.fileSize)}
           </span>
-          <span className="text-xs text-gray-400 uppercase font-medium">{doc.fileType}</span>
-          <span className="text-xs text-gray-400 flex items-center gap-1">
+          <span className="text-xs text-text-faint uppercase font-medium">{doc.fileType}</span>
+          <span className="text-xs text-text-faint flex items-center gap-1">
             <Calendar size={10} />
             {new Date(doc.uploadedAt).toLocaleDateString("hu-HU")}
           </span>
@@ -149,7 +149,7 @@ function DocumentCard({
       <div className="flex flex-col gap-1.5">
         <button
           onClick={() => onRegenerateEmbeddings(doc.id)}
-          className="flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-purple-600 hover:bg-purple-50 transition-colors disabled:opacity-50"
+          className="flex-shrink-0 p-1.5 rounded-lg text-text-faint hover:text-purple-600 hover:bg-purple-50 transition-colors disabled:opacity-50"
           title={embeddingCount > 0 ? "Embeddings újragenerálása" : "Embeddings generálása szemantikus kereséshez"}
           disabled={isRegenerating}
         >
@@ -157,7 +157,7 @@ function DocumentCard({
         </button>
         <button
           onClick={() => onDelete(doc.id)}
-          className="flex-shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+          className="flex-shrink-0 p-1.5 rounded-lg text-text-faint hover:text-red-500 hover:bg-red-50 transition-colors"
           title="Törlés"
         >
           <Trash2 size={15} />
@@ -190,14 +190,14 @@ function PendingItem({
 }) {
   const ext = file.name.split(".").pop() ?? "file";
   return (
-    <div className="rounded-xl border bg-gray-50 p-4 space-y-3" style={{ borderColor: "#e5e7eb" }}>
+    <div className="rounded-xl border bg-page-bg-subtle p-4 space-y-3" style={{ borderColor: "var(--line)" }}>
       <div className="flex items-center gap-3">
         <FileTypeIcon fileType={ext} size={18} />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-700 truncate">{file.name}</p>
-          <p className="text-xs text-gray-400">{formatBytes(file.size)}</p>
+          <p className="text-sm font-medium text-text-default truncate">{file.name}</p>
+          <p className="text-xs text-text-faint">{formatBytes(file.size)}</p>
         </div>
-        <button onClick={onRemove} className="text-gray-400 hover:text-red-500 transition-colors">
+        <button onClick={onRemove} className="text-text-faint hover:text-red-500 transition-colors">
           <X size={15} />
         </button>
       </div>
@@ -206,19 +206,19 @@ function PendingItem({
           placeholder="Dokumentum neve (opcionális)"
           value={name}
           onChange={e => onNameChange(e.target.value)}
-          className="text-xs h-8 border-gray-200"
+          className="text-xs h-8 border-line"
         />
         <Input
           placeholder="Leírás (opcionális)"
           value={description}
           onChange={e => onDescChange(e.target.value)}
-          className="text-xs h-8 border-gray-200"
+          className="text-xs h-8 border-line"
         />
         <Input
           placeholder="Címkék, vesszővel elválasztva"
           value={tags}
           onChange={e => onTagsChange(e.target.value)}
-          className="text-xs h-8 border-gray-200"
+          className="text-xs h-8 border-line"
         />
       </div>
     </div>
@@ -422,19 +422,19 @@ export default function KnowledgeBasePage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-white">
+    <div className="min-h-screen flex flex-col bg-surface">
       <Header />
 
       {/* Page header */}
-      <div className="border-b" style={{ borderColor: "#e5e7eb", backgroundColor: "#F8FAFC" }}>
+      <div className="border-b" style={{ borderColor: "var(--line)", backgroundColor: "var(--page-bg-subtle)" }}>
         <div className="container py-8">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#7CA9D3" }}>
               <Database size={16} className="text-white" />
             </div>
-            <h1 className="text-2xl font-bold" style={{ color: "#161718" }}>Tudástár</h1>
+            <h1 className="text-2xl font-bold" style={{ color: "var(--text-strong)" }}>Tudástár</h1>
           </div>
-          <p className="text-gray-500 text-sm ml-11">
+          <p className="text-text-muted text-sm ml-11">
             Töltse fel a belső dokumentumokat – a Szabványkereső ezekből is keres, ha a „Belső dok." vagy „Kombinált" módot választja.
           </p>
         </div>
@@ -444,12 +444,12 @@ export default function KnowledgeBasePage() {
         <ProjectScopeBanner describe={(name) => `A Tudástár jelenleg a(z) ${name} projekt dokumentumait mutatja, és az új feltöltések is ide kerülnek.`} />
         {/* Upload section */}
         <section>
-          <h2 className="text-base font-semibold text-gray-800 mb-4">Dokumentum feltöltése</h2>
+          <h2 className="text-base font-semibold text-text-strong mb-4">Dokumentum feltöltése</h2>
           <UploadZone onFilesSelected={handleFilesSelected} />
 
           {pendingFiles.length > 0 && (
             <div className="mt-4 space-y-3">
-              <p className="text-sm font-medium text-gray-600">
+              <p className="text-sm font-medium text-text-default">
                 {pendingFiles.length} fájl feltöltésre vár
               </p>
               {pendingFiles.map((pf, i) => (
@@ -479,7 +479,7 @@ export default function KnowledgeBasePage() {
                   variant="outline"
                   onClick={() => setPendingFiles([])}
                   disabled={uploading}
-                  className="gap-2 border-gray-200"
+                  className="gap-2 border-line"
                 >
                   <X size={14} />
                   Mégse
@@ -494,19 +494,19 @@ export default function KnowledgeBasePage() {
         {/* Document list */}
         <section>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold text-gray-800">
+            <h2 className="text-base font-semibold text-text-strong">
               Feltöltött dokumentumok
               {documents && (
-                <span className="ml-2 text-sm font-normal text-gray-400">({documents.length} db)</span>
+                <span className="ml-2 text-sm font-normal text-text-faint">({documents.length} db)</span>
               )}
             </h2>
             <div className="relative w-64">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint" />
               <Input
                 placeholder="Keresés a dokumentumokban..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="pl-8 h-9 text-sm border-gray-200"
+                className="pl-8 h-9 text-sm border-line"
               />
             </div>
           </div>
@@ -516,13 +516,13 @@ export default function KnowledgeBasePage() {
               <Loader2 size={24} className="animate-spin" style={{ color: "#7CA9D3" }} />
             </div>
           ) : !documents || documents.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-gray-200 py-16 flex flex-col items-center gap-3 text-center">
-              <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center">
+            <div className="rounded-xl border border-dashed border-line py-16 flex flex-col items-center gap-3 text-center">
+              <div className="w-12 h-12 rounded-full bg-page-bg-subtle flex items-center justify-center">
                 <Database size={22} className="text-gray-300" />
               </div>
               <div>
-                <p className="font-medium text-gray-500">A Tudástár üres</p>
-                <p className="text-sm text-gray-400 mt-1">Töltsön fel dokumentumokat a fenti területre</p>
+                <p className="font-medium text-text-muted">A Tudástár üres</p>
+                <p className="text-sm text-text-faint mt-1">Töltsön fel dokumentumokat a fenti területre</p>
               </div>
             </div>
           ) : (
@@ -530,12 +530,12 @@ export default function KnowledgeBasePage() {
               {/* Bulk action bar */}
               {(selectedIds.size > 0 || bulkRegenProgress != null) && (
                 <div
-                  className="rounded-xl border bg-white px-4 py-3 flex items-center gap-3 sticky top-2 z-10"
+                  className="rounded-xl border bg-surface px-4 py-3 flex items-center gap-3 sticky top-2 z-10"
                   style={{ borderColor: "#7CA9D3", backgroundColor: "#F0F7FB" }}
                 >
                   <button
                     onClick={toggleAllVisible}
-                    className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-900"
+                    className="flex items-center gap-1.5 text-xs text-text-default hover:text-text-strong"
                     title={allVisibleSelected ? "Kijelölés megszüntetése" : "Mind kijelölése"}
                   >
                     {allVisibleSelected ? (
@@ -543,7 +543,7 @@ export default function KnowledgeBasePage() {
                     ) : someVisibleSelected ? (
                       <MinusSquare size={15} style={{ color: "#7CA9D3" }} />
                     ) : (
-                      <Square size={15} className="text-gray-400" />
+                      <Square size={15} className="text-text-faint" />
                     )}
                     <span className="font-medium">
                       {selectedIds.size} kijelölve
@@ -551,7 +551,7 @@ export default function KnowledgeBasePage() {
                   </button>
 
                   {bulkRegenProgress ? (
-                    <div className="flex items-center gap-2 text-xs text-gray-600 ml-auto">
+                    <div className="flex items-center gap-2 text-xs text-text-default ml-auto">
                       <Loader2 size={13} className="animate-spin" />
                       Beágyazás: {bulkRegenProgress.done + bulkRegenProgress.failed} / {bulkRegenProgress.total}
                       {bulkRegenProgress.failed > 0 && (
