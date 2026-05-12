@@ -5,14 +5,15 @@
  * A2-A3 körök feladata.
  */
 
-import { useState } from "react";
-import { Link } from "wouter";
-import { FolderOpen, Plus, Trash2, Loader2, Calendar, Inbox } from "lucide-react";
+import { useState, useRef } from "react";
+import { Link, useLocation } from "wouter";
+import { FolderOpen, Plus, Trash2, Loader2, Calendar, Inbox, Upload, FileJson } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle, DialogTrigger,
@@ -55,6 +56,208 @@ const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }
 };
 
 // ── Create project dialog ─────────────────────────────────────────────────────
+
+// ── Import project dialog ─────────────────────────────────────────────────────
+
+interface ImportPreview {
+  format: string;
+  project?: { name?: string; description?: string | null };
+  analyses?: unknown[];
+  knowledgeBaseDocuments?: unknown[];
+  searchQueries?: unknown[];
+}
+
+function ImportProjectDialog({ onImported }: { onImported: (newProjectId: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const [, navigate] = useLocation();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [parsedData, setParsedData] = useState<ImportPreview | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [includeAnalyses, setIncludeAnalyses] = useState(true);
+  const [includeKnowledgeBase, setIncludeKnowledgeBase] = useState(true);
+  const [includeSearchQueries, setIncludeSearchQueries] = useState(false);
+  const [nameOverride, setNameOverride] = useState("");
+
+  const reset = () => {
+    setParsedData(null);
+    setParseError(null);
+    setIncludeAnalyses(true);
+    setIncludeKnowledgeBase(true);
+    setIncludeSearchQueries(false);
+    setNameOverride("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const importMut = trpc.projects.import.useMutation({
+    onSuccess: (data) => {
+      toast.success(
+        `Projekt importálva — ${data.analysesImported} elemzés, ${data.kbImported} Tudástár-dok, ${data.searchesImported} keresés`,
+      );
+      reset();
+      setOpen(false);
+      if (data.projectId) onImported(data.projectId);
+      if (data.projectId) navigate(`/projects/${data.projectId}`);
+    },
+    onError: (err) => toast.error(`Import sikertelen: ${err.message}`),
+  });
+
+  const handleFile = async (file: File) => {
+    setParsedData(null);
+    setParseError(null);
+    if (!file.name.toLowerCase().endsWith(".json")) {
+      setParseError("Csak .json fájl fogadható el.");
+      return;
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      setParseError("A fájl túl nagy (max 50 MB).");
+      return;
+    }
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (parsed?.format !== "compliance-checker-project-export-v1") {
+        setParseError(`Ismeretlen vagy elavult formátum. Várt: "compliance-checker-project-export-v1", kapott: ${parsed?.format ?? "nincs"}`);
+        return;
+      }
+      if (!parsed?.project?.name) {
+        setParseError("A JSON-ban nincs project.name mező.");
+        return;
+      }
+      setParsedData(parsed);
+      setNameOverride(parsed.project.name);
+    } catch (err) {
+      setParseError(`A fájl nem érvényes JSON: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  const submit = () => {
+    if (!parsedData) return;
+    importMut.mutate({
+      data: parsedData as never,
+      includeAnalyses,
+      includeKnowledgeBase,
+      includeSearchQueries,
+      nameOverride: nameOverride.trim() && nameOverride.trim() !== parsedData.project?.name
+        ? nameOverride.trim()
+        : undefined,
+    });
+  };
+
+  const counts = {
+    analyses: parsedData?.analyses?.length ?? 0,
+    kb: parsedData?.knowledgeBaseDocuments?.length ?? 0,
+    searches: parsedData?.searchQueries?.length ?? 0,
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset(); }}>
+      <DialogTrigger asChild>
+        <Button variant="outline" className="gap-2">
+          <Upload size={16} />
+          JSON importálása
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Projekt importálása JSON-ból</DialogTitle>
+          <DialogDescription>
+            Egy korábbi <code className="text-xs">projects.export</code> JSON-snapshot betöltése új projektként.
+            A jelenlegi felhasználó lesz az új tulajdonos. A tagság, a fájl-binárisok és az eredeti azonosítók nem kerülnek vissza.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="import-file">JSON fájl</Label>
+            <input
+              ref={fileInputRef}
+              id="import-file"
+              type="file"
+              accept=".json,application/json"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleFile(f);
+              }}
+              className="block w-full text-xs file:mr-3 file:px-3 file:py-1.5 file:rounded file:border-0 file:text-xs file:font-medium file:bg-[#7CA9D3] file:text-white hover:file:bg-[#5a8ab8] file:cursor-pointer"
+            />
+          </div>
+
+          {parseError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+              <strong>Hiba:</strong> {parseError}
+            </div>
+          )}
+
+          {parsedData && (
+            <>
+              <div className="rounded-lg border bg-page-bg-subtle p-3 space-y-2" style={{ borderColor: "var(--line)" }}>
+                <div className="flex items-center gap-2 text-xs text-text-default">
+                  <FileJson size={13} style={{ color: "#7CA9D3" }} />
+                  <span className="font-medium">{parsedData.project?.name}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <span className="text-text-muted">{counts.analyses} elemzés</span>
+                  <span className="text-text-muted">{counts.kb} Tudástár-dok</span>
+                  <span className="text-text-muted">{counts.searches} keresés</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="import-name" className="text-xs">Új projekt neve</Label>
+                <Input
+                  id="import-name"
+                  value={nameOverride}
+                  onChange={(e) => setNameOverride(e.target.value)}
+                  maxLength={255}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs">Mit importáljunk?</Label>
+                <div className="space-y-1.5">
+                  <label className="flex items-center gap-2 text-xs text-text-default cursor-pointer">
+                    <Checkbox
+                      checked={includeAnalyses}
+                      onCheckedChange={(v) => setIncludeAnalyses(v === true)}
+                    />
+                    Elemzések ({counts.analyses})
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-text-default cursor-pointer">
+                    <Checkbox
+                      checked={includeKnowledgeBase}
+                      onCheckedChange={(v) => setIncludeKnowledgeBase(v === true)}
+                    />
+                    Tudástár-dokumentumok ({counts.kb})
+                    <span className="text-text-faint">(csak metaadat + kinyert szöveg; S3-fájlok nem)</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-text-default cursor-pointer">
+                    <Checkbox
+                      checked={includeSearchQueries}
+                      onCheckedChange={(v) => setIncludeSearchQueries(v === true)}
+                    />
+                    Keresési előzmények ({counts.searches})
+                  </label>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => { reset(); setOpen(false); }}>Mégse</Button>
+          <Button
+            onClick={submit}
+            disabled={!parsedData || importMut.isPending}
+            style={{ backgroundColor: "#7CA9D3" }}
+          >
+            {importMut.isPending ? <Loader2 size={14} className="animate-spin mr-2" /> : <Upload size={14} className="mr-2" />}
+            Import indítása
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function CreateProjectDialog({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false);
@@ -261,7 +464,10 @@ export default function ProjectsPage() {
                 : `${projects.length} projekt`}
             </p>
           </div>
-          <CreateProjectDialog onCreated={() => utils.projects.list.invalidate()} />
+          <div className="flex items-center gap-2">
+            <ImportProjectDialog onImported={() => utils.projects.list.invalidate()} />
+            <CreateProjectDialog onCreated={() => utils.projects.list.invalidate()} />
+          </div>
         </div>
 
         {list.isLoading ? (

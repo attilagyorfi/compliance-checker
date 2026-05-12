@@ -223,4 +223,211 @@ export const projectsRouter = router({
         searchQueries: projectSearches,
       };
     }),
+
+  /**
+   * Import a project from a JSON snapshot previously created by `projects.export`.
+   * Always creates a NEW project (never overwrites) with the current user as the
+   * owner. Members are NOT imported (they may not exist in this workspace).
+   * KB documents are imported with their original s3Url/s3Key — if those S3
+   * blobs were deleted or live on a different bucket, the metadata is still
+   * available but the file is unreachable. Audit-logged.
+   */
+  import: protectedProcedure
+    .input(
+      z.object({
+        data: z.object({
+          format: z.literal("compliance-checker-project-export-v1"),
+          project: z.object({
+            name: z.string().min(1).max(255),
+            description: z.string().nullable().optional(),
+            discipline: disciplineEnum.optional(),
+            workflowStatus: workflowStatusEnum.optional(),
+          }),
+          analyses: z.array(z.object({
+            title: z.string().min(1).max(255),
+            status: z.enum(["pending", "processing", "completed", "error"]).optional(),
+            workflowStatus: z.enum([
+              "uj", "elemzes_alatt", "ai_eloelenorizve", "ember_felulvizsgalva",
+              "javitasra_visszakuldve", "lezart",
+            ]).nullable().optional(),
+            progressStep: z.string().nullable().optional(),
+            retryCount: z.number().nullable().optional(),
+            planDocuments: z.unknown().optional(),
+            regulationSourceIds: z.array(z.number()).nullable().optional(),
+            regulationDocumentKeys: z.array(z.string()).nullable().optional(),
+            regulationDocumentNames: z.array(z.string()).nullable().optional(),
+            results: z.unknown().optional(),
+            summary: z.string().nullable().optional(),
+            errorMessage: z.string().nullable().optional(),
+            createdAt: z.union([z.string(), z.date()]).optional(),
+          })).default([]),
+          knowledgeBaseDocuments: z.array(z.object({
+            name: z.string(),
+            originalName: z.string(),
+            fileType: z.string(),
+            fileSize: z.number(),
+            s3Url: z.string().default(""),
+            s3Key: z.string().default(""),
+            extractedText: z.string().nullable().optional(),
+            description: z.string().nullable().optional(),
+            tags: z.string().nullable().optional(),
+          })).default([]),
+          searchQueries: z.array(z.object({
+            question: z.string().min(1),
+            rewrittenQuestion: z.string().nullable().optional(),
+            searchMode: z.enum(["mszt", "internal", "combined", "web", "combined_with_web"]).optional(),
+            answerLength: z.enum(["short", "standard", "detailed"]).optional(),
+            operationMode: z.enum(["fast", "accurate"]).optional(),
+            answer: z.string().nullable().optional(),
+            extendedAnswer: z.string().nullable().optional(),
+            confidence: z.enum(["low", "medium", "high"]).nullable().optional(),
+            sources: z.unknown().optional(),
+            hasSufficientSources: z.boolean().optional(),
+            selfCheckPassed: z.boolean().optional(),
+            selfCheckNotes: z.string().nullable().optional(),
+            projectName: z.string().nullable().optional(),
+          })).default([]),
+        }),
+        includeAnalyses: z.boolean().default(true),
+        includeKnowledgeBase: z.boolean().default(true),
+        includeSearchQueries: z.boolean().default(false),
+        nameOverride: z.string().min(1).max(255).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Adatbázis nem elérhető." });
+
+      const { data } = input;
+      const projectName = input.nameOverride ?? data.project.name;
+
+      // 1. Create the new project
+      const inserted = await db.insert(projects).values({
+        name: projectName,
+        description: data.project.description ?? null,
+        discipline: data.project.discipline ?? "altalanos",
+        workflowStatus: data.project.workflowStatus ?? "uj",
+        ownerId: ctx.user.id,
+      });
+      const newProjectId = (inserted as unknown as { insertId?: number }).insertId;
+      if (!newProjectId) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Új projekt-ID nem sikerült létrehozni." });
+      }
+
+      // 2. Bootstrap membership (current user as owner)
+      await db.insert(projectMembers).values({
+        projectId: newProjectId,
+        userId: ctx.user.id,
+        role: "owner",
+      });
+
+      // 3. Import analyses (optional)
+      let analysesImported = 0;
+      if (input.includeAnalyses) {
+        for (const a of data.analyses) {
+          try {
+            await db.insert(analyses).values({
+              title: a.title,
+              projectId: newProjectId,
+              userId: ctx.user.id,
+              status: a.status ?? "completed",
+              workflowStatus: a.workflowStatus ?? "uj",
+              progressStep: a.progressStep ?? null,
+              retryCount: a.retryCount ?? 0,
+              planDocuments: (a.planDocuments as Array<{ key: string; name: string; fileType: "pdf" | "docx" | "xlsx" | "dwg" | "dxf" | "ifc" | "rtf" | "jpg" | "png" | "other" }>) ?? [],
+              regulationSourceIds: a.regulationSourceIds ?? [],
+              regulationDocumentKeys: a.regulationDocumentKeys ?? [],
+              regulationDocumentNames: a.regulationDocumentNames ?? [],
+              results: (a.results as never) ?? null,
+              summary: a.summary ?? null,
+              errorMessage: a.errorMessage ?? null,
+            });
+            analysesImported++;
+          } catch (err) {
+            console.error("[projects.import] analysis insert failed:", err);
+          }
+        }
+      }
+
+      // 4. Import KB documents (optional)
+      let kbImported = 0;
+      if (input.includeKnowledgeBase) {
+        for (const d of data.knowledgeBaseDocuments) {
+          try {
+            await db.insert(knowledgeBaseDocuments).values({
+              name: d.name,
+              originalName: d.originalName,
+              fileType: d.fileType,
+              fileSize: d.fileSize,
+              s3Url: d.s3Url,
+              s3Key: d.s3Key,
+              extractedText: d.extractedText ?? null,
+              description: d.description ?? null,
+              tags: d.tags ?? null,
+              projectId: newProjectId,
+            });
+            kbImported++;
+          } catch (err) {
+            console.error("[projects.import] kb insert failed:", err);
+          }
+        }
+      }
+
+      // 5. Import search queries (optional, default off — searches are personal logs)
+      let searchesImported = 0;
+      if (input.includeSearchQueries) {
+        for (const s of data.searchQueries) {
+          try {
+            await db.insert(searchQueries).values({
+              question: s.question,
+              rewrittenQuestion: s.rewrittenQuestion ?? null,
+              searchMode: s.searchMode ?? "combined",
+              answerLength: s.answerLength ?? "standard",
+              operationMode: s.operationMode ?? "accurate",
+              answer: s.answer ?? null,
+              extendedAnswer: s.extendedAnswer ?? null,
+              confidence: s.confidence ?? null,
+              sources: (s.sources as never) ?? null,
+              hasSufficientSources: s.hasSufficientSources ?? true,
+              selfCheckPassed: s.selfCheckPassed ?? true,
+              selfCheckNotes: s.selfCheckNotes ?? null,
+              userId: ctx.user.id,
+              projectId: newProjectId,
+              projectName: projectName,
+            });
+            searchesImported++;
+          } catch (err) {
+            console.error("[projects.import] search insert failed:", err);
+          }
+        }
+      }
+
+      await auditLog({
+        userId: ctx.user.id,
+        userEmail: ctx.user.email ?? undefined,
+        eventType: "project_import",
+        resourceType: "project",
+        resourceId: newProjectId,
+        description: `Projekt importálva: ${projectName}`,
+        metadata: {
+          newProjectId,
+          analysesImported,
+          kbImported,
+          searchesImported,
+          requestedIncludes: {
+            analyses: input.includeAnalyses,
+            knowledgeBase: input.includeKnowledgeBase,
+            searchQueries: input.includeSearchQueries,
+          },
+        },
+      });
+
+      return {
+        success: true,
+        projectId: newProjectId,
+        analysesImported,
+        kbImported,
+        searchesImported,
+      };
+    }),
 });

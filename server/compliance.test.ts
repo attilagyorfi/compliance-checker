@@ -452,6 +452,36 @@ describe("projects router", () => {
     const caller = appRouter.createCaller(createPublicContext());
     await expect(caller.projects.export({ id: 1 })).rejects.toThrow();
   });
+
+  it("import requires authentication (UNAUTHORIZED for public context)", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(
+      caller.projects.import({
+        data: {
+          format: "compliance-checker-project-export-v1",
+          project: { name: "Test" },
+          analyses: [],
+          knowledgeBaseDocuments: [],
+          searchQueries: [],
+        },
+      })
+    ).rejects.toThrow();
+  });
+
+  it("import rejects malformed JSON (wrong format string) at the schema layer", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(
+      caller.projects.import({
+        data: {
+          // @ts-expect-error -- intentionally wrong format literal
+          format: "wrong-format",
+          project: { name: "Test" },
+        },
+      })
+    ).rejects.toThrow();
+  });
 });
 
 // ── Project members router tests (V10.A4) ─────────────────────────────────────
