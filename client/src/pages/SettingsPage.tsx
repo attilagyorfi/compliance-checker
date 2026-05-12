@@ -9,7 +9,9 @@ import { useState, useEffect } from "react";
 import {
   Settings, Save, RotateCcw, Loader2, BookOpen, Database,
   Globe, Search, Zap, Target, Sparkles, AlertCircle,
+  Sun, Moon,
 } from "lucide-react";
+import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -46,6 +48,7 @@ const SEARCH_MODE_OPTIONS: Array<{ value: SearchMode; label: string; desc: strin
 export default function SettingsPage() {
   const settingsQuery = trpc.searchSettings.get.useQuery();
   const utils = trpc.useUtils();
+  const { theme, toggleTheme } = useTheme();
 
   const [answerLength, setAnswerLength] = useState<AnswerLength>("standard");
   const [operationMode, setOperationMode] = useState<OperationMode>("accurate");
@@ -132,6 +135,42 @@ export default function SettingsPage() {
                   Alapértelmezések érvényesek
                 </Badge>
               )}
+            </div>
+
+            {/* Appearance / theme */}
+            <div className="rounded-xl border bg-surface p-4 space-y-3" style={{ borderColor: "var(--line)" }}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-text-strong">Megjelenés</p>
+                  <p className="text-xs text-text-muted mt-1">
+                    A téma a böngészőben tárolódik (localStorage), és minden eszközön külön állítható.
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 rounded-lg border p-1" style={{ borderColor: "var(--line)" }}>
+                  <button
+                    onClick={() => theme !== "light" && toggleTheme?.()}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-all ${
+                      theme === "light" ? "text-white" : "text-text-muted hover:text-text-strong"
+                    }`}
+                    style={theme === "light" ? { backgroundColor: "#7CA9D3" } : {}}
+                    aria-pressed={theme === "light"}
+                  >
+                    <Sun size={12} />
+                    Világos
+                  </button>
+                  <button
+                    onClick={() => theme !== "dark" && toggleTheme?.()}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-all ${
+                      theme === "dark" ? "text-white" : "text-text-muted hover:text-text-strong"
+                    }`}
+                    style={theme === "dark" ? { backgroundColor: "#7CA9D3" } : {}}
+                    aria-pressed={theme === "dark"}
+                  >
+                    <Moon size={12} />
+                    Sötét
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Search mode */}

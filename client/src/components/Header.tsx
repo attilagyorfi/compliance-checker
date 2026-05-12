@@ -1,7 +1,8 @@
 import { Link, useLocation } from "wouter";
-import { ClipboardList, Menu, X, BookOpen, Search, History, Database, LayoutDashboard, FolderOpen, ChevronDown, Check, Shield, Settings as SettingsIcon } from "lucide-react";
+import { ClipboardList, Menu, X, BookOpen, Search, History, Database, LayoutDashboard, FolderOpen, ChevronDown, Check, Shield, Settings as SettingsIcon, Sun, Moon } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useActiveProject } from "@/contexts/ProjectContext";
+import { useTheme } from "@/contexts/ThemeContext";
 import { trpc } from "@/lib/trpc";
 
 const LOGO_URL = "https://d2xsxph8kpxj0f.cloudfront.net/109169450/Lkoz8HcKNEz8RQmUhyV4qZ/mmernoki_logo_326d035b.webp";
@@ -15,6 +16,37 @@ const navItems = [
   { href: "/search-history", label: "Előzmények", icon: History },
   { href: "/audit", label: "Audit", icon: Shield },
 ];
+
+function ThemeToggleButton() {
+  const { theme, toggleTheme } = useTheme();
+  if (!toggleTheme) return null;
+  const isDark = theme === "dark";
+  return (
+    <button
+      onClick={toggleTheme}
+      className="flex items-center justify-center w-8 h-8 rounded text-gray-300 hover:text-white hover:bg-white/10 transition-all"
+      title={isDark ? "Világos téma" : "Sötét téma"}
+      aria-label={isDark ? "Váltás világos témára" : "Váltás sötét témára"}
+    >
+      {isDark ? <Sun size={15} /> : <Moon size={15} />}
+    </button>
+  );
+}
+
+function MobileThemeRow() {
+  const { theme, toggleTheme } = useTheme();
+  if (!toggleTheme) return null;
+  const isDark = theme === "dark";
+  return (
+    <button
+      onClick={toggleTheme}
+      className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-gray-300 hover:text-white transition-colors"
+    >
+      {isDark ? <Sun size={16} /> : <Moon size={16} />}
+      {isDark ? "Világos téma" : "Sötét téma"}
+    </button>
+  );
+}
 
 function ActiveProjectSelector() {
   const { activeProjectId, setActiveProjectId, clearActiveProject } = useActiveProject();
@@ -163,9 +195,10 @@ export default function Header() {
             })}
           </nav>
 
-          {/* Active project selector + Settings icon — desktop only */}
+          {/* Active project selector + Theme toggle + Settings icon — desktop only */}
           <div className="hidden md:flex items-center gap-2 ml-2">
             <ActiveProjectSelector />
+            <ThemeToggleButton />
             <Link
               href="/settings"
               className={`flex items-center justify-center w-8 h-8 rounded transition-all ${
@@ -225,6 +258,7 @@ export default function Header() {
               <SettingsIcon size={16} />
               Beállítások
             </Link>
+            <MobileThemeRow />
           </div>
         )}
       </div>
