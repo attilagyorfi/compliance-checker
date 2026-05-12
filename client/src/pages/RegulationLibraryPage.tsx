@@ -11,7 +11,7 @@ import { useState } from "react";
 import {
   BookOpen, Plus, Trash2, RefreshCw, Sparkles, Loader2, Search,
   Calendar, Link as LinkIcon, AlertTriangle, CheckCircle2, Info,
-  FileText, Database, Cpu,
+  FileText, Database, Cpu, RotateCcw, Archive,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -178,6 +178,7 @@ interface SourceRow {
   syncStatus: "ok" | "error" | "pending" | "never" | null;
   lastSyncError: string | null;
   isActive: boolean;
+  deletedAt?: Date | string | null;
   createdAt: Date | string;
 }
 
@@ -219,8 +220,29 @@ function SourceCard({
     onError: (err) => toast.error(`Törlés sikertelen: ${err.message}`),
   });
 
+  const restoreMut = trpc.regulationSources.restore.useMutation({
+    onSuccess: () => {
+      toast.success("Jogszabály-forrás visszaállítva");
+      onChanged();
+    },
+    onError: (err) => toast.error(`Visszaállítás sikertelen: ${err.message}`),
+  });
+
+  const permanentDeleteMut = trpc.regulationSources.permanentDelete.useMutation({
+    onSuccess: () => {
+      toast.success("Véglegesen törölve");
+      onChanged();
+    },
+    onError: (err) => toast.error(`Végleges törlés sikertelen: ${err.message}`),
+  });
+
+  const isDeleted = source.deletedAt != null;
+
   return (
-    <div className="rounded-xl border bg-surface overflow-hidden transition-shadow hover:shadow-sm" style={{ borderColor: "var(--line)" }}>
+    <div
+      className={`rounded-xl border overflow-hidden transition-shadow hover:shadow-sm ${isDeleted ? "bg-page-bg-subtle" : "bg-surface"}`}
+      style={{ borderColor: "var(--line)", opacity: isDeleted ? 0.75 : 1 }}
+    >
       <div className="p-4">
         <div className="flex items-start gap-3">
           <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-page-bg-subtle border border-line-subtle flex items-center justify-center">
@@ -297,6 +319,38 @@ function SourceCard({
             )}
 
             <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t" style={{ borderColor: "var(--line-subtle)" }}>
+              {isDeleted ? (
+                <>
+                  <span className="text-xs text-amber-700 flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 mr-1">
+                    <Archive size={10} /> Törölt
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1.5"
+                    onClick={() => restoreMut.mutate({ id: source.id })}
+                    disabled={restoreMut.isPending}
+                  >
+                    {restoreMut.isPending ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} />}
+                    Visszaállítás
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs gap-1.5 text-text-faint hover:text-red-600 ml-auto"
+                    onClick={() => {
+                      if (confirm(`VÉGLEGESEN törölöd a "${source.name}" forrást? Ez nem visszavonható.`)) {
+                        permanentDeleteMut.mutate({ id: source.id });
+                      }
+                    }}
+                    disabled={permanentDeleteMut.isPending}
+                  >
+                    {permanentDeleteMut.isPending ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
+                    Végleges törlés
+                  </Button>
+                </>
+              ) : (
+                <>
               <Button
                 size="sm"
                 variant="outline"
@@ -324,7 +378,7 @@ function SourceCard({
                 variant="ghost"
                 className="h-7 text-xs gap-1.5 text-text-faint hover:text-red-600 ml-auto"
                 onClick={() => {
-                  if (confirm(`Biztosan törlöd a "${source.name}" forrást?`)) {
+                  if (confirm(`Biztosan törlöd a "${source.name}" forrást? A művelet visszavonható (törölt forrásként marad a Kuka-szűrőben).`)) {
                     deleteMut.mutate({ id: source.id });
                   }
                 }}
@@ -333,6 +387,8 @@ function SourceCard({
                 {deleteMut.isPending ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
                 Törlés
               </Button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -346,8 +402,9 @@ function SourceCard({
 export default function RegulationLibraryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeDiscipline, setActiveDiscipline] = useState("osszes");
+  const [showDeleted, setShowDeleted] = useState(false);
 
-  const listQuery = trpc.regulationSources.list.useQuery();
+  const listQuery = trpc.regulationSources.list.useQuery({ includeDeleted: showDeleted });
   const countsQuery = trpc.regulationSources.getEmbeddingCounts.useQuery();
   const utils = trpc.useUtils();
 
@@ -439,6 +496,16 @@ export default function RegulationLibraryPage() {
               Mind frissítése (30+ nap)
             </Button>
           )}
+          <Button
+            variant={showDeleted ? "default" : "outline"}
+            className="gap-2 text-sm h-9"
+            style={showDeleted ? { backgroundColor: "#7CA9D3" } : {}}
+            onClick={() => setShowDeleted((v) => !v)}
+            title={showDeleted ? "Csak aktív források" : "Törölt források is mutassa"}
+          >
+            <Archive size={14} />
+            {showDeleted ? "Aktívak + törölt" : "Csak aktívak"}
+          </Button>
         </div>
 
         {/* Discipline filter */}

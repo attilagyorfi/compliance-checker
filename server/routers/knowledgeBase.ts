@@ -3,18 +3,20 @@ import { TRPCError } from "@trpc/server";
 import { publicProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { knowledgeBaseDocuments, chunkEmbeddings } from "../../drizzle/schema";
-import { and, eq, inArray, like, or, desc, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, like, or, desc, sql } from "drizzle-orm";
 import { storagePut } from "../storage";
 import { extractDocumentText, type ExtractionResult } from "../documentExtractor";
 import { chunkAndEmbed } from "../embeddings";
 import { nanoid } from "nanoid";
 
 export const knowledgeBaseRouter = router({
-  // List all documents, optionally filtered by search query and/or project
+  // List all documents, optionally filtered by search query, project, and
+  // (V11.7) soft-delete status. Default: only non-deleted rows.
   list: publicProcedure
     .input(z.object({
       search: z.string().optional(),
       projectId: z.number().int().positive().optional(),
+      includeDeleted: z.boolean().default(false),
     }))
     .query(async ({ input }) => {
       const db = await getDb();
@@ -35,13 +37,30 @@ export const knowledgeBaseRouter = router({
       if (input.projectId !== undefined) {
         filters.push(eq(knowledgeBaseDocuments.projectId, input.projectId));
       }
+      if (!input.includeDeleted) {
+        filters.push(isNull(knowledgeBaseDocuments.deletedAt));
+      }
 
       const baseQuery = db.select().from(knowledgeBaseDocuments);
       const filtered = filters.length > 0
         ? baseQuery.where(filters.length === 1 ? filters[0] : and(...filters))
         : baseQuery;
 
-      return filtered.orderBy(desc(knowledgeBaseDocuments.uploadedAt));
+      try {
+        return await filtered.orderBy(desc(knowledgeBaseDocuments.uploadedAt));
+      } catch (err) {
+        // Fallback if the deletedAt column isn't deployed yet — drop the
+        // soft-delete filter and re-run.
+        console.warn("[knowledgeBase.list] deletedAt column missing? Falling back:", err);
+        const nonDeletedFilters = filters.filter((_, i) =>
+          // We added the deletedAt filter last, so drop the last filter on retry
+          i !== filters.length - 1 || input.includeDeleted
+        );
+        const fallback = nonDeletedFilters.length > 0
+          ? db.select().from(knowledgeBaseDocuments).where(nonDeletedFilters.length === 1 ? nonDeletedFilters[0] : and(...nonDeletedFilters))
+          : db.select().from(knowledgeBaseDocuments);
+        return fallback.orderBy(desc(knowledgeBaseDocuments.uploadedAt));
+      }
     }),
 
   // Upload one or more documents
@@ -114,29 +133,36 @@ export const knowledgeBaseRouter = router({
       return { uploaded: results.length };
     }),
 
-  // Delete a document
+  // Soft-delete a document (V11.7). Cascades chunk_embeddings cleanup so
+  // semantic search doesn't return phantom results from deleted docs — on
+  // restore, the user must regenerate embeddings.
   delete: publicProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("Adatbázis nem elérhető");
-      await db.delete(knowledgeBaseDocuments).where(eq(knowledgeBaseDocuments.id, input.id));
-      // Best-effort: also drop any cached chunk embeddings for this doc
+      try {
+        await db
+          .update(knowledgeBaseDocuments)
+          .set({ deletedAt: new Date() })
+          .where(eq(knowledgeBaseDocuments.id, input.id));
+      } catch (err) {
+        console.warn("[knowledgeBase.delete] soft-delete path failed, falling back to hard delete:", err);
+        await db.delete(knowledgeBaseDocuments).where(eq(knowledgeBaseDocuments.id, input.id));
+      }
       await db
         .delete(chunkEmbeddings)
         .where(and(eq(chunkEmbeddings.sourceType, "knowledge_base"), eq(chunkEmbeddings.sourceId, input.id)));
       return { success: true };
     }),
 
-  // Bulk delete (V11.4 (c)) — atomic batch removal of multiple documents.
-  // Cascades chunk_embeddings cleanup so semantic search stays consistent.
+  // Bulk soft-delete (V11.7) — atomic batch over multiple docs.
   deleteMany: publicProcedure
     .input(z.object({ ids: z.array(z.number().int().positive()).min(1).max(500) }))
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Adatbázis nem elérhető" });
 
-      // Confirm how many actually existed before deletion (for accurate count + audit).
       const existing = await db
         .select({ id: knowledgeBaseDocuments.id })
         .from(knowledgeBaseDocuments)
@@ -146,7 +172,15 @@ export const knowledgeBaseRouter = router({
         return { deletedCount: 0, requestedCount: input.ids.length };
       }
 
-      await db.delete(knowledgeBaseDocuments).where(inArray(knowledgeBaseDocuments.id, existingIds));
+      try {
+        await db
+          .update(knowledgeBaseDocuments)
+          .set({ deletedAt: new Date() })
+          .where(inArray(knowledgeBaseDocuments.id, existingIds));
+      } catch (err) {
+        console.warn("[knowledgeBase.deleteMany] soft-delete fallback to hard:", err);
+        await db.delete(knowledgeBaseDocuments).where(inArray(knowledgeBaseDocuments.id, existingIds));
+      }
       await db
         .delete(chunkEmbeddings)
         .where(
@@ -157,6 +191,36 @@ export const knowledgeBaseRouter = router({
         );
 
       return { deletedCount: existingIds.length, requestedCount: input.ids.length };
+    }),
+
+  /**
+   * Restore a soft-deleted document. Embeddings need to be regenerated separately.
+   */
+  restore: publicProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Adatbázis nem elérhető" });
+      await db
+        .update(knowledgeBaseDocuments)
+        .set({ deletedAt: null })
+        .where(eq(knowledgeBaseDocuments.id, input.id));
+      return { success: true };
+    }),
+
+  /**
+   * Permanent (hard) delete — kept for an admin "empty trash" flow.
+   */
+  permanentDelete: publicProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Adatbázis nem elérhető" });
+      await db.delete(knowledgeBaseDocuments).where(eq(knowledgeBaseDocuments.id, input.id));
+      await db
+        .delete(chunkEmbeddings)
+        .where(and(eq(chunkEmbeddings.sourceType, "knowledge_base"), eq(chunkEmbeddings.sourceId, input.id)));
+      return { success: true };
     }),
 
   /**

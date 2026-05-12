@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from "react";
 import {
   Database, Upload, FileText, Trash2, Search, Loader2,
   FileSpreadsheet, File, X, Tag, Calendar, HardDrive, CheckCircle2,
-  Sparkles, CheckSquare, Square, MinusSquare,
+  Sparkles, CheckSquare, Square, MinusSquare, RotateCcw, Archive,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -86,14 +86,18 @@ function UploadZone({ onFilesSelected }: { onFilesSelected: (files: File[]) => v
 function DocumentCard({
   doc,
   onDelete,
+  onRestore,
+  onPermanentDelete,
   embeddingCount,
   onRegenerateEmbeddings,
   isRegenerating,
   selected,
   onToggleSelect,
 }: {
-  doc: { id: number; name: string; originalName: string; fileType: string; fileSize: number; description: string | null; tags: string | null; uploadedAt: Date };
+  doc: { id: number; name: string; originalName: string; fileType: string; fileSize: number; description: string | null; tags: string | null; uploadedAt: Date; deletedAt?: Date | string | null };
   onDelete: (id: number) => void;
+  onRestore: (id: number) => void;
+  onPermanentDelete: (id: number, name: string) => void;
   embeddingCount: number;
   onRegenerateEmbeddings: (id: number) => void;
   isRegenerating: boolean;
@@ -101,11 +105,12 @@ function DocumentCard({
   onToggleSelect: (id: number) => void;
 }) {
   const tags = doc.tags ? doc.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
+  const isDeleted = doc.deletedAt != null;
 
   return (
     <div
-      className={`rounded-xl border bg-surface p-4 flex items-start gap-3 hover:shadow-sm transition-all ${selected ? "ring-2" : ""}`}
-      style={{ borderColor: selected ? "#7CA9D3" : "#e5e7eb", boxShadow: selected ? "inset 0 0 0 1px #7CA9D3" : undefined }}
+      className={`rounded-xl border p-4 flex items-start gap-3 hover:shadow-sm transition-all ${isDeleted ? "bg-page-bg-subtle" : "bg-surface"} ${selected ? "ring-2" : ""}`}
+      style={{ borderColor: selected ? "#7CA9D3" : "var(--line)", boxShadow: selected ? "inset 0 0 0 1px #7CA9D3" : undefined, opacity: isDeleted ? 0.75 : 1 }}
     >
       <button
         onClick={() => onToggleSelect(doc.id)}
@@ -138,6 +143,11 @@ function DocumentCard({
               <Sparkles size={9} /> {embeddingCount} chunk
             </span>
           )}
+          {isDeleted && (
+            <span className="text-xs text-amber-700 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-50">
+              <Archive size={9} /> Törölt
+            </span>
+          )}
           {tags.map(tag => (
             <Badge key={tag} variant="secondary" className="text-xs px-1.5 py-0 h-5">
               <Tag size={9} className="mr-1" />
@@ -147,21 +157,42 @@ function DocumentCard({
         </div>
       </div>
       <div className="flex flex-col gap-1.5">
-        <button
-          onClick={() => onRegenerateEmbeddings(doc.id)}
-          className="flex-shrink-0 p-1.5 rounded-lg text-text-faint hover:text-purple-600 hover:bg-purple-50 transition-colors disabled:opacity-50"
-          title={embeddingCount > 0 ? "Embeddings újragenerálása" : "Embeddings generálása szemantikus kereséshez"}
-          disabled={isRegenerating}
-        >
-          {isRegenerating ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
-        </button>
-        <button
-          onClick={() => onDelete(doc.id)}
-          className="flex-shrink-0 p-1.5 rounded-lg text-text-faint hover:text-red-500 hover:bg-red-50 transition-colors"
-          title="Törlés"
-        >
-          <Trash2 size={15} />
-        </button>
+        {isDeleted ? (
+          <>
+            <button
+              onClick={() => onRestore(doc.id)}
+              className="flex-shrink-0 p-1.5 rounded-lg text-text-faint hover:text-green-600 hover:bg-green-50 transition-colors"
+              title="Visszaállítás"
+            >
+              <RotateCcw size={15} />
+            </button>
+            <button
+              onClick={() => onPermanentDelete(doc.id, doc.name || doc.originalName)}
+              className="flex-shrink-0 p-1.5 rounded-lg text-text-faint hover:text-red-500 hover:bg-red-50 transition-colors"
+              title="Végleges törlés (nem visszavonható)"
+            >
+              <Trash2 size={15} />
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={() => onRegenerateEmbeddings(doc.id)}
+              className="flex-shrink-0 p-1.5 rounded-lg text-text-faint hover:text-purple-600 hover:bg-purple-50 transition-colors disabled:opacity-50"
+              title={embeddingCount > 0 ? "Embeddings újragenerálása" : "Embeddings generálása szemantikus kereséshez"}
+              disabled={isRegenerating}
+            >
+              {isRegenerating ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+            </button>
+            <button
+              onClick={() => onDelete(doc.id)}
+              className="flex-shrink-0 p-1.5 rounded-lg text-text-faint hover:text-red-500 hover:bg-red-50 transition-colors"
+              title="Törlés (visszaállítható)"
+            >
+              <Trash2 size={15} />
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -240,11 +271,13 @@ export default function KnowledgeBasePage() {
   const [uploading, setUploading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkRegenProgress, setBulkRegenProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
+  const [showDeleted, setShowDeleted] = useState(false);
 
   const { activeProjectId } = useActiveProject();
   const { data: documents, isLoading, refetch } = trpc.knowledgeBase.list.useQuery({
     search: searchQuery,
     projectId: activeProjectId ?? undefined,
+    includeDeleted: showDeleted,
   });
   const countsQuery = trpc.knowledgeBase.getEmbeddingCounts.useQuery();
   const utils = trpc.useUtils();
@@ -263,11 +296,27 @@ export default function KnowledgeBasePage() {
 
   const deleteMutation = trpc.knowledgeBase.delete.useMutation({
     onSuccess: () => {
-      toast.success("Dokumentum törölve");
+      toast.success("Dokumentum törölve (visszaállítható)");
       refetch();
       utils.knowledgeBase.getEmbeddingCounts.invalidate();
     },
     onError: (err) => toast.error(`Törlési hiba: ${err.message}`),
+  });
+
+  const restoreMutation = trpc.knowledgeBase.restore.useMutation({
+    onSuccess: () => {
+      toast.success("Dokumentum visszaállítva");
+      refetch();
+    },
+    onError: (err) => toast.error(`Visszaállítási hiba: ${err.message}`),
+  });
+
+  const permanentDeleteMutation = trpc.knowledgeBase.permanentDelete.useMutation({
+    onSuccess: () => {
+      toast.success("Véglegesen törölve");
+      refetch();
+    },
+    onError: (err) => toast.error(`Végleges törlés sikertelen: ${err.message}`),
   });
 
   const [embedRegeneratingId, setEmbedRegeneratingId] = useState<number | null>(null);
@@ -500,14 +549,27 @@ export default function KnowledgeBasePage() {
                 <span className="ml-2 text-sm font-normal text-text-faint">({documents.length} db)</span>
               )}
             </h2>
-            <div className="relative w-64">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint" />
-              <Input
-                placeholder="Keresés a dokumentumokban..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="pl-8 h-9 text-sm border-line"
-              />
+            <div className="flex items-center gap-2">
+              <Button
+                variant={showDeleted ? "default" : "outline"}
+                size="sm"
+                className="gap-2 h-9 text-xs"
+                style={showDeleted ? { backgroundColor: "#7CA9D3" } : {}}
+                onClick={() => setShowDeleted((v) => !v)}
+                title={showDeleted ? "Csak aktív dokumentumok" : "Törölt dokumentumok is mutassa"}
+              >
+                <Archive size={13} />
+                {showDeleted ? "Aktívak + törölt" : "Csak aktívak"}
+              </Button>
+              <div className="relative w-64">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint" />
+                <Input
+                  placeholder="Keresés a dokumentumokban..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="pl-8 h-9 text-sm border-line"
+                />
+              </div>
             </div>
           </div>
 
@@ -600,8 +662,14 @@ export default function KnowledgeBasePage() {
                   doc={doc}
                   onDelete={(id) => {
                     const name = doc.name || doc.originalName;
-                    if (confirm(`Biztosan törlöd a(z) "${name}" dokumentumot a Tudástárból? A művelet visszavonhatatlan.`)) {
+                    if (confirm(`Biztosan törlöd a(z) "${name}" dokumentumot a Tudástárból? A művelet visszavonható (törölt-szűrőben visszaállítható).`)) {
                       deleteMutation.mutate({ id });
+                    }
+                  }}
+                  onRestore={(id) => restoreMutation.mutate({ id })}
+                  onPermanentDelete={(id, name) => {
+                    if (confirm(`VÉGLEGESEN törölöd a(z) "${name}" dokumentumot? Ez nem visszavonható.`)) {
+                      permanentDeleteMutation.mutate({ id });
                     }
                   }}
                   embeddingCount={countMap.get(doc.id) ?? 0}

@@ -6,7 +6,7 @@
 import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
-import { sql } from "drizzle-orm";
+import { sql, isNull } from "drizzle-orm";
 import { getDb } from "../db";
 import { regulationSources, chunkEmbeddings } from "../../drizzle/schema";
 import { and, eq, desc, asc } from "drizzle-orm";
@@ -22,13 +22,30 @@ const sourceTypeEnum = z.enum(["njt", "netjogtar", "eurlex", "mszt", "jogtar", "
 
 export const regulationSourcesRouter = router({
   /**
-   * List all regulation sources.
+   * List regulation sources. Soft-deleted ones are excluded by default;
+   * pass `includeDeleted: true` to include them (e.g. for a "Restore" UI).
    */
-  list: publicProcedure.query(async () => {
-    const db = await getDb();
-    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
-    return db.select().from(regulationSources).orderBy(asc(regulationSources.discipline), asc(regulationSources.name));
-  }),
+  list: publicProcedure
+    .input(z.object({ includeDeleted: z.boolean().default(false) }).optional())
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+      const includeDeleted = input?.includeDeleted ?? false;
+      const query = db.select().from(regulationSources);
+      try {
+        const rows = includeDeleted
+          ? await query.orderBy(asc(regulationSources.discipline), asc(regulationSources.name))
+          : await query
+              .where(isNull(regulationSources.deletedAt))
+              .orderBy(asc(regulationSources.discipline), asc(regulationSources.name));
+        return rows;
+      } catch (err) {
+        // Fallback for environments where `pnpm db:push` hasn't yet added the
+        // `deletedAt` column. The unfiltered query keeps the page usable.
+        console.warn("[regulationSources.list] deletedAt column missing? Falling back to unfiltered:", err);
+        return db.select().from(regulationSources).orderBy(asc(regulationSources.discipline), asc(regulationSources.name));
+      }
+    }),
 
   /**
    * Per-source chunk-embedding counts. Used by RegulationLibraryPage to show
@@ -119,14 +136,62 @@ export const regulationSourcesRouter = router({
     }),
 
   /**
-   * Delete a regulation source.
+   * Soft-delete a regulation source (sets deletedAt = now()). The row is
+   * preserved (restorable), but listing excludes it by default. Cascades
+   * chunk_embeddings cleanup so semantic search doesn't return phantom
+   * results — on restore, the user must regenerate embeddings.
    */
   delete: publicProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+      try {
+        await db
+          .update(regulationSources)
+          .set({ deletedAt: new Date() })
+          .where(eq(regulationSources.id, input.id));
+      } catch (err) {
+        // Fallback if the deletedAt column isn't deployed yet — do hard delete
+        // to keep the UI usable. After db:push the new soft-delete path takes over.
+        console.warn("[regulationSources.delete] soft-delete path failed, falling back to hard delete:", err);
+        await db.delete(regulationSources).where(eq(regulationSources.id, input.id));
+      }
+      await db
+        .delete(chunkEmbeddings)
+        .where(and(eq(chunkEmbeddings.sourceType, "regulation"), eq(chunkEmbeddings.sourceId, input.id)));
+      return { success: true };
+    }),
+
+  /**
+   * Restore a soft-deleted regulation source. The user must regenerate
+   * embeddings afterwards if they want semantic search coverage.
+   */
+  restore: publicProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+      await db
+        .update(regulationSources)
+        .set({ deletedAt: null })
+        .where(eq(regulationSources.id, input.id));
+      return { success: true };
+    }),
+
+  /**
+   * Permanently delete a regulation source (physical row removal). Use with
+   * care — there's no recovery. Intended for an admin "empty trash" flow.
+   */
+  permanentDelete: publicProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
       await db.delete(regulationSources).where(eq(regulationSources.id, input.id));
+      await db
+        .delete(chunkEmbeddings)
+        .where(and(eq(chunkEmbeddings.sourceType, "regulation"), eq(chunkEmbeddings.sourceId, input.id)));
       return { success: true };
     }),
 

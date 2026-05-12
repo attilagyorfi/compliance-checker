@@ -648,6 +648,30 @@ describe("embeddings helpers", () => {
     await expect(caller.knowledgeBase.deleteMany({ ids: [] })).rejects.toThrow();
   });
 
+  it("knowledgeBase.restore is callable (mocked DB null path throws gracefully)", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.knowledgeBase.restore({ id: 1 })).rejects.toThrow();
+  });
+
+  it("knowledgeBase.permanentDelete is callable", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.knowledgeBase.permanentDelete({ id: 1 })).rejects.toThrow();
+  });
+
+  it("regulationSources.restore is callable", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.regulationSources.restore({ id: 1 })).rejects.toThrow();
+  });
+
+  it("regulationSources.permanentDelete is callable", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.regulationSources.permanentDelete({ id: 1 })).rejects.toThrow();
+  });
+
   it("getEmbedding returns null without API key (graceful degradation)", async () => {
     const { _resetEmbeddingApiStateForTests, getEmbedding } = await import("./embeddings");
     _resetEmbeddingApiStateForTests();

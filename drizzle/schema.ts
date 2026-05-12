@@ -139,6 +139,8 @@ export const regulationSources = mysqlTable("regulation_sources", {
   lastSyncError: text("lastSyncError"),
   s3Key: varchar("s3Key", { length: 512 }),
   isActive: boolean("isActive").default(true).notNull(),
+  /** Soft-delete timestamp (V11.7). Listing queries default to filtering on `IS NULL`. */
+  deletedAt: timestamp("deletedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -280,6 +282,8 @@ export const knowledgeBaseDocuments = mysqlTable("knowledge_base_documents", {
   description: text("description"),
   tags: text("tags"),
   projectId: int("projectId"),
+  /** Soft-delete timestamp (V11.7). */
+  deletedAt: timestamp("deletedAt"),
   uploadedAt: timestamp("uploadedAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
