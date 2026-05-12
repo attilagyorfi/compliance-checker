@@ -31,7 +31,7 @@ const steps = [
 
 export default function Home() {
   return (
-    <div className="min-h-screen flex flex-col bg-white">
+    <div className="min-h-screen flex flex-col bg-surface">
       <Header />
 
       {/* Hero */}
@@ -73,7 +73,7 @@ export default function Home() {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="gap-2 font-semibold border-white/40 text-white hover:bg-white/10"
+                  className="gap-2 font-semibold border-white/40 text-white hover:bg-surface/10"
                 >
                   <ClipboardList size={18} />
                   Korábbi riportok
@@ -85,14 +85,14 @@ export default function Home() {
       </section>
 
       {/* Features */}
-      <section className="py-20 bg-white">
+      <section className="py-20 bg-surface">
         <div className="container">
           <div className="text-center mb-14">
-            <h2 className="text-3xl font-bold mb-3" style={{ color: "#161718" }}>
+            <h2 className="text-3xl font-bold mb-3" style={{ color: "var(--text-strong)" }}>
               Rendszer képességei
             </h2>
             <div className="w-12 h-0.5 mx-auto mb-4" style={{ backgroundColor: "#7CA9D3" }} />
-            <p className="text-gray-500 max-w-xl mx-auto">
+            <p className="text-text-muted max-w-xl mx-auto">
               Az M Mérnöki Iroda Kft. számára fejlesztett pilot rendszer végponttól végpontig kezeli a tervmegfelelőség-ellenőrzés folyamatát.
             </p>
           </div>
@@ -100,8 +100,8 @@ export default function Home() {
             {features.map(({ icon: Icon, title, desc }) => (
               <div
                 key={title}
-                className="p-8 rounded-lg border bg-white shadow-sm hover:shadow-md transition-shadow group"
-                style={{ borderColor: "#e5e7eb" }}
+                className="p-8 rounded-lg border bg-surface shadow-sm hover:shadow-md transition-shadow group"
+                style={{ borderColor: "var(--line)" }}
               >
                 <div
                   className="w-12 h-12 rounded-lg flex items-center justify-center mb-5 transition-colors"
@@ -109,10 +109,10 @@ export default function Home() {
                 >
                   <Icon size={22} style={{ color: "#7CA9D3" }} />
                 </div>
-                <h3 className="font-semibold text-lg mb-2" style={{ color: "#161718" }}>
+                <h3 className="font-semibold text-lg mb-2" style={{ color: "var(--text-strong)" }}>
                   {title}
                 </h3>
-                <p className="text-gray-500 text-sm leading-relaxed">{desc}</p>
+                <p className="text-text-muted text-sm leading-relaxed">{desc}</p>
               </div>
             ))}
           </div>
@@ -120,10 +120,10 @@ export default function Home() {
       </section>
 
       {/* How it works */}
-      <section className="py-20" style={{ backgroundColor: "#F8FAFC" }}>
+      <section className="py-20" style={{ backgroundColor: "var(--page-bg-subtle)" }}>
         <div className="container">
           <div className="text-center mb-14">
-            <h2 className="text-3xl font-bold mb-3" style={{ color: "#161718" }}>
+            <h2 className="text-3xl font-bold mb-3" style={{ color: "var(--text-strong)" }}>
               Hogyan működik?
             </h2>
             <div className="w-12 h-0.5 mx-auto" style={{ backgroundColor: "#7CA9D3" }} />
@@ -137,10 +137,10 @@ export default function Home() {
                 >
                   {n}
                 </div>
-                <h3 className="font-semibold text-base mb-2" style={{ color: "#161718" }}>
+                <h3 className="font-semibold text-base mb-2" style={{ color: "var(--text-strong)" }}>
                   {title}
                 </h3>
-                <p className="text-gray-500 text-sm leading-relaxed">{desc}</p>
+                <p className="text-text-muted text-sm leading-relaxed">{desc}</p>
               </div>
             ))}
           </div>
@@ -153,7 +153,7 @@ export default function Home() {
           <h2 className="text-2xl font-bold text-white mb-3">
             Kezdje el az elemzést most
           </h2>
-          <p className="text-gray-400 mb-8 max-w-md mx-auto">
+          <p className="text-text-faint mb-8 max-w-md mx-auto">
             Töltse fel dokumentumait és kapjon részletes megfelelőségi riportot percek alatt.
           </p>
           <Link href="/search">
@@ -171,12 +171,12 @@ export default function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="py-8 border-t" style={{ borderColor: "#e5e7eb" }}>
+      <footer className="py-8 border-t" style={{ borderColor: "var(--line)" }}>
         <div className="container flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="text-sm text-gray-400">
+          <div className="text-sm text-text-faint">
             © 2026 M Mérnöki Iroda Kft. — Tervmegfelelőség-ellenőrző Pilot
           </div>
-          <div className="flex items-center gap-2 text-sm text-gray-400">
+          <div className="flex items-center gap-2 text-sm text-text-faint">
             <CheckCircle2 size={14} style={{ color: "#7CA9D3" }} />
             AI alapú megfelelőség-ellenőrzés
           </div>

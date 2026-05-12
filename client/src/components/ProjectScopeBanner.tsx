@@ -40,7 +40,11 @@ export function ProjectScopeBanner({ describe }: Props) {
   return (
     <div
       className="rounded-lg border px-3 py-2 flex items-center justify-between gap-2"
-      style={{ backgroundColor: "#f0f7fb", borderColor: "#cee0ed", color: "#1a4a6b" }}
+      style={{
+        backgroundColor: "var(--info-bg)",
+        borderColor: "var(--info-border)",
+        color: "var(--info-text)",
+      }}
     >
       <div className="flex items-center gap-2 min-w-0 flex-1 text-xs">
         <FolderOpen size={13} style={{ color: "#7CA9D3" }} />
@@ -48,7 +52,7 @@ export function ProjectScopeBanner({ describe }: Props) {
         <Link
           href={`/projects/${activeProjectId}`}
           className="underline whitespace-nowrap"
-          style={{ color: "#5a8ab8" }}
+          style={{ color: "var(--info-link)" }}
         >
           Projekt megnyitása
         </Link>
@@ -57,7 +61,7 @@ export function ProjectScopeBanner({ describe }: Props) {
         onClick={clearActiveProject}
         className="flex items-center gap-1 text-xs hover:underline whitespace-nowrap"
         title="Aktív projekt feloldása — minden adat látszódik"
-        style={{ color: "#5a8ab8" }}
+        style={{ color: "var(--info-link)" }}
       >
         <X size={12} />
         Feloldás

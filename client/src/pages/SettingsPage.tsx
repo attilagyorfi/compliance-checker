@@ -90,18 +90,18 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-white">
+    <div className="min-h-screen flex flex-col bg-surface">
       <Header />
 
-      <div className="border-b" style={{ borderColor: "#e5e7eb", backgroundColor: "#F8FAFC" }}>
+      <div className="border-b" style={{ borderColor: "var(--line)", backgroundColor: "var(--page-bg-subtle)" }}>
         <div className="container py-8">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#7CA9D3" }}>
               <Settings size={16} className="text-white" />
             </div>
-            <h1 className="text-2xl font-bold" style={{ color: "#161718" }}>Beállítások</h1>
+            <h1 className="text-2xl font-bold" style={{ color: "var(--text-strong)" }}>Beállítások</h1>
           </div>
-          <p className="text-gray-500 text-sm ml-11">
+          <p className="text-text-muted text-sm ml-11">
             A Szabványkereső személyes alapértelmezései. Csak a saját kereséseidet befolyásolják.
           </p>
         </div>
@@ -119,7 +119,7 @@ export default function SettingsPage() {
             </div>
           </div>
         ) : settingsQuery.isLoading ? (
-          <div className="flex items-center justify-center py-16 text-gray-400">
+          <div className="flex items-center justify-center py-16 text-text-faint">
             <Loader2 className="animate-spin mr-2" size={20} /> Betöltés…
           </div>
         ) : (
@@ -182,12 +182,12 @@ export default function SettingsPage() {
                   {SEARCH_MODE_OPTIONS.map((o) => (
                     <SelectItem key={o.value} value={o.value}>
                       <span className="font-medium">{o.label}</span>
-                      <span className="text-xs text-gray-400 ml-2">{o.desc}</span>
+                      <span className="text-xs text-text-faint ml-2">{o.desc}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-text-muted">
                 {SEARCH_MODE_OPTIONS.find((o) => o.value === searchMode)?.desc}
               </p>
             </div>
@@ -203,7 +203,7 @@ export default function SettingsPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-text-muted">
                 {OPERATION_MODE_OPTIONS.find((o) => o.value === operationMode)?.desc}
               </p>
             </div>
@@ -219,13 +219,13 @@ export default function SettingsPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-text-muted">
                 {ANSWER_LENGTH_OPTIONS.find((o) => o.value === answerLength)?.desc}
               </p>
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-2 pt-4 border-t" style={{ borderColor: "#e5e7eb" }}>
+            <div className="flex items-center gap-2 pt-4 border-t" style={{ borderColor: "var(--line)" }}>
               <Button
                 onClick={handleSave}
                 disabled={upsertMut.isPending}
@@ -248,7 +248,7 @@ export default function SettingsPage() {
               )}
             </div>
 
-            <div className="rounded-lg border bg-gray-50 px-3 py-2 text-xs text-gray-600" style={{ borderColor: "#e5e7eb" }}>
+            <div className="rounded-lg border bg-page-bg-subtle px-3 py-2 text-xs text-text-default" style={{ borderColor: "var(--line)" }}>
               <p>
                 A Szabványkereső oldalon ezek a beállítások betöltődnek alapértelmezésként.
                 Egy adott kereséshez ott szabadon felülírhatod őket — az itt mentett értékek a következő keresésnél

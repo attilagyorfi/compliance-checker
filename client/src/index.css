@@ -121,6 +121,12 @@
   --text-default: oklch(0.30 0.01 265);    /* body text */
   --text-muted: oklch(0.55 0.015 265);     /* muted / secondary text */
   --text-faint: oklch(0.70 0.01 265);      /* very subtle text (timestamps, hints) */
+
+  /* Informational banner (e.g. ProjectScopeBanner) — semantic info tones */
+  --info-bg: oklch(0.97 0.02 220);
+  --info-border: oklch(0.88 0.04 220);
+  --info-text: oklch(0.35 0.07 220);
+  --info-link: oklch(0.50 0.10 220);
 }
 
 .dark {
@@ -171,6 +177,12 @@
   --text-default: oklch(0.85 0.005 265);
   --text-muted: oklch(0.65 0.015 265);
   --text-faint: oklch(0.50 0.01 265);
+
+  /* Informational banner — dark variants */
+  --info-bg: oklch(0.25 0.03 220);
+  --info-border: oklch(0.34 0.05 220);
+  --info-text: oklch(0.85 0.04 220);
+  --info-link: oklch(0.75 0.08 220);
 }
 
 @layer base {

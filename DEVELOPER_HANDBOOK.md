@@ -1,10 +1,17 @@
 # M Mérnöki – Tervmegfelelőség-ellenőrző: Fejlesztői Kézikönyv
 
-> **Verzió:** V11.3 (2026. május 7.)
+> **Verzió:** V11.5 (2026. május 7.)
 > **Projekt:** `compliance-checker`
 > **Élő URL:** https://compliance-lkoz8hck.manus.space
 > **Stack:** React 19 + Vite 7 + Express 4 + tRPC 11 + Drizzle ORM + MySQL/TiDB
 > **Platform:** Manus WebDev (hosting + auth + DB + S3 storage)
+>
+> **V11.5 változásnapló (V11.4-hez képest):**
+> - **Teljes dark mode (V11.5):** új `.dark { ... }` CSS-blokk az `index.css`-ben OKLCH-tokenekkel a Tailwind 4 alapváltozóira (background, foreground, card, popover, secondary, muted, accent, destructive, border, input, ring, sidebar.*, chart.*) + 11 page-level neutrál CSS-var (`--page-bg`, `--surface`, `--line`, `--text-strong/default/muted/faint` stb.) és 4 info-banner változó. A `@theme inline` aliasokon át Tailwind utility-k (`bg-surface`, `text-text-muted`, `border-line` stb.) automatikusan swap-elnek. Sed-batch refactor 16 page-fájlban: `bg-white`, `bg-gray-50/100`, `border-gray-200/100`, `text-gray-{300..900}` és inline `style={{ borderColor: "#e5e7eb" }}` típusú konstansok mind CSS-var-driven utility-re/value-ra. Brand-színek (#7CA9D3) és szemantikus state-színek (red/amber/green megfelelőségi badge-ek) szándékosan érintetlenek.
+> - **Toggle UI:** Header-ben Sun/Moon ikon mind asztali, mind mobil nézetben. SettingsPage-en külön "Megjelenés" kártya Világos/Sötét gombpárral. `App.tsx` `ThemeProvider switchable={true}`, választás localStorage-ban perzisztálva.
+>
+> **V11.4 változásnapló (V11.3.1-hez képest):**
+> - **Tudástár bulk-műveletek (V11.4.c):** új `knowledgeBase.deleteMany` endpoint atomic batch törléshez. `KnowledgeBasePage`-en checkbox-os kijelölési modell + sticky bulk action bar (Embeddings tömeges generálása szekvenciális loop-pal és progress-counter-ral, tömeges törlés egy kérésben, Mégse).
 >
 > **V11.3 változásnapló (V11.2-höz képest):**
 > - **Polish (V11.2.1):** ActiveProjectSelector és ProjectScopeBanner auto-clear ha a stored aktív-projekt eltűnt (törölve más böngészőben/usernél). KnowledgeBasePage upload onSuccess invalidate-eli a getEmbeddingCounts-t.

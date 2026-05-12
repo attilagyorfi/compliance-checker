@@ -33,8 +33,8 @@ function AnalysisCard({ analysis }: { analysis: Analysis }) {
   return (
     <Link href={`/result/${analysis.id}`}>
       <div
-        className="rounded-lg border bg-white p-5 hover:shadow-md transition-all cursor-pointer group"
-        style={{ borderColor: "#e5e7eb" }}
+        className="rounded-lg border bg-surface p-5 hover:shadow-md transition-all cursor-pointer group"
+        style={{ borderColor: "var(--line)" }}
       >
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
@@ -50,10 +50,10 @@ function AnalysisCard({ analysis }: { analysis: Analysis }) {
                 {cfg.label}
               </span>
             </div>
-            <h3 className="font-semibold text-sm text-gray-900 truncate mb-1 group-hover:text-[#7CA9D3] transition-colors">
+            <h3 className="font-semibold text-sm text-text-strong truncate mb-1 group-hover:text-[#7CA9D3] transition-colors">
               {analysis.title}
             </h3>
-            <div className="flex flex-wrap gap-3 text-xs text-gray-400">
+            <div className="flex flex-wrap gap-3 text-xs text-text-faint">
               {(analysis.planDocuments as any)?.[0]?.name && (
                 <span className="flex items-center gap-1">
                   <ClipboardList size={11} />
@@ -74,21 +74,21 @@ function AnalysisCard({ analysis }: { analysis: Analysis }) {
 
         {/* Result mini-stats */}
         {counts && (
-          <div className="flex gap-3 mt-4 pt-4 border-t" style={{ borderColor: "#f3f4f6" }}>
+          <div className="flex gap-3 mt-4 pt-4 border-t" style={{ borderColor: "var(--line-subtle)" }}>
             <div className="flex items-center gap-1.5 text-xs">
               <CheckCircle2 size={12} className="text-green-600" />
               <span className="font-semibold text-green-700">{counts.pass}</span>
-              <span className="text-gray-400">megfelel</span>
+              <span className="text-text-faint">megfelel</span>
             </div>
             <div className="flex items-center gap-1.5 text-xs">
               <AlertTriangle size={12} className="text-yellow-600" />
               <span className="font-semibold text-yellow-700">{counts.uncertain}</span>
-              <span className="text-gray-400">bizonytalan</span>
+              <span className="text-text-faint">bizonytalan</span>
             </div>
             <div className="flex items-center gap-1.5 text-xs">
               <XCircle size={12} className="text-red-600" />
               <span className="font-semibold text-red-700">{counts.fail}</span>
-              <span className="text-gray-400">nem felel meg</span>
+              <span className="text-text-faint">nem felel meg</span>
             </div>
           </div>
         )}
@@ -104,11 +104,11 @@ export default function ReportsPage() {
   );
 
   return (
-    <div className="min-h-screen flex flex-col bg-white">
+    <div className="min-h-screen flex flex-col bg-surface">
       <Header />
 
       {/* Page header */}
-      <div className="border-b" style={{ borderColor: "#e5e7eb", backgroundColor: "#F8FAFC" }}>
+      <div className="border-b" style={{ borderColor: "var(--line)", backgroundColor: "var(--page-bg-subtle)" }}>
         <div className="container py-8">
           <div className="flex items-center justify-between">
             <div>
@@ -116,11 +116,11 @@ export default function ReportsPage() {
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#7CA9D3" }}>
                   <ClipboardList size={16} className="text-white" />
                 </div>
-                <h1 className="text-2xl font-bold" style={{ color: "#161718" }}>
+                <h1 className="text-2xl font-bold" style={{ color: "var(--text-strong)" }}>
                   Riportok
                 </h1>
               </div>
-              <p className="text-gray-500 text-sm ml-11">
+              <p className="text-text-muted text-sm ml-11">
                 Korábbi megfelelőség-ellenőrzések és eredmények
               </p>
             </div>
@@ -152,10 +152,10 @@ export default function ReportsPage() {
             >
               <FileSearch size={28} style={{ color: "#7CA9D3" }} />
             </div>
-            <h2 className="text-lg font-semibold mb-2" style={{ color: "#161718" }}>
+            <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--text-strong)" }}>
               Még nincs elemzés
             </h2>
-            <p className="text-gray-400 text-sm mb-6">
+            <p className="text-text-faint text-sm mb-6">
               Indítsa el az első megfelelőség-ellenőrzést a dokumentumai feltöltésével.
             </p>
             <Link href="/search">
@@ -167,7 +167,7 @@ export default function ReportsPage() {
           </div>
         ) : (
           <div className="max-w-3xl">
-            <div className="text-xs text-gray-400 mb-4">
+            <div className="text-xs text-text-faint mb-4">
               {analyses.length} elemzés
             </div>
             <div className="space-y-3">

@@ -87,12 +87,12 @@ function PlaceholderTab({ icon: Icon, title, message }: {
   message: string;
 }) {
   return (
-    <div className="rounded-xl border bg-white p-12 flex flex-col items-center gap-3" style={{ borderColor: "#e5e7eb" }}>
-      <div className="w-14 h-14 rounded-full bg-gray-50 border border-gray-100 flex items-center justify-center">
+    <div className="rounded-xl border bg-surface p-12 flex flex-col items-center gap-3" style={{ borderColor: "var(--line)" }}>
+      <div className="w-14 h-14 rounded-full bg-page-bg-subtle border border-line-subtle flex items-center justify-center">
         <Icon size={26} className="text-gray-300" />
       </div>
-      <p className="font-medium text-gray-700">{title}</p>
-      <p className="text-sm text-gray-500 text-center max-w-md">{message}</p>
+      <p className="font-medium text-text-default">{title}</p>
+      <p className="text-sm text-text-muted text-center max-w-md">{message}</p>
     </div>
   );
 }
@@ -103,19 +103,19 @@ function EmptyState({ icon: Icon, title, message }: {
   message: string;
 }) {
   return (
-    <div className="rounded-xl border bg-white p-12 flex flex-col items-center gap-3" style={{ borderColor: "#e5e7eb" }}>
-      <div className="w-14 h-14 rounded-full bg-gray-50 border border-gray-100 flex items-center justify-center">
+    <div className="rounded-xl border bg-surface p-12 flex flex-col items-center gap-3" style={{ borderColor: "var(--line)" }}>
+      <div className="w-14 h-14 rounded-full bg-page-bg-subtle border border-line-subtle flex items-center justify-center">
         <Icon size={26} className="text-gray-300" />
       </div>
-      <p className="font-medium text-gray-700">{title}</p>
-      <p className="text-sm text-gray-500 text-center max-w-md">{message}</p>
+      <p className="font-medium text-text-default">{title}</p>
+      <p className="text-sm text-text-muted text-center max-w-md">{message}</p>
     </div>
   );
 }
 
 function LoadingTab() {
   return (
-    <div className="flex items-center justify-center py-12 text-gray-400">
+    <div className="flex items-center justify-center py-12 text-text-faint">
       <Loader2 className="animate-spin mr-2" size={18} />
       Betöltés…
     </div>
@@ -143,17 +143,17 @@ function AnalysesTab({ projectId }: { projectId: number }) {
           <Link
             key={a.id}
             href={`/result/${a.id}`}
-            className="block rounded-xl border bg-white p-4 hover:shadow-sm transition-shadow"
-            style={{ borderColor: "#e5e7eb" }}
+            className="block rounded-xl border bg-surface p-4 hover:shadow-sm transition-shadow"
+            style={{ borderColor: "var(--line)" }}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-gray-900 text-sm truncate">{a.title}</p>
+                <p className="font-semibold text-text-strong text-sm truncate">{a.title}</p>
                 <div className="flex flex-wrap items-center gap-2 mt-2">
                   <Badge className="text-xs px-2 py-0.5 rounded-full font-medium border-0" style={{ backgroundColor: sCfg.bg, color: sCfg.color }}>
                     {sCfg.label}
                   </Badge>
-                  <span className="text-xs text-gray-400 flex items-center gap-1">
+                  <span className="text-xs text-text-faint flex items-center gap-1">
                     <Calendar size={10} />
                     {formatDate(a.createdAt)}
                   </span>
@@ -183,15 +183,15 @@ function KnowledgeTab({ projectId }: { projectId: number }) {
   return (
     <div className="space-y-2">
       {items.map((d) => (
-        <div key={d.id} className="rounded-xl border bg-white p-4" style={{ borderColor: "#e5e7eb" }}>
+        <div key={d.id} className="rounded-xl border bg-surface p-4" style={{ borderColor: "var(--line)" }}>
           <div className="flex items-start gap-3">
-            <FileText size={20} className="text-gray-400 mt-0.5" />
+            <FileText size={20} className="text-text-faint mt-0.5" />
             <div className="min-w-0 flex-1">
-              <p className="font-semibold text-gray-900 text-sm truncate">{d.name || d.originalName}</p>
+              <p className="font-semibold text-text-strong text-sm truncate">{d.name || d.originalName}</p>
               <div className="flex flex-wrap items-center gap-2 mt-2">
-                <span className="text-xs text-gray-400 uppercase font-medium">{d.fileType}</span>
-                <span className="text-xs text-gray-400">{formatBytes(d.fileSize)}</span>
-                <span className="text-xs text-gray-400 flex items-center gap-1">
+                <span className="text-xs text-text-faint uppercase font-medium">{d.fileType}</span>
+                <span className="text-xs text-text-faint">{formatBytes(d.fileSize)}</span>
+                <span className="text-xs text-text-faint flex items-center gap-1">
                   <Calendar size={10} />
                   {formatDate(d.uploadedAt)}
                 </span>
@@ -371,21 +371,21 @@ function SettingsTab({
   return (
     <div className="space-y-4">
       {/* Rename / edit description */}
-      <div className="rounded-xl border bg-white p-5" style={{ borderColor: "#e5e7eb" }}>
+      <div className="rounded-xl border bg-surface p-5" style={{ borderColor: "var(--line)" }}>
         <div className="flex items-start gap-4">
-          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center">
-            <Edit3 size={20} className="text-gray-500" />
+          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-page-bg-subtle border border-line-subtle flex items-center justify-center">
+            <Edit3 size={20} className="text-text-muted" />
           </div>
           <div className="flex-1">
-            <h3 className="font-semibold text-gray-900 text-sm">Projekt-adatok</h3>
+            <h3 className="font-semibold text-text-strong text-sm">Projekt-adatok</h3>
             {!editing ? (
               <>
-                <p className="text-xs text-gray-500 mt-1">
-                  Név: <span className="text-gray-700 font-medium">{projectName}</span>
+                <p className="text-xs text-text-muted mt-1">
+                  Név: <span className="text-text-default font-medium">{projectName}</span>
                 </p>
                 {projectDescription && (
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Leírás: <span className="text-gray-700">{projectDescription}</span>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    Leírás: <span className="text-text-default">{projectDescription}</span>
                   </p>
                 )}
                 <Button size="sm" variant="outline" className="gap-2 mt-3" onClick={startEdit}>
@@ -422,16 +422,16 @@ function SettingsTab({
       </div>
 
       {/* Archive / unarchive */}
-      <div className="rounded-xl border bg-white p-5" style={{ borderColor: "#e5e7eb" }}>
+      <div className="rounded-xl border bg-surface p-5" style={{ borderColor: "var(--line)" }}>
         <div className="flex items-start gap-4">
-          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center">
-            <Archive size={20} className="text-gray-500" />
+          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-page-bg-subtle border border-line-subtle flex items-center justify-center">
+            <Archive size={20} className="text-text-muted" />
           </div>
           <div className="flex-1">
-            <h3 className="font-semibold text-gray-900 text-sm">
+            <h3 className="font-semibold text-text-strong text-sm">
               {projectStatus === "archived" ? "Projekt visszaaktiválása" : "Projekt archiválása"}
             </h3>
-            <p className="text-xs text-gray-500 mt-1 max-w-xl">
+            <p className="text-xs text-text-muted mt-1 max-w-xl">
               {projectStatus === "archived"
                 ? "Az archivált projekt aktív státuszra kerül, és újra hozzáadhatók adatok."
                 : "Az archivált projektet rejti az alapértelmezett listázás (kivéve, ha bejelölöd a 'Törölteket is mutasd' opciót), de adatai megmaradnak."}
@@ -451,14 +451,14 @@ function SettingsTab({
       </div>
 
       {/* Export */}
-      <div className="rounded-xl border bg-white p-5" style={{ borderColor: "#e5e7eb" }}>
+      <div className="rounded-xl border bg-surface p-5" style={{ borderColor: "var(--line)" }}>
         <div className="flex items-start gap-4">
           <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center">
             <Download size={20} className="text-blue-600" />
           </div>
           <div className="flex-1">
-            <h3 className="font-semibold text-gray-900 text-sm">Adatok exportálása</h3>
-            <p className="text-xs text-gray-500 mt-1 max-w-xl">
+            <h3 className="font-semibold text-text-strong text-sm">Adatok exportálása</h3>
+            <p className="text-xs text-text-muted mt-1 max-w-xl">
               JSON formátumban letölti a projekthez tartozó összes adatot: projekt-metaadat, tagok,
               elemzések (eredményekkel együtt), Tudástár-dokumentumok metaadata-ja és kinyert
               szövegek, keresési előzmények. Az S3-on tárolt fájlok bináris tartalma nem kerül bele.
@@ -483,10 +483,10 @@ function SettingsTab({
       </div>
 
       {/* Workflow note */}
-      <div className="rounded-xl border bg-gray-50 p-4 flex items-start gap-3" style={{ borderColor: "#e5e7eb" }}>
-        <ListChecks size={16} className="text-gray-400 mt-0.5" />
-        <div className="text-xs text-gray-600">
-          A workflow-státusz jelenleg: <span className="font-medium text-gray-800">{projectWorkflowStatus}</span>.
+      <div className="rounded-xl border bg-page-bg-subtle p-4 flex items-start gap-3" style={{ borderColor: "var(--line)" }}>
+        <ListChecks size={16} className="text-text-faint mt-0.5" />
+        <div className="text-xs text-text-default">
+          A workflow-státusz jelenleg: <span className="font-medium text-text-strong">{projectWorkflowStatus}</span>.
           A finding-szintű workflow a Riportok &gt; konkrét elemzés &gt; Felülvizsgálat panelből változtatható.
         </div>
       </div>
@@ -525,7 +525,7 @@ function MembersTab({ projectId }: { projectId: number }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-text-muted">
           {members.length} {members.length === 1 ? "tag" : "tag"}
         </p>
         {isOwner && <AddMemberDialog projectId={projectId} />}
@@ -545,17 +545,17 @@ function MembersTab({ projectId }: { projectId: number }) {
             const Icon = cfg.icon;
             const isMe = me?.id === m.userId;
             return (
-              <div key={m.id} className="rounded-xl border bg-white p-4" style={{ borderColor: "#e5e7eb" }}>
+              <div key={m.id} className="rounded-xl border bg-surface p-4" style={{ borderColor: "var(--line)" }}>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: cfg.bg }}>
                     <Icon size={18} style={{ color: cfg.color }} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-900 text-sm truncate">
+                    <p className="font-semibold text-text-strong text-sm truncate">
                       {m.userName || m.userEmail || `User #${m.userId}`}
-                      {isMe && <span className="text-xs text-gray-400 ml-2">(te)</span>}
+                      {isMe && <span className="text-xs text-text-faint ml-2">(te)</span>}
                     </p>
-                    <p className="text-xs text-gray-500 truncate">{m.userEmail}</p>
+                    <p className="text-xs text-text-muted truncate">{m.userEmail}</p>
                   </div>
                   <Badge className="text-xs px-2 py-0.5 rounded-full font-medium border-0" style={{ backgroundColor: cfg.bg, color: cfg.color }}>
                     {cfg.label}
@@ -577,7 +577,7 @@ function MembersTab({ projectId }: { projectId: number }) {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-gray-400 hover:text-red-600"
+                        className="h-8 w-8 text-text-faint hover:text-red-600"
                         onClick={() => {
                           if (confirm(`Biztosan eltávolítod ${m.userEmail || `User #${m.userId}`}-t a projektből?`)) {
                             removeMut.mutate({ projectId, userId: m.userId });
@@ -617,16 +617,16 @@ function SearchesTab({ projectId }: { projectId: number }) {
       {items.map((s) => {
         const cCfg = s.confidence ? CONFIDENCE_LABELS[s.confidence] : null;
         return (
-          <div key={s.id} className="rounded-xl border bg-white p-4" style={{ borderColor: "#e5e7eb" }}>
-            <p className="font-medium text-gray-900 text-sm line-clamp-2">{s.question}</p>
+          <div key={s.id} className="rounded-xl border bg-surface p-4" style={{ borderColor: "var(--line)" }}>
+            <p className="font-medium text-text-strong text-sm line-clamp-2">{s.question}</p>
             <div className="flex flex-wrap items-center gap-2 mt-2">
               {cCfg && (
                 <Badge className="text-xs px-2 py-0.5 rounded-full font-medium border-0" style={{ backgroundColor: cCfg.bg, color: cCfg.color }}>
                   {cCfg.label}
                 </Badge>
               )}
-              <span className="text-xs text-gray-400">{s.searchMode}</span>
-              <span className="text-xs text-gray-400 flex items-center gap-1">
+              <span className="text-xs text-text-faint">{s.searchMode}</span>
+              <span className="text-xs text-text-faint flex items-center gap-1">
                 <Calendar size={10} />
                 {formatDate(s.createdAt)}
               </span>
@@ -650,12 +650,12 @@ export default function ProjectDetailPage() {
 
   if (!isValidId) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-page-bg-subtle">
         <Header />
         <div className="container py-8">
-          <div className="rounded-xl border bg-white p-12 flex flex-col items-center gap-3" style={{ borderColor: "#e5e7eb" }}>
+          <div className="rounded-xl border bg-surface p-12 flex flex-col items-center gap-3" style={{ borderColor: "var(--line)" }}>
             <AlertTriangle size={32} className="text-amber-500" />
-            <p className="font-medium text-gray-700">Érvénytelen projekt-azonosító</p>
+            <p className="font-medium text-text-default">Érvénytelen projekt-azonosító</p>
             <Link href="/projects">
               <Button variant="outline" className="mt-2">
                 <ArrowLeft size={14} className="mr-1" /> Vissza a projektek listához
@@ -669,9 +669,9 @@ export default function ProjectDetailPage() {
 
   if (projectQuery.isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-page-bg-subtle">
         <Header />
-        <div className="container py-8 flex items-center justify-center text-gray-400">
+        <div className="container py-8 flex items-center justify-center text-text-faint">
           <Loader2 className="animate-spin mr-2" size={20} />
           Projekt betöltése…
         </div>
@@ -681,12 +681,12 @@ export default function ProjectDetailPage() {
 
   if (projectQuery.error || !projectQuery.data) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-page-bg-subtle">
         <Header />
         <div className="container py-8">
-          <div className="rounded-xl border bg-white p-12 flex flex-col items-center gap-3" style={{ borderColor: "#e5e7eb" }}>
+          <div className="rounded-xl border bg-surface p-12 flex flex-col items-center gap-3" style={{ borderColor: "var(--line)" }}>
             <AlertTriangle size={32} className="text-red-500" />
-            <p className="font-medium text-gray-700">
+            <p className="font-medium text-text-default">
               {projectQuery.error?.message ?? "A projekt nem található."}
             </p>
             <Link href="/projects">
@@ -705,22 +705,22 @@ export default function ProjectDetailPage() {
   const sCfg = STATUS_LABELS[project.status] ?? STATUS_LABELS.active;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-page-bg-subtle">
       <Header />
       <div className="container py-8">
-        <Link href="/projects" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-4">
+        <Link href="/projects" className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-text-default mb-4">
           <ArrowLeft size={14} /> Vissza a projektek listához
         </Link>
 
-        <div className="rounded-xl border bg-white p-6 mb-6" style={{ borderColor: "#e5e7eb" }}>
+        <div className="rounded-xl border bg-surface p-6 mb-6" style={{ borderColor: "var(--line)" }}>
           <div className="flex items-start gap-4">
-            <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center">
+            <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-page-bg-subtle border border-line-subtle flex items-center justify-center">
               <FolderOpen size={24} style={{ color: "#7CA9D3" }} />
             </div>
             <div className="flex-1 min-w-0">
-              <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
+              <h1 className="text-2xl font-bold text-text-strong">{project.name}</h1>
               {project.description && (
-                <p className="text-sm text-gray-500 mt-1">{project.description}</p>
+                <p className="text-sm text-text-muted mt-1">{project.description}</p>
               )}
               <div className="flex flex-wrap items-center gap-2 mt-3">
                 <Badge className="text-xs px-2 py-0.5 rounded-full font-medium border-0" style={{ backgroundColor: dCfg.bg, color: dCfg.color }}>
@@ -729,7 +729,7 @@ export default function ProjectDetailPage() {
                 <Badge className="text-xs px-2 py-0.5 rounded-full font-medium border-0" style={{ backgroundColor: sCfg.bg, color: sCfg.color }}>
                   {sCfg.label}
                 </Badge>
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-text-muted">
                   Workflow: {WORKFLOW_LABELS[project.workflowStatus] ?? project.workflowStatus}
                 </span>
               </div>
@@ -738,7 +738,7 @@ export default function ProjectDetailPage() {
         </div>
 
         <Tabs defaultValue="analyses" className="w-full">
-          <TabsList className="bg-white border" style={{ borderColor: "#e5e7eb" }}>
+          <TabsList className="bg-surface border" style={{ borderColor: "var(--line)" }}>
             <TabsTrigger value="analyses" className="gap-2">
               <ClipboardList size={14} /> Elemzések
             </TabsTrigger>

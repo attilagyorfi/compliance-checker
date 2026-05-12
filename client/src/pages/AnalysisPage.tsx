@@ -128,8 +128,8 @@ function MultiDropZone({
         return (
           <div
             key={i}
-            className="flex items-center gap-3 p-3 rounded-lg border bg-white"
-            style={{ borderColor: "#e5e7eb" }}
+            className="flex items-center gap-3 p-3 rounded-lg border bg-surface"
+            style={{ borderColor: "var(--line)" }}
           >
             <div
               className="w-8 h-8 rounded flex items-center justify-center flex-shrink-0 text-white"
@@ -138,9 +138,9 @@ function MultiDropZone({
               {icon}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-gray-800 truncate">{f.name}</div>
+              <div className="text-sm font-medium text-text-strong truncate">{f.name}</div>
               <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-xs text-gray-400">{formatFileSize(f.file.size)}</span>
+                <span className="text-xs text-text-faint">{formatFileSize(f.file.size)}</span>
                 <span
                   className="text-xs px-1.5 py-0.5 rounded font-medium"
                   style={{ backgroundColor: `${color}15`, color }}
@@ -151,7 +151,7 @@ function MultiDropZone({
             </div>
             <button
               onClick={() => onRemove(i)}
-              className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
+              className="p-1.5 rounded-full hover:bg-hover text-text-faint hover:text-text-default transition-colors flex-shrink-0"
             >
               <X size={14} />
             </button>
@@ -166,7 +166,7 @@ function MultiDropZone({
           onDrop={handleDrop}
           onClick={() => inputRef.current?.click()}
           className={`rounded-lg border-2 border-dashed cursor-pointer transition-all duration-200 ${
-            dragging ? "border-[#7CA9D3] bg-blue-50" : "border-gray-200 bg-gray-50 hover:border-[#7CA9D3] hover:bg-blue-50/30"
+            dragging ? "border-[#7CA9D3] bg-blue-50" : "border-line bg-page-bg-subtle hover:border-[#7CA9D3] hover:bg-blue-50/30"
           }`}
           style={{ minHeight: 100 }}
         >
@@ -184,8 +184,8 @@ function MultiDropZone({
           />
           <div className="flex flex-col items-center justify-center p-6 text-center">
             <Upload size={24} className="mb-2" style={{ color: "#7CA9D3" }} />
-            <div className="font-medium text-sm text-gray-700 mb-1">{label}</div>
-            <div className="text-xs text-gray-400">{hint ?? "Húzza ide a fájlokat, vagy kattintson a tallózáshoz"}</div>
+            <div className="font-medium text-sm text-text-default mb-1">{label}</div>
+            <div className="text-xs text-text-faint">{hint ?? "Húzza ide a fájlokat, vagy kattintson a tallózáshoz"}</div>
             <div className="text-xs text-gray-300 mt-1">PDF · DOCX · XLSX · DWG · DXF · IFC · RTF</div>
           </div>
         </div>
@@ -244,28 +244,28 @@ function RegulationLibraryPicker({
   const disciplines = ["all", ...Array.from(new Set(sources?.map((s) => s.discipline) ?? []))];
 
   return (
-    <div className="border rounded-lg overflow-hidden" style={{ borderColor: "#e5e7eb" }}>
+    <div className="border rounded-lg overflow-hidden" style={{ borderColor: "var(--line)" }}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+        className="w-full flex items-center justify-between p-4 bg-page-bg-subtle hover:bg-hover transition-colors text-left"
       >
         <div className="flex items-center gap-3">
           <div className="w-7 h-7 rounded flex items-center justify-center" style={{ backgroundColor: "#EBF3FA" }}>
             <BookOpen size={14} style={{ color: "#7CA9D3" }} />
           </div>
           <div>
-            <div className="text-sm font-semibold text-gray-800">Jogszabály könyvtárból</div>
-            <div className="text-xs text-gray-400">
+            <div className="text-sm font-semibold text-text-strong">Jogszabály könyvtárból</div>
+            <div className="text-xs text-text-faint">
               {selectedIds.length > 0 ? `${selectedIds.length} jogszabály kiválasztva` : "Válasszon a mentett jogszabályokból"}
             </div>
           </div>
         </div>
-        {open ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+        {open ? <ChevronUp size={16} className="text-text-faint" /> : <ChevronDown size={16} className="text-text-faint" />}
       </button>
 
       {open && (
-        <div className="border-t" style={{ borderColor: "#e5e7eb" }}>
+        <div className="border-t" style={{ borderColor: "var(--line)" }}>
           {/* Stale warning + bulk refresh */}
           {staleCount > 0 && (
             <div className="px-3 py-2 border-b flex items-center justify-between gap-2 bg-amber-50" style={{ borderColor: "#fde68a" }}>
@@ -297,7 +297,7 @@ function RegulationLibraryPicker({
           )}
 
           {/* Discipline filter */}
-          <div className="p-3 border-b flex gap-2 flex-wrap" style={{ borderColor: "#e5e7eb" }}>
+          <div className="p-3 border-b flex gap-2 flex-wrap" style={{ borderColor: "var(--line)" }}>
             {disciplines.map((d) => (
               <button
                 key={d}
@@ -306,7 +306,7 @@ function RegulationLibraryPicker({
                 className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${
                   filterDiscipline === d
                     ? "text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    : "bg-hover text-text-default hover:bg-gray-200"
                 }`}
                 style={filterDiscipline === d ? { backgroundColor: "#7CA9D3" } : {}}
               >
@@ -316,13 +316,13 @@ function RegulationLibraryPicker({
           </div>
 
           {/* Source list */}
-          <div className="max-h-64 overflow-y-auto divide-y" style={{ borderColor: "#f3f4f6" }}>
+          <div className="max-h-64 overflow-y-auto divide-y" style={{ borderColor: "var(--line-subtle)" }}>
             {isLoading ? (
               <div className="flex items-center justify-center p-6">
-                <Loader2 size={18} className="animate-spin text-gray-400" />
+                <Loader2 size={18} className="animate-spin text-text-faint" />
               </div>
             ) : filtered.length === 0 ? (
-              <div className="p-4 text-center text-sm text-gray-400">Nincs jogszabály ebben a kategóriában.</div>
+              <div className="p-4 text-center text-sm text-text-faint">Nincs jogszabály ebben a kategóriában.</div>
             ) : (
               filtered.map((source) => {
                 const isSelected = selectedIds.includes(source.id);
@@ -330,7 +330,7 @@ function RegulationLibraryPicker({
                 return (
                   <label
                     key={source.id}
-                    className="flex items-start gap-3 p-3 hover:bg-gray-50 cursor-pointer transition-colors"
+                    className="flex items-start gap-3 p-3 hover:bg-page-bg-subtle cursor-pointer transition-colors"
                   >
                     <input
                       type="checkbox"
@@ -340,7 +340,7 @@ function RegulationLibraryPicker({
                       style={{ accentColor: "#7CA9D3" }}
                     />
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-gray-800 leading-tight">{source.name}</div>
+                      <div className="text-sm font-medium text-text-strong leading-tight">{source.name}</div>
                       <div className="flex items-center gap-2 mt-1">
                         <span
                           className="text-xs px-1.5 py-0.5 rounded font-medium"
@@ -348,7 +348,7 @@ function RegulationLibraryPicker({
                         >
                           {DISCIPLINE_LABELS[source.discipline] ?? source.discipline}
                         </span>
-                        <span className="text-xs text-gray-400 uppercase">{source.sourceType}</span>
+                        <span className="text-xs text-text-faint uppercase">{source.sourceType}</span>
                         {source.content && !isStale(source) && (
                           <span className="text-xs text-green-600 flex items-center gap-0.5">
                             <CheckCircle2 size={10} />
@@ -475,21 +475,21 @@ export default function AnalysisPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-white">
+    <div className="min-h-screen flex flex-col bg-surface">
       <Header />
 
       {/* Page header */}
-      <div className="border-b" style={{ borderColor: "#e5e7eb", backgroundColor: "#F8FAFC" }}>
+      <div className="border-b" style={{ borderColor: "var(--line)", backgroundColor: "var(--page-bg-subtle)" }}>
         <div className="container py-8">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#7CA9D3" }}>
               <Upload size={16} className="text-white" />
             </div>
-            <h1 className="text-2xl font-bold" style={{ color: "#161718" }}>
+            <h1 className="text-2xl font-bold" style={{ color: "var(--text-strong)" }}>
               Új elemzés indítása
             </h1>
           </div>
-          <p className="text-gray-500 text-sm ml-11">
+          <p className="text-text-muted text-sm ml-11">
             Töltse fel a tervdokumentumokat és adja meg a vonatkozó jogszabályokat az AI alapú megfelelőség-ellenőrzéshez.
           </p>
         </div>
@@ -504,13 +504,13 @@ export default function AnalysisPage() {
           <div className="mb-8">
             <div className="flex items-center gap-3 mb-4">
               <span className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ backgroundColor: "#7CA9D3" }}>1</span>
-              <h2 className="font-semibold text-base" style={{ color: "#161718" }}>Elemzés neve</h2>
+              <h2 className="font-semibold text-base" style={{ color: "var(--text-strong)" }}>Elemzés neve</h2>
             </div>
             <Input
               placeholder="pl. Ipari csarnok – tűzvédelmi megfelelőség 2024"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="border-gray-200 focus-visible:ring-[#7CA9D3]"
+              className="border-line focus-visible:ring-[#7CA9D3]"
             />
           </div>
 
@@ -519,8 +519,8 @@ export default function AnalysisPage() {
             <div className="flex items-center gap-3 mb-4">
               <span className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ backgroundColor: "#7CA9D3" }}>2</span>
               <div>
-                <h2 className="font-semibold text-base" style={{ color: "#161718" }}>Tervdokumentumok</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Több fájl is feltölthető (max. 20) – PDF, DOCX, XLSX, DWG, DXF, IFC</p>
+                <h2 className="font-semibold text-base" style={{ color: "var(--text-strong)" }}>Tervdokumentumok</h2>
+                <p className="text-xs text-text-faint mt-0.5">Több fájl is feltölthető (max. 20) – PDF, DOCX, XLSX, DWG, DXF, IFC</p>
               </div>
             </div>
             <MultiDropZone
@@ -532,7 +532,7 @@ export default function AnalysisPage() {
               hint="Húzza ide a fájlokat, vagy kattintson a tallózáshoz · Több fájl egyszerre is kiválasztható"
             />
             {planFiles.length > 0 && (
-              <p className="text-xs text-gray-400 mt-2">{planFiles.length} fájl kiválasztva</p>
+              <p className="text-xs text-text-faint mt-2">{planFiles.length} fájl kiválasztva</p>
             )}
           </div>
 
@@ -541,8 +541,8 @@ export default function AnalysisPage() {
             <div className="flex items-center gap-3 mb-4">
               <span className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ backgroundColor: "#7CA9D3" }}>3</span>
               <div>
-                <h2 className="font-semibold text-base" style={{ color: "#161718" }}>Jogszabályok / Szabványok</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Töltse fel manuálisan, vagy válasszon a jogszabály könyvtárból</p>
+                <h2 className="font-semibold text-base" style={{ color: "var(--text-strong)" }}>Jogszabályok / Szabványok</h2>
+                <p className="text-xs text-text-faint mt-0.5">Töltse fel manuálisan, vagy válasszon a jogszabály könyvtárból</p>
               </div>
             </div>
 
@@ -583,7 +583,7 @@ export default function AnalysisPage() {
           </div>
 
           {/* Submit */}
-          <div className="border-t pt-8" style={{ borderColor: "#e5e7eb" }}>
+          <div className="border-t pt-8" style={{ borderColor: "var(--line)" }}>
             <Button
               onClick={handleSubmit}
               disabled={isSubmitting || !title || planFiles.length === 0 || !hasRegulations}
@@ -603,7 +603,7 @@ export default function AnalysisPage() {
                 </>
               )}
             </Button>
-            <p className="text-xs text-gray-400 text-center mt-3">
+            <p className="text-xs text-text-faint text-center mt-3">
               Az elemzés általában 30–90 másodpercet vesz igénybe a dokumentumok számától függően.
             </p>
           </div>

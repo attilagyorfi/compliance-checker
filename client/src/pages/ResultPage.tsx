@@ -88,7 +88,7 @@ function ConfidenceBar({ value }: { value?: number }) {
   const color = pct >= 80 ? "#16a34a" : pct >= 50 ? "#ca8a04" : "#dc2626";
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+      <div className="flex-1 h-1.5 bg-hover rounded-full overflow-hidden">
         <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
       </div>
       <span className="text-xs font-medium" style={{ color }}>{pct}%</span>
@@ -143,8 +143,8 @@ function ResultCard({ result, analysisId, onUpdate }: {
 
   return (
     <div
-      className="rounded-lg border bg-white shadow-sm overflow-hidden transition-shadow hover:shadow-md"
-      style={{ borderLeft: borderLeft[result.status], borderColor: "#e5e7eb" }}
+      className="rounded-lg border bg-surface shadow-sm overflow-hidden transition-shadow hover:shadow-md"
+      style={{ borderLeft: borderLeft[result.status], borderColor: "var(--line)" }}
     >
       <button
         onClick={() => setExpanded(!expanded)}
@@ -176,22 +176,22 @@ function ResultCard({ result, analysisId, onUpdate }: {
                     {wfCfg.label}
                   </span>
                 </div>
-                <h3 className="font-semibold text-sm text-gray-900 leading-snug">
+                <h3 className="font-semibold text-sm text-text-strong leading-snug">
                   {result.title}
                 </h3>
-                <p className="text-xs text-gray-500 mt-1">{result.description}</p>
+                <p className="text-xs text-text-muted mt-1">{result.description}</p>
                 {r.confidence != null && (
                   <div className="mt-2 max-w-[160px]">
-                    <div className="text-xs text-gray-400 mb-1">AI bizonyosság</div>
+                    <div className="text-xs text-text-faint mb-1">AI bizonyosság</div>
                     <ConfidenceBar value={r.confidence} />
                   </div>
                 )}
               </div>
               <div className="flex-shrink-0 mt-1">
                 {expanded ? (
-                  <ChevronUp size={16} className="text-gray-400" />
+                  <ChevronUp size={16} className="text-text-faint" />
                 ) : (
-                  <ChevronDown size={16} className="text-gray-400" />
+                  <ChevronDown size={16} className="text-text-faint" />
                 )}
               </div>
             </div>
@@ -200,20 +200,20 @@ function ResultCard({ result, analysisId, onUpdate }: {
       </button>
 
       {expanded && (
-        <div className="px-5 pb-5 border-t" style={{ borderColor: "#f3f4f6" }}>
+        <div className="px-5 pb-5 border-t" style={{ borderColor: "var(--line-subtle)" }}>
           <div className="pt-4 space-y-4">
             {/* Justification */}
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1.5">
+              <div className="text-xs font-semibold uppercase tracking-wide text-text-faint mb-1.5">
                 Indoklás
               </div>
-              <p className="text-sm text-gray-700 leading-relaxed">{result.justification}</p>
+              <p className="text-sm text-text-default leading-relaxed">{result.justification}</p>
             </div>
 
             {/* Reference + Category */}
             <div className="flex flex-wrap gap-4">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1.5">
+                <div className="text-xs font-semibold uppercase tracking-wide text-text-faint mb-1.5">
                   Szabályhivatkozás
                 </div>
                 <code className="text-xs px-2 py-1 rounded font-mono" style={{ backgroundColor: "#EBF3FA", color: "#5a8ab8" }}>
@@ -221,7 +221,7 @@ function ResultCard({ result, analysisId, onUpdate }: {
                 </code>
               </div>
               <div>
-                <div className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1.5">
+                <div className="text-xs font-semibold uppercase tracking-wide text-text-faint mb-1.5">
                   Kategória
                 </div>
                 <Badge variant="secondary" className="text-xs">
@@ -236,7 +236,7 @@ function ResultCard({ result, analysisId, onUpdate }: {
                 <div className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "#5a8ab8" }}>
                   Javasolt következő lépés
                 </div>
-                <p className="text-sm text-gray-700">{r.nextStep}</p>
+                <p className="text-sm text-text-default">{r.nextStep}</p>
               </div>
             )}
 
@@ -245,7 +245,7 @@ function ResultCard({ result, analysisId, onUpdate }: {
               <div>
                 <button
                   onClick={(e) => { e.stopPropagation(); setShowEvidence(!showEvidence); }}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors"
+                  className="flex items-center gap-1.5 text-xs font-semibold text-text-muted hover:text-text-default transition-colors"
                 >
                   {showEvidence ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                   Miért ezt állítja? (bizonyítékok)
@@ -263,11 +263,11 @@ function ResultCard({ result, analysisId, onUpdate }: {
                       </div>
                     )}
                     {r.planExcerpt && (
-                      <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                      <div className="rounded-lg border border-line bg-page-bg-subtle p-3">
+                        <div className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">
                           Tervdokumentum szövegrészlet
                         </div>
-                        <blockquote className="text-xs text-gray-700 italic leading-relaxed border-l-2 border-gray-300 pl-3">
+                        <blockquote className="text-xs text-text-default italic leading-relaxed border-l-2 border-gray-300 pl-3">
                           {r.planExcerpt}
                         </blockquote>
                       </div>
@@ -281,13 +281,13 @@ function ResultCard({ result, analysisId, onUpdate }: {
             <div>
               <button
                 onClick={(e) => { e.stopPropagation(); setShowReview(!showReview); }}
-                className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors"
+                className="flex items-center gap-1.5 text-xs font-semibold text-text-muted hover:text-text-default transition-colors"
               >
                 {showReview ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                 Felülvizsgálat
               </button>
               {showReview && (
-                <div className="mt-3 rounded-lg border bg-gray-50 p-4 space-y-3" style={{ borderColor: "#e5e7eb" }} onClick={(e) => e.stopPropagation()}>
+                <div className="mt-3 rounded-lg border bg-page-bg-subtle p-4 space-y-3" style={{ borderColor: "var(--line)" }} onClick={(e) => e.stopPropagation()}>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label htmlFor={`wf-${result.id}`} className="text-xs">Munkafolyamat-státusz</Label>
@@ -371,7 +371,7 @@ function SummaryStats({ results }: { results: ComplianceResult[] }) {
           <div className="text-xs font-medium" style={{ color }}>
             {label}
           </div>
-          <div className="text-xs text-gray-400 mt-0.5">
+          <div className="text-xs text-text-faint mt-0.5">
             {total > 0 ? Math.round((value / total) * 100) : 0}%
           </div>
         </div>
@@ -416,7 +416,7 @@ export default function ResultPage() {
 
   if (!analysis) {
     return (
-      <div className="min-h-screen flex flex-col bg-white">
+      <div className="min-h-screen flex flex-col bg-surface">
         <Header />
         <div className="flex-1 flex items-center justify-center">
           <Loader2 size={32} className="animate-spin" style={{ color: "#7CA9D3" }} />
@@ -426,13 +426,13 @@ export default function ResultPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-white">
+    <div className="min-h-screen flex flex-col bg-surface">
       <Header />
 
       {/* Page header */}
-      <div className="border-b" style={{ borderColor: "#e5e7eb", backgroundColor: "#F8FAFC" }}>
+      <div className="border-b" style={{ borderColor: "var(--line)", backgroundColor: "var(--page-bg-subtle)" }}>
         <div className="container py-6">
-          <Link href="/reports" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-4 transition-colors">
+          <Link href="/reports" className="inline-flex items-center gap-1.5 text-sm text-text-muted hover:text-text-default mb-4 transition-colors">
             <ArrowLeft size={14} />
             Vissza a riportokhoz
           </Link>
@@ -442,11 +442,11 @@ export default function ResultPage() {
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#7CA9D3" }}>
                   <BarChart3 size={16} className="text-white" />
                 </div>
-                <h1 className="text-xl font-bold" style={{ color: "#161718" }}>
+                <h1 className="text-xl font-bold" style={{ color: "var(--text-strong)" }}>
                   {analysis.title}
                 </h1>
               </div>
-              <div className="ml-11 flex flex-wrap gap-3 text-xs text-gray-500">
+              <div className="ml-11 flex flex-wrap gap-3 text-xs text-text-muted">
                 {(analysis.planDocuments as any)?.[0]?.name && (
                   <span className="flex items-center gap-1">
                     <FileText size={12} />
@@ -461,7 +461,7 @@ export default function ResultPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="gap-2 border-gray-200"
+                  className="gap-2 border-line"
                   disabled={exportPdf.isPending}
                   onClick={() => exportPdf.mutate({ id: analysisId })}
                 >
@@ -485,13 +485,13 @@ export default function ResultPage() {
             <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6" style={{ backgroundColor: "#EBF3FA" }}>
               <Loader2 size={28} className="animate-spin" style={{ color: "#7CA9D3" }} />
             </div>
-            <h2 className="text-xl font-semibold mb-3" style={{ color: "#161718" }}>
+            <h2 className="text-xl font-semibold mb-3" style={{ color: "var(--text-strong)" }}>
               Elemzés folyamatban...
             </h2>
-            <p className="text-gray-500 text-sm mb-6">
+            <p className="text-text-muted text-sm mb-6">
               Az AI feldolgozza a dokumentumokat és elvégzi a megfelelőség-ellenőrzést. Ez általában 30–90 másodpercet vesz igénybe.
             </p>
-            <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: "#e5e7eb" }}>
+            <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: "var(--line)" }}>
               <div
                 className="h-full rounded-full animate-pulse"
                 style={{ width: "60%", backgroundColor: "#7CA9D3" }}
@@ -507,7 +507,7 @@ export default function ResultPage() {
               <XCircle size={28} className="text-red-500" />
             </div>
             <h2 className="text-xl font-semibold mb-3 text-red-700">Elemzési hiba</h2>
-            <p className="text-gray-500 text-sm mb-6">{analysis.errorMessage || "Ismeretlen hiba történt."}</p>
+            <p className="text-text-muted text-sm mb-6">{analysis.errorMessage || "Ismeretlen hiba történt."}</p>
             <Link href="/search">
               <Button style={{ backgroundColor: "#7CA9D3" }} className="text-white gap-2">
                 <ArrowLeft size={14} />
@@ -527,15 +527,15 @@ export default function ResultPage() {
             {analysis.summary && (
               <div
                 className="rounded-lg p-5 mb-8 border"
-                style={{ backgroundColor: "#F8FAFC", borderColor: "#e5e7eb" }}
+                style={{ backgroundColor: "var(--page-bg-subtle)", borderColor: "var(--line)" }}
               >
                 <div className="flex items-center gap-2 mb-2">
                   <ClipboardList size={15} style={{ color: "#7CA9D3" }} />
-                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">
                     Összefoglaló értékelés
                   </span>
                 </div>
-                <p className="text-sm text-gray-700 leading-relaxed">{analysis.summary}</p>
+                <p className="text-sm text-text-default leading-relaxed">{analysis.summary}</p>
               </div>
             )}
 
@@ -548,7 +548,7 @@ export default function ResultPage() {
                   className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
                     filter === key
                       ? "text-white border-transparent"
-                      : "text-gray-500 border-gray-200 hover:border-gray-300 bg-white"
+                      : "text-text-muted border-line hover:border-gray-300 bg-surface"
                   }`}
                   style={filter === key ? { backgroundColor: "#7CA9D3", borderColor: "#7CA9D3" } : {}}
                 >
@@ -570,7 +570,7 @@ export default function ResultPage() {
             </div>
 
             {filtered.length === 0 && (
-              <div className="text-center py-12 text-gray-400">
+              <div className="text-center py-12 text-text-faint">
                 Nincs találat a kiválasztott szűrőre.
               </div>
             )}

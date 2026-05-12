@@ -79,8 +79,8 @@ function CredentialDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          <div className="p-3 rounded-lg border text-sm" style={{ borderColor: "#e5e7eb", backgroundColor: "#F8FAFC" }}>
-            <p className="text-gray-600 mb-2">{info.description}</p>
+          <div className="p-3 rounded-lg border text-sm" style={{ borderColor: "var(--line)", backgroundColor: "var(--page-bg-subtle)" }}>
+            <p className="text-text-default mb-2">{info.description}</p>
             <a
               href={info.loginUrl}
               target="_blank"
@@ -94,7 +94,7 @@ function CredentialDialog({
           </div>
 
           <div>
-            <Label className="text-sm font-medium text-gray-700 mb-1.5 block">
+            <Label className="text-sm font-medium text-text-default mb-1.5 block">
               {platform === "mszt" ? "Felhasználónév" : "E-mail cím"}
             </Label>
             <Input
@@ -102,24 +102,24 @@ function CredentialDialog({
               placeholder={platform === "mszt" ? "felhasznalonev" : "email@example.com"}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="border-gray-200 focus-visible:ring-[#7CA9D3]"
+              className="border-line focus-visible:ring-[#7CA9D3]"
             />
           </div>
 
           <div>
-            <Label className="text-sm font-medium text-gray-700 mb-1.5 block">Jelszó</Label>
+            <Label className="text-sm font-medium text-text-default mb-1.5 block">Jelszó</Label>
             <div className="relative">
               <Input
                 type={showPassword ? "text" : "password"}
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="border-gray-200 focus-visible:ring-[#7CA9D3] pr-10"
+                className="border-line focus-visible:ring-[#7CA9D3] pr-10"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-faint hover:text-text-default"
               >
                 {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
@@ -195,7 +195,7 @@ function PlatformCard({ info }: { info: PlatformInfo }) {
   return (
     <>
       <div
-        className="rounded-xl border bg-white p-5 flex flex-col gap-4"
+        className="rounded-xl border bg-surface p-5 flex flex-col gap-4"
         style={{ borderColor: info.isConfigured ? "#7CA9D3" : "#e5e7eb" }}
       >
         {/* Header */}
@@ -212,7 +212,7 @@ function PlatformCard({ info }: { info: PlatformInfo }) {
               )}
             </div>
             <div>
-              <h3 className="font-semibold text-sm text-gray-900">{info.name}</h3>
+              <h3 className="font-semibold text-sm text-text-strong">{info.name}</h3>
               <a
                 href={info.url}
                 target="_blank"
@@ -238,7 +238,7 @@ function PlatformCard({ info }: { info: PlatformInfo }) {
         </div>
 
         {/* Description */}
-        <p className="text-xs text-gray-500 leading-relaxed">{info.description}</p>
+        <p className="text-xs text-text-muted leading-relaxed">{info.description}</p>
 
         {/* Status */}
         {!info.isFree && (
@@ -247,11 +247,11 @@ function PlatformCard({ info }: { info: PlatformInfo }) {
               <span style={{ color: status.color }}>{status.icon}</span>
               <span className="text-xs font-medium" style={{ color: status.color }}>{status.label}</span>
               {info.isConfigured && info.username && (
-                <span className="text-xs text-gray-400">· {info.username}</span>
+                <span className="text-xs text-text-faint">· {info.username}</span>
               )}
             </div>
             {info.lastConnectedAt && (
-              <span className="text-xs text-gray-400">
+              <span className="text-xs text-text-faint">
                 {new Date(info.lastConnectedAt).toLocaleDateString("hu-HU")}
               </span>
             )}
@@ -278,7 +278,7 @@ function PlatformCard({ info }: { info: PlatformInfo }) {
             <Button
               size="sm"
               variant="outline"
-              className="flex-1 gap-1.5 text-xs border-gray-200"
+              className="flex-1 gap-1.5 text-xs border-line"
               onClick={() => setShowDialog(true)}
             >
               <Lock size={12} />
@@ -288,7 +288,7 @@ function PlatformCard({ info }: { info: PlatformInfo }) {
               <Button
                 size="sm"
                 variant="outline"
-                className="gap-1.5 text-xs border-gray-200"
+                className="gap-1.5 text-xs border-line"
                 disabled={isTesting}
                 onClick={() => {
                   setIsTesting(true);
@@ -328,19 +328,19 @@ export default function PlatformConnectionsPage() {
   const configuredCount = platforms?.filter((p) => p.isConfigured).length ?? 0;
 
   return (
-    <div className="min-h-screen flex flex-col bg-white">
+    <div className="min-h-screen flex flex-col bg-surface">
       <Header />
 
       {/* Page header */}
-      <div className="border-b" style={{ borderColor: "#e5e7eb", backgroundColor: "#F8FAFC" }}>
+      <div className="border-b" style={{ borderColor: "var(--line)", backgroundColor: "var(--page-bg-subtle)" }}>
         <div className="container py-8">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#7CA9D3" }}>
               <Link2 size={16} className="text-white" />
             </div>
-            <h1 className="text-2xl font-bold" style={{ color: "#161718" }}>Platform-kapcsolatok</h1>
+            <h1 className="text-2xl font-bold" style={{ color: "var(--text-strong)" }}>Platform-kapcsolatok</h1>
           </div>
-          <p className="text-gray-500 text-sm ml-11">
+          <p className="text-text-muted text-sm ml-11">
             Kösse össze a rendszert a jogszabályi adatbázisokkal. Ingyenes forrásoknál nincs szükség bejelentkezésre.
           </p>
         </div>
@@ -350,17 +350,17 @@ export default function PlatformConnectionsPage() {
         {/* Stats */}
         {platforms && (
           <div className="grid grid-cols-3 gap-4 mb-8">
-            <div className="rounded-lg border p-4" style={{ borderColor: "#e5e7eb" }}>
-              <div className="text-2xl font-bold" style={{ color: "#161718" }}>{platforms.length}</div>
-              <div className="text-xs text-gray-500 mt-0.5">Összes platform</div>
+            <div className="rounded-lg border p-4" style={{ borderColor: "var(--line)" }}>
+              <div className="text-2xl font-bold" style={{ color: "var(--text-strong)" }}>{platforms.length}</div>
+              <div className="text-xs text-text-muted mt-0.5">Összes platform</div>
             </div>
-            <div className="rounded-lg border p-4" style={{ borderColor: "#e5e7eb" }}>
+            <div className="rounded-lg border p-4" style={{ borderColor: "var(--line)" }}>
               <div className="text-2xl font-bold text-green-600">{connectedCount}</div>
-              <div className="text-xs text-gray-500 mt-0.5">Aktív kapcsolat</div>
+              <div className="text-xs text-text-muted mt-0.5">Aktív kapcsolat</div>
             </div>
-            <div className="rounded-lg border p-4" style={{ borderColor: "#e5e7eb" }}>
+            <div className="rounded-lg border p-4" style={{ borderColor: "var(--line)" }}>
               <div className="text-2xl font-bold" style={{ color: "#7CA9D3" }}>{configuredCount}</div>
-              <div className="text-xs text-gray-500 mt-0.5">Beállított</div>
+              <div className="text-xs text-text-muted mt-0.5">Beállított</div>
             </div>
           </div>
         )}

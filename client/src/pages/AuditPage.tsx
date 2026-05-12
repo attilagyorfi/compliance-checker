@@ -100,10 +100,10 @@ function EventRow({ event }: { event: AuditRow }) {
   );
 
   return (
-    <div className="rounded-lg border bg-white" style={{ borderColor: "#e5e7eb" }}>
+    <div className="rounded-lg border bg-surface" style={{ borderColor: "var(--line)" }}>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full text-left p-3 flex items-start gap-3 hover:bg-gray-50 transition-colors"
+        className="w-full text-left p-3 flex items-start gap-3 hover:bg-page-bg-subtle transition-colors"
       >
         <Badge
           className="flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium border-0 mt-0.5"
@@ -112,35 +112,35 @@ function EventRow({ event }: { event: AuditRow }) {
           {eventTypeLabel(event.eventType)}
         </Badge>
         <div className="flex-1 min-w-0">
-          <p className="text-sm text-gray-800 truncate">{event.description ?? "—"}</p>
+          <p className="text-sm text-text-strong truncate">{event.description ?? "—"}</p>
           <div className="flex flex-wrap items-center gap-2 mt-1">
             {event.resourceType && (
-              <span className="text-xs text-gray-400">
+              <span className="text-xs text-text-faint">
                 {event.resourceType}
                 {event.resourceId ? ` #${event.resourceId}` : ""}
               </span>
             )}
             {event.userEmail && (
-              <span className="text-xs text-gray-400 flex items-center gap-1">
+              <span className="text-xs text-text-faint flex items-center gap-1">
                 <UserIcon size={9} />
                 {event.userEmail}
               </span>
             )}
-            <span className="text-xs text-gray-400 flex items-center gap-1 ml-auto">
+            <span className="text-xs text-text-faint flex items-center gap-1 ml-auto">
               <Calendar size={9} />
               {formatDateTime(event.createdAt)}
             </span>
           </div>
         </div>
         {hasMetadata && (
-          <span className="flex-shrink-0 text-gray-400 mt-0.5">
+          <span className="flex-shrink-0 text-text-faint mt-0.5">
             {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </span>
         )}
       </button>
       {expanded && hasMetadata && (
-        <div className="border-t px-3 py-2 bg-gray-50" style={{ borderColor: "#f3f4f6" }}>
-          <pre className="text-xs text-gray-700 whitespace-pre-wrap break-all overflow-x-auto">
+        <div className="border-t px-3 py-2 bg-page-bg-subtle" style={{ borderColor: "var(--line-subtle)" }}>
+          <pre className="text-xs text-text-default whitespace-pre-wrap break-all overflow-x-auto">
             {JSON.stringify(event.metadata, null, 2)}
           </pre>
         </div>
@@ -190,18 +190,18 @@ export default function AuditPage() {
   const onFilterChange = () => setOffset(0);
 
   return (
-    <div className="min-h-screen flex flex-col bg-white">
+    <div className="min-h-screen flex flex-col bg-surface">
       <Header />
 
-      <div className="border-b" style={{ borderColor: "#e5e7eb", backgroundColor: "#F8FAFC" }}>
+      <div className="border-b" style={{ borderColor: "var(--line)", backgroundColor: "var(--page-bg-subtle)" }}>
         <div className="container py-8">
           <div className="flex items-center gap-3 mb-2">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#7CA9D3" }}>
               <Shield size={16} className="text-white" />
             </div>
-            <h1 className="text-2xl font-bold" style={{ color: "#161718" }}>Audit napló</h1>
+            <h1 className="text-2xl font-bold" style={{ color: "var(--text-strong)" }}>Audit napló</h1>
           </div>
-          <p className="text-gray-500 text-sm ml-11">
+          <p className="text-text-muted text-sm ml-11">
             Az alkalmazás minden írási műveletének naplója. {totalRecentEvents.toLocaleString("hu-HU")} esemény az utolsó {sinceDaysFilter ?? "30"} napban.
           </p>
         </div>
@@ -210,8 +210,8 @@ export default function AuditPage() {
       <main className="flex-1 container py-8 space-y-6">
         {/* Summary widget */}
         {summary.length > 0 && (
-          <div className="rounded-xl border bg-white p-4" style={{ borderColor: "#e5e7eb" }}>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+          <div className="rounded-xl border bg-surface p-4" style={{ borderColor: "var(--line)" }}>
+            <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">
               Esemény-megoszlás (utolsó {sinceDaysFilter ?? "30"} nap)
             </p>
             <div className="flex flex-wrap gap-2">
@@ -234,7 +234,7 @@ export default function AuditPage() {
 
         {/* Filter bar */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1.5 text-xs text-gray-500 mr-1">
+          <div className="flex items-center gap-1.5 text-xs text-text-muted mr-1">
             <Filter size={12} />
             Szűrés:
           </div>
@@ -262,21 +262,21 @@ export default function AuditPage() {
               Szűrők alaphelyzetbe
             </Button>
           )}
-          <span className="ml-auto text-xs text-gray-500">
+          <span className="ml-auto text-xs text-text-muted">
             {total.toLocaleString("hu-HU")} esemény
           </span>
         </div>
 
         {/* Events list */}
         {listQuery.isLoading ? (
-          <div className="flex items-center justify-center py-16 text-gray-400">
+          <div className="flex items-center justify-center py-16 text-text-faint">
             <Loader2 size={20} className="animate-spin mr-2" /> Betöltés…
           </div>
         ) : items.length === 0 ? (
-          <div className="rounded-xl border bg-white p-12 flex flex-col items-center gap-3" style={{ borderColor: "#e5e7eb" }}>
+          <div className="rounded-xl border bg-surface p-12 flex flex-col items-center gap-3" style={{ borderColor: "var(--line)" }}>
             <Inbox size={26} className="text-gray-300" />
-            <p className="font-medium text-gray-700">Nincs találat</p>
-            <p className="text-sm text-gray-500 text-center max-w-md">
+            <p className="font-medium text-text-default">Nincs találat</p>
+            <p className="text-sm text-text-muted text-center max-w-md">
               A jelenlegi szűrőkkel egy esemény sem található. Próbáld ki a "Szűrők alaphelyzetbe" gombbal.
             </p>
           </div>
@@ -300,7 +300,7 @@ export default function AuditPage() {
             >
               <ChevronLeft size={14} /> Előző
             </Button>
-            <span className="text-xs text-gray-500">
+            <span className="text-xs text-text-muted">
               {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} / {total.toLocaleString("hu-HU")}
             </span>
             <Button
