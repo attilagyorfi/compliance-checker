@@ -9,6 +9,7 @@ import { projectsRouter } from "./routers/projects";
 import { projectMembersRouter } from "./routers/projectMembers";
 import { auditRouter } from "./routers/audit";
 import { searchSettingsRouter } from "./routers/searchSettings";
+import { adminRouter } from "./routers/admin";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
@@ -37,6 +38,7 @@ export const appRouter = router({
   projectMembers: projectMembersRouter,
   audit: auditRouter,
   searchSettings: searchSettingsRouter,
+  admin: adminRouter,
 
   // TODO: add feature routers here, e.g.
   // todo: router({

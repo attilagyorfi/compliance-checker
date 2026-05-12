@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { ClipboardList, Menu, X, BookOpen, Search, History, Database, LayoutDashboard, FolderOpen, ChevronDown, Check, Shield, Settings as SettingsIcon, Sun, Moon } from "lucide-react";
+import { ClipboardList, Menu, X, BookOpen, Search, History, Database, LayoutDashboard, FolderOpen, ChevronDown, Check, Shield, Settings as SettingsIcon, Sun, Moon, ShieldAlert } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useActiveProject } from "@/contexts/ProjectContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -16,6 +16,9 @@ const navItems = [
   { href: "/search-history", label: "Előzmények", icon: History },
   { href: "/audit", label: "Audit", icon: Shield },
 ];
+
+// Admin nav-item, csak role: "admin" user-eknek látszik
+const adminNavItem = { href: "/admin", label: "Admin", icon: ShieldAlert };
 
 function ThemeToggleButton() {
   const { theme, toggleTheme } = useTheme();
@@ -148,6 +151,10 @@ function ActiveProjectSelector() {
 export default function Header() {
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Admin-link csak akkor látszik, ha a user role === "admin"
+  const meQuery = trpc.auth.me.useQuery(undefined, { staleTime: 5 * 60 * 1000, retry: false });
+  const isAdmin = meQuery.data?.role === "admin";
+  const effectiveNavItems = isAdmin ? [...navItems, adminNavItem] : navItems;
 
   return (
     <header
@@ -175,7 +182,7 @@ export default function Header() {
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-1">
-            {navItems.map(({ href, label, icon: Icon }) => {
+            {effectiveNavItems.map(({ href, label, icon: Icon }) => {
               const isActive = location === href || location.startsWith(href + "/");
               return (
                 <Link
@@ -230,7 +237,7 @@ export default function Header() {
             <div className="px-2 pb-2">
               <ActiveProjectSelector />
             </div>
-            {navItems.map(({ href, label, icon: Icon }) => {
+            {effectiveNavItems.map(({ href, label, icon: Icon }) => {
               const isActive = location === href;
               return (
                 <Link

@@ -690,6 +690,37 @@ describe("embeddings helpers", () => {
     await expect(caller.regulationSources.restoreMany({ ids: [1, 2] })).rejects.toThrow();
   });
 
+  // ── Admin router tests (V11.9) ──────────────────────────────────────────────
+  it("admin.stats requires admin role (FORBIDDEN for non-admin / unauth)", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.admin.stats()).rejects.toThrow();
+  });
+
+  it("admin.listUsers requires admin role", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.admin.listUsers({ search: "" })).rejects.toThrow();
+  });
+
+  it("admin.changeUserRole requires admin role", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.admin.changeUserRole({ userId: 1, role: "user" })).rejects.toThrow();
+  });
+
+  it("admin.listAllProjects requires admin role", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.admin.listAllProjects({ includeDeleted: false })).rejects.toThrow();
+  });
+
+  it("admin.emptyTrash requires admin role", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.admin.emptyTrash()).rejects.toThrow();
+  });
+
   it("getEmbedding returns null without API key (graceful degradation)", async () => {
     const { _resetEmbeddingApiStateForTests, getEmbedding } = await import("./embeddings");
     _resetEmbeddingApiStateForTests();
