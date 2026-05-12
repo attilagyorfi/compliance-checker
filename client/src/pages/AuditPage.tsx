@@ -5,10 +5,11 @@
  * statisztikákkal. Protected — csak authentikált user éri el.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearch } from "wouter";
 import {
   Shield, Filter, Calendar, ChevronLeft, ChevronRight, Loader2,
-  ChevronDown, ChevronUp, Inbox, User as UserIcon,
+  ChevronDown, ChevronUp, Inbox, User as UserIcon, X as XIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -153,14 +154,27 @@ type EventTypeValue = typeof EVENT_TYPE_OPTIONS[number]["value"];
 type EventTypeBackend = Exclude<EventTypeValue, "all">;
 
 export default function AuditPage() {
+  const search = useSearch();
   const [eventType, setEventType] = useState<EventTypeValue>("all");
   const [resourceType, setResourceType] = useState<string>("all");
+  const [resourceId, setResourceId] = useState<string>("");
   const [sinceDays, setSinceDays] = useState<string>("30");
   const [offset, setOffset] = useState(0);
+
+  // Read URL query params on mount (e.g. /audit?resourceType=project&resourceId=42)
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    const rt = params.get("resourceType");
+    const ri = params.get("resourceId");
+    if (rt) setResourceType(rt);
+    if (ri) setResourceId(ri);
+    if (rt || ri) setOffset(0);
+  }, [search]);
 
   const eventTypeFilter: EventTypeBackend | undefined =
     eventType === "all" ? undefined : eventType;
   const resourceTypeFilter = resourceType === "all" ? undefined : resourceType;
+  const resourceIdFilter = resourceId.trim() || undefined;
   const sinceDaysFilter = sinceDays === "all" ? undefined : Number(sinceDays);
 
   const listQuery = trpc.audit.list.useQuery({
@@ -168,6 +182,7 @@ export default function AuditPage() {
     offset,
     eventType: eventTypeFilter,
     resourceType: resourceTypeFilter,
+    resourceId: resourceIdFilter,
     sinceDays: sinceDaysFilter,
   });
 
@@ -183,6 +198,7 @@ export default function AuditPage() {
   const handleResetFilters = () => {
     setEventType("all");
     setResourceType("all");
+    setResourceId("");
     setSinceDays("30");
     setOffset(0);
   };
@@ -257,7 +273,18 @@ export default function AuditPage() {
               {SINCE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
             </SelectContent>
           </Select>
-          {(eventType !== "all" || resourceType !== "all" || sinceDays !== "30") && (
+          {resourceIdFilter && (
+            <button
+              onClick={() => { setResourceId(""); setOffset(0); }}
+              className="flex items-center gap-1 text-xs px-2 py-1.5 rounded-full font-medium"
+              style={{ backgroundColor: "var(--info-bg)", color: "var(--info-text)" }}
+              title="Erőforrás-szűrő eltávolítása"
+            >
+              ID: {resourceIdFilter}
+              <XIcon size={10} />
+            </button>
+          )}
+          {(eventType !== "all" || resourceType !== "all" || resourceId !== "" || sinceDays !== "30") && (
             <Button variant="ghost" size="sm" className="h-9 text-xs" onClick={handleResetFilters}>
               Szűrők alaphelyzetbe
             </Button>

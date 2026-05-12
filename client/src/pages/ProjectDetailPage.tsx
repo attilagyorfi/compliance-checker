@@ -11,7 +11,7 @@ import {
   FolderOpen, ArrowLeft, Loader2, AlertTriangle,
   ClipboardList, Database, Search, Users, Settings,
   FileText, Calendar, Inbox, UserPlus, Trash2, Crown, ShieldCheck, Eye,
-  Download, ListChecks, Edit3, Save, Archive,
+  Download, ListChecks, Edit3, Save, Archive, Shield,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -478,6 +478,27 @@ function SettingsTab({
               )}
               JSON letöltése
             </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Audit log link */}
+      <div className="rounded-xl border bg-surface p-5" style={{ borderColor: "var(--line)" }}>
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-page-bg-subtle border border-line-subtle flex items-center justify-center">
+            <Shield size={20} className="text-text-muted" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-semibold text-text-strong text-sm">Projekt napló</h3>
+            <p className="text-xs text-text-muted mt-1 max-w-xl">
+              Megnyitja az audit-naplót a projekthez tartozó eseményekre szűrve (létrehozás, frissítés, archiválás, export/import, tag-műveletek).
+            </p>
+            <Link href={`/audit?resourceType=project&resourceId=${projectId}`}>
+              <Button size="sm" variant="outline" className="gap-2 mt-3">
+                <Shield size={13} />
+                Projekt naplójának megtekintése
+              </Button>
+            </Link>
           </div>
         </div>
       </div>

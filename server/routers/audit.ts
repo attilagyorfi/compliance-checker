@@ -38,6 +38,7 @@ export const auditRouter = router({
         offset: z.number().int().min(0).default(0),
         eventType: eventTypeFilter,
         resourceType: z.string().optional(),
+        resourceId: z.string().optional(),
         userId: z.number().int().positive().optional(),
         sinceDays: z.number().int().min(1).max(365).optional(),
       }).optional()
@@ -52,6 +53,7 @@ export const auditRouter = router({
       const conditions = [] as Array<ReturnType<typeof eq>>;
       if (input?.eventType) conditions.push(eq(auditLogs.eventType, input.eventType));
       if (input?.resourceType) conditions.push(eq(auditLogs.resourceType, input.resourceType));
+      if (input?.resourceId) conditions.push(eq(auditLogs.resourceId, input.resourceId));
       if (input?.userId !== undefined) conditions.push(eq(auditLogs.userId, input.userId));
       if (input?.sinceDays !== undefined) {
         const cutoff = new Date(Date.now() - input.sinceDays * 24 * 60 * 60 * 1000);
