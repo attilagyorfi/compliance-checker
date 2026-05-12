@@ -14,6 +14,7 @@ import { nanoid } from "nanoid";
 import { buildRelevantExcerpt } from "../relevanceChunker";
 import { auditLog } from "../auditLog";
 import { runWithRetry } from "../analysisQueue";
+import { createNotification } from "../notifications";
 
 // ── OCR detection ─────────────────────────────────────────────────────────────
 
@@ -296,6 +297,16 @@ export const complianceRouter = router({
               resourceId: analysisId,
               description: `Elemzés sikertelen: ${error}`,
             });
+            if (ctx.user?.id) {
+              await createNotification({
+                userId: ctx.user.id,
+                eventType: "analysis_error",
+                title: `Elemzés sikertelen: ${input.title}`,
+                body: error ? `Hiba: ${error}` : "Az elemzés feldolgozása hibával végződött.",
+                link: `/result/${analysisId}`,
+                email: ctx.user.email ?? undefined,
+              });
+            }
           } else if (status === "completed") {
             await auditLog({
               userId: ctx.user?.id,
@@ -305,6 +316,16 @@ export const complianceRouter = router({
               resourceId: analysisId,
               description: `Elemzés kész: ${input.title}`,
             });
+            if (ctx.user?.id) {
+              await createNotification({
+                userId: ctx.user.id,
+                eventType: "analysis_complete",
+                title: `Elemzésed elkészült: ${input.title}`,
+                body: "Az AI-megfelelőség-ellenőrzés lefutott. Kattints a riport megtekintéséhez.",
+                link: `/result/${analysisId}`,
+                email: ctx.user.email ?? undefined,
+              });
+            }
           }
         }
       ).catch((err) => {

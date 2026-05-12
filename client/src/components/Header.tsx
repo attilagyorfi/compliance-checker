@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { ClipboardList, Menu, X, BookOpen, Search, History, Database, LayoutDashboard, FolderOpen, ChevronDown, Check, Shield, Settings as SettingsIcon, Sun, Moon, ShieldAlert } from "lucide-react";
+import { ClipboardList, Menu, X, BookOpen, Search, History, Database, LayoutDashboard, FolderOpen, ChevronDown, Check, Shield, Settings as SettingsIcon, Sun, Moon, ShieldAlert, Bell, ExternalLink } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useActiveProject } from "@/contexts/ProjectContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -48,6 +48,126 @@ function MobileThemeRow() {
       {isDark ? <Sun size={16} /> : <Moon size={16} />}
       {isDark ? "Világos téma" : "Sötét téma"}
     </button>
+  );
+}
+
+function NotificationsBell() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const [, navigate] = useLocation();
+
+  const unreadQuery = trpc.notifications.unreadCount.useQuery(undefined, {
+    refetchInterval: 30_000,
+    retry: false,
+  });
+  const listQuery = trpc.notifications.list.useQuery(
+    { unreadOnly: false, limit: 15 },
+    { enabled: open, retry: false },
+  );
+  const utils = trpc.useUtils();
+  const markReadMut = trpc.notifications.markRead.useMutation({
+    onSuccess: () => {
+      utils.notifications.list.invalidate();
+      utils.notifications.unreadCount.invalidate();
+    },
+  });
+  const markAllMut = trpc.notifications.markAllRead.useMutation({
+    onSuccess: () => {
+      utils.notifications.list.invalidate();
+      utils.notifications.unreadCount.invalidate();
+    },
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  // Don't show the bell at all if the user isn't authenticated (unreadCount errors)
+  if (unreadQuery.isError) return null;
+
+  const count = unreadQuery.data?.count ?? 0;
+  const items = listQuery.data ?? [];
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="relative flex items-center justify-center w-8 h-8 rounded text-gray-300 hover:text-white hover:bg-white/10 transition-all"
+        title={count > 0 ? `${count} olvasatlan értesítés` : "Értesítések"}
+        aria-label="Értesítések"
+      >
+        <Bell size={15} />
+        {count > 0 && (
+          <span
+            className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold flex items-center justify-center text-white"
+            style={{ backgroundColor: "#dc2626" }}
+          >
+            {count > 9 ? "9+" : count}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div
+          className="absolute right-0 mt-2 w-80 max-h-[480px] overflow-hidden rounded-lg shadow-xl border z-50 flex flex-col"
+          style={{ backgroundColor: "var(--surface)", borderColor: "var(--line)" }}
+        >
+          <div className="px-3 py-2 border-b flex items-center justify-between" style={{ borderColor: "var(--line)" }}>
+            <p className="text-xs font-semibold text-text-strong uppercase tracking-wide">Értesítések</p>
+            {count > 0 && (
+              <button
+                onClick={() => markAllMut.mutate()}
+                disabled={markAllMut.isPending}
+                className="text-xs text-text-muted hover:text-text-strong underline"
+              >
+                Mind olvasottra
+              </button>
+            )}
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {listQuery.isLoading ? (
+              <div className="px-3 py-4 text-xs text-text-faint text-center">Betöltés…</div>
+            ) : items.length === 0 ? (
+              <div className="px-3 py-6 text-xs text-text-faint text-center">Nincs új értesítés.</div>
+            ) : (
+              items.map((n) => (
+                <div
+                  key={n.id}
+                  className={`px-3 py-2.5 border-b text-xs flex items-start gap-2 cursor-pointer hover:bg-page-bg-subtle transition-colors ${n.isRead ? "" : "bg-page-bg-subtle"}`}
+                  style={{ borderColor: "var(--line-subtle)" }}
+                  onClick={() => {
+                    if (!n.isRead) markReadMut.mutate({ id: n.id });
+                    if (n.link) {
+                      setOpen(false);
+                      navigate(n.link);
+                    }
+                  }}
+                >
+                  {!n.isRead && (
+                    <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full mt-1.5" style={{ backgroundColor: "#7CA9D3" }} />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className={`${n.isRead ? "text-text-default" : "text-text-strong font-medium"} truncate`}>{n.title}</p>
+                    {n.body && <p className="text-text-muted line-clamp-2 mt-0.5">{n.body}</p>}
+                    <p className="text-text-faint mt-1">
+                      {new Date(n.createdAt).toLocaleString("hu-HU", {
+                        month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+                      })}
+                    </p>
+                  </div>
+                  {n.link && <ExternalLink size={11} className="text-text-faint flex-shrink-0 mt-0.5" />}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -202,9 +322,10 @@ export default function Header() {
             })}
           </nav>
 
-          {/* Active project selector + Theme toggle + Settings icon — desktop only */}
+          {/* Active project selector + Notifications + Theme toggle + Settings icon — desktop only */}
           <div className="hidden md:flex items-center gap-2 ml-2">
             <ActiveProjectSelector />
+            <NotificationsBell />
             <ThemeToggleButton />
             <Link
               href="/settings"

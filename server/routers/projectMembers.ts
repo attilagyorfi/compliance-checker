@@ -17,6 +17,7 @@ import { and, eq } from "drizzle-orm";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { projectMembers, projects, users } from "../../drizzle/schema";
+import { createNotification } from "../notifications";
 
 const roleEnum = z.enum(["owner", "member", "reviewer"]);
 
@@ -118,7 +119,7 @@ export const projectMembersRouter = router({
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Adatbázis nem elérhető." });
 
-      const projectExists = await db.select({ id: projects.id }).from(projects).where(eq(projects.id, input.projectId)).limit(1);
+      const projectExists = await db.select({ id: projects.id, name: projects.name }).from(projects).where(eq(projects.id, input.projectId)).limit(1);
       if (!projectExists[0]) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Projekt nem található." });
       }
@@ -144,6 +145,16 @@ export const projectMembersRouter = router({
         projectId: input.projectId,
         userId: targetUser.id,
         role: input.role,
+      });
+
+      // Notify the newly added user (fire-and-forget).
+      await createNotification({
+        userId: targetUser.id,
+        eventType: "project_member_add",
+        title: `Hozzáadva új projekthez: ${projectExists[0].name ?? "Projekt"}`,
+        body: `${ctx.user.email ?? "Egy felhasználó"} ${input.role === "owner" ? "tulajdonosi" : input.role === "reviewer" ? "lektori" : "tag"} szerepkörrel adott hozzá a projekthez.`,
+        link: `/projects/${input.projectId}`,
+        email: input.email,
       });
 
       return { success: true };

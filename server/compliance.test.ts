@@ -721,6 +721,31 @@ describe("embeddings helpers", () => {
     await expect(caller.admin.emptyTrash()).rejects.toThrow();
   });
 
+  // ── Notifications router tests (V11.11) ─────────────────────────────────────
+  it("notifications.list requires authentication", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.notifications.list({ unreadOnly: false, limit: 10 })).rejects.toThrow();
+  });
+
+  it("notifications.unreadCount requires authentication", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.notifications.unreadCount()).rejects.toThrow();
+  });
+
+  it("notifications.markRead requires authentication", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.notifications.markRead({ id: 1 })).rejects.toThrow();
+  });
+
+  it("notifications.markAllRead requires authentication", async () => {
+    const { appRouter } = await import("./routers");
+    const caller = appRouter.createCaller(createPublicContext());
+    await expect(caller.notifications.markAllRead()).rejects.toThrow();
+  });
+
   it("getEmbedding returns null without API key (graceful degradation)", async () => {
     const { _resetEmbeddingApiStateForTests, getEmbedding } = await import("./embeddings");
     _resetEmbeddingApiStateForTests();

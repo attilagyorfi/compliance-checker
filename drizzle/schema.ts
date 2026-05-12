@@ -307,3 +307,24 @@ export const chunkEmbeddings = mysqlTable("chunk_embeddings", {
 
 export type ChunkEmbedding = typeof chunkEmbeddings.$inferSelect;
 export type InsertChunkEmbedding = typeof chunkEmbeddings.$inferInsert;
+
+// ─── Notifications (in-app + jövőbeli email) ──────────────────────────────────
+// V11.11 — egyszerű notification ledger. Egy notification user-szintű, és van
+// hozzá title + body + opcionális link (route). isRead jelzi az elolvasott
+// státuszt; emailSentAt jövőbeli SMTP-integrációhoz tartalék mező.
+
+export const notifications = mysqlTable("notifications", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  eventType: varchar("eventType", { length: 64 }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  body: text("body"),
+  link: varchar("link", { length: 512 }),
+  isRead: boolean("isRead").default(false).notNull(),
+  /** Mikor küldött ki erről email — null = még nem (vagy nincs SMTP). */
+  emailSentAt: timestamp("emailSentAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = typeof notifications.$inferInsert;

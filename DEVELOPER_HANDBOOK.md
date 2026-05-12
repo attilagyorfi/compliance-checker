@@ -1,10 +1,20 @@
 # M Mérnöki – Tervmegfelelőség-ellenőrző: Fejlesztői Kézikönyv
 
-> **Verzió:** V11.5 (2026. május 7.)
+> **Verzió:** V11.11 (2026. május 8.)
 > **Projekt:** `compliance-checker`
 > **Élő URL:** https://compliance-lkoz8hck.manus.space
 > **Stack:** React 19 + Vite 7 + Express 4 + tRPC 11 + Drizzle ORM + MySQL/TiDB
 > **Platform:** Manus WebDev (hosting + auth + DB + S3 storage)
+>
+> **V11.6 – V11.11 változásnapló (V11.5-höz képest):**
+> - **V11.6 (a) Projekt-import** — `projects.import` endpoint, JSON-validáció a kliens + szerver oldalon, file-picker dialog a ProjectsPage-en. Tagság NEM kerül vissza, fájl-binárisok sem.
+> - **V11.7 (b) Soft-delete** — `regulation_sources` és `knowledge_base_documents` táblákon új `deletedAt` timestamp. delete most soft-delete + chunk_embeddings cascade cleanup. Új `restore` és `permanentDelete` endpointok. UI: "Mutasd a törölteket" toggle + Visszaállítás/Végleges törlés gombok.
+> - **V11.8 (c) Bulk a /regulations-on** — `regulationSources.deleteMany` + `restoreMany` endpointok. UI: checkbox-os kijelölési modell, sticky bulk action bar (kontext-érzékeny — csak aktív, csak törölt, vagy vegyes kijelölés különböző gombsorokkal).
+> - **V11.9 (d) Admin dashboard** — új `/admin` route, `admin` tRPC router (stats / listUsers / changeUserRole / listAllProjects / emptyTrash). Header conditional "Admin" nav-item csak role: "admin" user-eknek. Kuka-ürítés végleges törléshez.
+> - **V11.10 (e) Per-projekt audit-link** — `audit.list` új `resourceId` filterrel, AuditPage URL-search-param olvasás, ProjectDetailPage Settings-tab új "Projekt napló" link.
+> - **V11.11 (f) Értesítések** — új `notifications` tábla, `notifications` tRPC router (list / unreadCount / markRead / markAllRead / delete). Trigger-pontok: analízis befejezés és tag-hozzáadás. Header-be Bell ikon dropdown-nal és piros badge-dzsel. Email-küldés helye (`server/notifications.ts → sendEmail`) placeholder-ben, SMTP_HOST env változó esetén aktivál.
+>
+> **DEPLOY-FONTOS:** pnpm db:push szükséges a chunk_embeddings (V11), deletedAt oszlopok (V11.7), és notifications tábla (V11.11) prod DB-be való telepítéséhez. A backend mind try/catch-vel rendelkezik, ami a hiányzó oszlopok hibáját graceful módon kezeli, így ha a deploy elcsúszik a db:push-tól, semmi nem törik — csak ezek a feature-ek nem aktívak.
 >
 > **V11.5 változásnapló (V11.4-hez képest):**
 > - **Teljes dark mode (V11.5):** új `.dark { ... }` CSS-blokk az `index.css`-ben OKLCH-tokenekkel a Tailwind 4 alapváltozóira (background, foreground, card, popover, secondary, muted, accent, destructive, border, input, ring, sidebar.*, chart.*) + 11 page-level neutrál CSS-var (`--page-bg`, `--surface`, `--line`, `--text-strong/default/muted/faint` stb.) és 4 info-banner változó. A `@theme inline` aliasokon át Tailwind utility-k (`bg-surface`, `text-text-muted`, `border-line` stb.) automatikusan swap-elnek. Sed-batch refactor 16 page-fájlban: `bg-white`, `bg-gray-50/100`, `border-gray-200/100`, `text-gray-{300..900}` és inline `style={{ borderColor: "#e5e7eb" }}` típusú konstansok mind CSS-var-driven utility-re/value-ra. Brand-színek (#7CA9D3) és szemantikus state-színek (red/amber/green megfelelőségi badge-ek) szándékosan érintetlenek.
@@ -69,7 +79,7 @@ A platform három fő funkcionális pillérre épül. Az első a **Compliance En
 | Fájltárolás | AWS S3 (Manus beépített) | `storagePut` / `storageGet` helperek |
 | Auth | Manus OAuth 2.0 | JWT session cookie (`jose` lib) |
 | AI | Manus beépített LLM API | `invokeLLM()` helper, JSON schema output |
-| Tesztek | Vitest | 54/54 teszt zöld |
+| Tesztek | Vitest | 74/74 teszt zöld |
 | Dokumentum-kinyerés | pdf-parse, mammoth, xlsx, tesseract.js | OCR fallback szkennelt PDF-hez |
 | Web scraping | cheerio, node fetch | DuckDuckGo HTML scraper |
 | Build pluginek | `vite-plugin-manus-runtime`, `@builder.io/vite-plugin-jsx-loc` | Manus-specifikus dev integráció |

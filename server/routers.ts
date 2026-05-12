@@ -10,6 +10,7 @@ import { projectMembersRouter } from "./routers/projectMembers";
 import { auditRouter } from "./routers/audit";
 import { searchSettingsRouter } from "./routers/searchSettings";
 import { adminRouter } from "./routers/admin";
+import { notificationsRouter } from "./routers/notifications";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
@@ -39,6 +40,7 @@ export const appRouter = router({
   audit: auditRouter,
   searchSettings: searchSettingsRouter,
   admin: adminRouter,
+  notifications: notificationsRouter,
 
   // TODO: add feature routers here, e.g.
   // todo: router({
