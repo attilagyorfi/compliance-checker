@@ -8,7 +8,10 @@
 
 services:
   mysql:
-    image: mysql:8.4
+    # Pinned to 8.0 LTS: stabil, az `mysql2` npm-kliens out-of-the-box támogatja
+    # a caching_sha2_password defaultot. (Az eredeti 8.4 + native-password flag
+    # kombináció crash-elt, mert a flag-et a 8.4 eltávolította.)
+    image: mysql:8.0
     container_name: compliance-checker-mysql
     restart: unless-stopped
     environment:
@@ -24,9 +27,9 @@ services:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_dev_pw"]
       interval: 5s
       timeout: 3s
-      retries: 10
+      retries: 20
+      start_period: 30s
     command:
-      - --default-authentication-plugin=mysql_native_password
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
 
