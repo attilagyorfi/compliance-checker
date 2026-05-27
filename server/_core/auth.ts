@@ -75,13 +75,47 @@ export function getAuth(): ReturnType<typeof betterAuth> | null {
       plugins: [
         magicLink({
           /**
-           * Magic-link e-mail küldés. Production-ben SMTP/Resend integrációval
-           * cserélendő. Most placeholder: console.log + audit-log entry, hogy
-           * fejlesztés közben a linket a szerver-log-ból ki lehessen másolni.
+           * Magic-link e-mail küldés.
+           *  - Ha RESEND_API_KEY env be van állítva → Resend.send.
+           *  - Egyébként console.log (dev / Resend nélküli prod), hogy a
+           *    link a szerver-log-ból kimásolható legyen.
            */
           sendMagicLink: async ({ email, url }) => {
-            console.info(`[auth] Magic link to ${email}:\n  ${url}\n`);
-            // TODO M5+: Resend / SMTP integráció itt.
+            const resendKey = process.env.RESEND_API_KEY;
+            const fromAddr = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+
+            if (!resendKey) {
+              console.info(`[auth] Magic link to ${email} (RESEND_API_KEY not set):\n  ${url}\n`);
+              return;
+            }
+
+            try {
+              const { Resend } = await import("resend");
+              const resend = new Resend(resendKey);
+              const { error } = await resend.emails.send({
+                from: fromAddr,
+                to: email,
+                subject: "Belépési link – Compliance Checker",
+                html: `
+<!doctype html>
+<html lang="hu">
+  <body style="font-family: system-ui, -apple-system, sans-serif; max-width: 480px; margin: 32px auto; padding: 0 16px; color: #161718;">
+    <h2 style="color: #7CA9D3; font-weight: 700;">M Mérnöki Iroda — Compliance Checker</h2>
+    <p>Kattints az alábbi gombra a belépéshez. A link <strong>egyszer használható</strong> és <strong>5 perc</strong> múlva lejár.</p>
+    <p style="text-align: center; margin: 32px 0;">
+      <a href="${url}" style="display: inline-block; padding: 12px 24px; background: #7CA9D3; color: white; text-decoration: none; border-radius: 8px; font-weight: 600;">Belépés</a>
+    </p>
+    <p style="font-size: 12px; color: #6b7280;">Ha nem te kérted ezt a belépést, hagyd figyelmen kívül ezt az e-mailt.</p>
+    <p style="font-size: 12px; color: #6b7280; word-break: break-all;">Vagy másold a böngésződ címsorába: ${url}</p>
+  </body>
+</html>`,
+              });
+              if (error) {
+                console.error(`[auth] Resend hiba (${email}):`, error);
+              }
+            } catch (err) {
+              console.error(`[auth] Resend kivétel (${email}):`, err);
+            }
           },
         }),
       ],
