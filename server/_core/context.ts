@@ -1,6 +1,6 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import type { User } from "../../drizzle/schema";
-import { sdk } from "./sdk";
+import { getSessionFromHeaders } from "./auth";
 
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
@@ -33,15 +33,52 @@ async function maybeLoadDevUser(): Promise<User | null> {
   }
 }
 
+/**
+ * Load the full User row by id from the better-auth session lookup.
+ */
+async function loadUserById(id: number): Promise<User | null> {
+  try {
+    const { getDb } = await import("../db");
+    const { users } = await import("../../drizzle/schema");
+    const { eq } = await import("drizzle-orm");
+    const db = await getDb();
+    if (!db) return null;
+    const rows = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    return rows[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Convert an Express IncomingHttpHeaders to a fetch Headers object for
+ * better-auth's getSession API.
+ */
+function expressHeadersToFetch(req: CreateExpressContextOptions["req"]): Headers {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (value == null) continue;
+    if (Array.isArray(value)) {
+      for (const v of value) headers.append(name, v);
+    } else {
+      headers.set(name, String(value));
+    }
+  }
+  return headers;
+}
+
 export async function createContext(
   opts: CreateExpressContextOptions
 ): Promise<TrpcContext> {
   let user: User | null = null;
 
+  // Primary: better-auth session
   try {
-    user = await sdk.authenticateRequest(opts.req);
-  } catch (error) {
-    // Authentication is optional for public procedures.
+    const sessionInfo = await getSessionFromHeaders(expressHeadersToFetch(opts.req));
+    if (sessionInfo?.user?.id) {
+      user = await loadUserById(sessionInfo.user.id);
+    }
+  } catch {
     user = null;
   }
 

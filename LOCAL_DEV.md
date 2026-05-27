@@ -10,13 +10,36 @@ Ez az útmutató bemutatja, hogyan futtasd a Compliance Checker alkalmazást a s
 - Hot-reload — fájlmódosításra a kód újratöltődik
 - 74/74 vitest még mindig zöld lokálisan is
 
-## Mit NEM kapsz lokálisan
+## Mit NEM kapsz lokálisan alapból
 
-- Manus OAuth — egy env-gated dev-bypass helyettesíti (`LOCAL_DEV_USER_ID` env)
-- Manus LLM API — a Szabványkereső, compliance-elemzés és embeddings nem fog működni (de a UI körbenézhető)
-- S3 file storage — a dokumentum-feltöltés várhatóan hibára fut
+- **LLM**: a Szabványkereső / compliance-elemzés / embedding-generálás csak akkor megy, ha be van állítva az `OPENAI_API_KEY` env (vagy a legacy `BUILT_IN_FORGE_*`). UI nélküle is körbenézhető.
+- **Object storage**: dokumentum-feltöltés csak `R2_*` env-ekkel (Cloudflare R2) vagy legacy `BUILT_IN_FORGE_*`-szal.
+- **Email-küldés**: a magic-link e-mail jelenleg csak a szerver console-ra logolódik (a linket onnan kell kimásolni). M5+ tartalmaz majd valódi SMTP/Resend integrációt.
 
-A core UI-funkciók (Projektek, Tudástár-lista, /audit, /admin, /settings, dark mode, soft-delete, bulk-műveletek, projekt-export/import) viszont **mind működnek**.
+A core UI-funkciók (Projektek, Tudástár-lista, /audit, /admin, /settings, dark mode, soft-delete, bulk-műveletek, projekt-export/import) viszont **mind működnek** a `LOCAL_DEV_USER_ID` env-bypassal.
+
+## Auth a lokál dev-ben (V11.13 M4 után)
+
+Két út a belépéshez:
+
+**(A) Dev-bypass (gyors):**
+- A `seed-dev-user.mjs` által létrehozott userre mutat a `LOCAL_DEV_USER_ID` env.
+- Restart után a backend minden requestre azt az usert látja autentikáltnak.
+- Nincs login-flow, közvetlenül használhatod az appot.
+
+**(B) Magic-link (igazi auth-tesztelés):**
+- Hagyd üresen a `LOCAL_DEV_USER_ID`-t a .env-ben.
+- Indítsd újra a `pnpm dev`-et.
+- Menj a `http://localhost:3000/login` oldalra.
+- Írj be egy e-mail címet (bármilyen).
+- A magic-link a **szerver console-jára** logolódik valami ilyenért:
+  ```
+  [auth] Magic link to te@pelda.hu:
+    http://localhost:3000/api/auth/magic-link/verify?token=...
+  ```
+- A linkre kattintva (vagy URL-be másolva) bejelentkezel.
+
+Ha az új userhez admin szerepkört akarsz: futtasd a seed-et úgy hogy a `DEV_USER` openId-jét cseréld a betartott e-mailre, vagy közvetlenül MySQL-ben: `UPDATE users SET role='admin' WHERE email='te@pelda.hu';`
 
 ---
 

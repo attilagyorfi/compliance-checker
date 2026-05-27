@@ -4,9 +4,15 @@ import { boolean, int, mysqlEnum, mysqlTable, text, mediumtext, timestamp, varch
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
-  openId: varchar("openId", { length: 64 }).notNull().unique(),
+  // openId megőrizve a régi Manus-felhasználók migrációjához. Új better-auth
+  // user-eknél lehet üres / null.
+  openId: varchar("openId", { length: 64 }).unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
+  /** Better-auth-kötelező: van-e megerősített e-mail (magic-link kattintás után true). */
+  emailVerified: boolean("emailVerified").default(false).notNull(),
+  /** Better-auth-opcionális: profilkép URL. */
+  image: varchar("image", { length: 512 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
   /** admin = full access, reviewer = read-only, user = internal user */
   role: mysqlEnum("role", ["user", "admin", "reviewer"]).default("user").notNull(),
@@ -17,6 +23,48 @@ export const users = mysqlTable("users", {
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
+
+// ─── Better-auth tables ───────────────────────────────────────────────────────
+// V11.13 M4 — Manus OAuth helyettese. A better-auth ezeket a táblákat használja
+// session + account + verification (magic-link tokens) kezelésére. A séma a
+// better-auth drizzle-adapter által dokumentált alakú; az ID-k INT-ek a meglévő
+// users.id-vel való konzisztencia miatt (useNumberId: true a config-ban).
+
+export const sessions = mysqlTable("session", {
+  id: int("id").autoincrement().primaryKey(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  token: varchar("token", { length: 255 }).notNull().unique(),
+  ipAddress: varchar("ipAddress", { length: 64 }),
+  userAgent: text("userAgent"),
+  userId: int("userId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const accounts = mysqlTable("account", {
+  id: int("id").autoincrement().primaryKey(),
+  accountId: varchar("accountId", { length: 255 }).notNull(),
+  providerId: varchar("providerId", { length: 64 }).notNull(),
+  userId: int("userId").notNull(),
+  accessToken: text("accessToken"),
+  refreshToken: text("refreshToken"),
+  idToken: text("idToken"),
+  accessTokenExpiresAt: timestamp("accessTokenExpiresAt"),
+  refreshTokenExpiresAt: timestamp("refreshTokenExpiresAt"),
+  scope: text("scope"),
+  password: text("password"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const verifications = mysqlTable("verification", {
+  id: int("id").autoincrement().primaryKey(),
+  identifier: varchar("identifier", { length: 320 }).notNull(),
+  value: text("value").notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
 
