@@ -1,4 +1,4 @@
-import { ENV } from "./env";
+import { getLlmChatConfig } from "./env";
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
 
@@ -209,16 +209,8 @@ const normalizeToolChoice = (
   return toolChoice;
 };
 
-const resolveApiUrl = () =>
-  ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
-    ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
-    : "https://forge.manus.im/v1/chat/completions";
-
-const assertApiKey = () => {
-  if (!ENV.forgeApiKey) {
-    throw new Error("OPENAI_API_KEY is not configured");
-  }
-};
+// (Manus-leválasztás után az LLM-konfiguráció `getLlmChatConfig`-on át jön —
+// elsősorban OpenAI direct, opcionálisan legacy Manus forge fallback.)
 
 const normalizeResponseFormat = ({
   responseFormat,
@@ -266,7 +258,12 @@ const normalizeResponseFormat = ({
 };
 
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
-  assertApiKey();
+  const cfg = getLlmChatConfig();
+  if (!cfg) {
+    throw new Error(
+      "Nincs LLM-provider konfigurálva. Állítsd be az OPENAI_API_KEY env-változót (vagy legacy: BUILT_IN_FORGE_API_KEY + BUILT_IN_FORGE_API_URL)."
+    );
+  }
 
   const {
     messages,
@@ -280,7 +277,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   } = params;
 
   const payload: Record<string, unknown> = {
-    model: "gemini-2.5-flash",
+    model: cfg.model,
     messages: messages.map(normalizeMessage),
   };
 
@@ -296,10 +293,9 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.tool_choice = normalizedToolChoice;
   }
 
-  payload.max_tokens = 32768
-  payload.thinking = {
-    "budget_tokens": 128
-  }
+  // OpenAI gpt-4o / gpt-4o-mini "max_tokens" → "max_completion_tokens" a 2024-09
+  // utáni API-ban. Mindkét nevet támogatjuk a backward-compat miatt.
+  payload.max_completion_tokens = 32768;
 
   const normalizedResponseFormat = normalizeResponseFormat({
     responseFormat,
@@ -312,11 +308,11 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.response_format = normalizedResponseFormat;
   }
 
-  const response = await fetch(resolveApiUrl(), {
+  const response = await fetch(cfg.url, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${ENV.forgeApiKey}`,
+      authorization: `Bearer ${cfg.apiKey}`,
     },
     body: JSON.stringify(payload),
   });
@@ -324,9 +320,10 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(
-      `LLM invoke failed: ${response.status} ${response.statusText} – ${errorText}`
+      `LLM invoke failed (${cfg.model}): ${response.status} ${response.statusText} – ${errorText}`
     );
   }
 
   return (await response.json()) as InvokeResult;
 }
+

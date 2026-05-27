@@ -1,14 +1,13 @@
 /**
- * Embedding helpers — V12 semantic search foundation.
+ * Embedding helpers — V11.13 (Manus-leválasztás után).
  *
- * Calls a Manus-compatible embeddings endpoint (OpenAI-shaped) at
- * `${forgeApiUrl}/v1/embeddings`. If the endpoint is not available or any call
- * fails, the helper returns null and callers fall back gracefully to keyword
- * search. This is by design: deploying without embedding support must not
- * break any existing search flow.
+ * Az aktív LLM-provider embeddings endpointját használja az ENV-config
+ * (`getLlmEmbeddingsConfig`) alapján — elsősorban OpenAI text-embedding-3-small,
+ * legacy fallback Manus forge ha az openaiApiKey üres. Ha egyik sem aktív, a
+ * helper null-t ad vissza, és a hívók graceful fallback-elnek keyword-keresésre.
  */
 
-import { ENV } from "./_core/env";
+import { getLlmEmbeddingsConfig } from "./_core/env";
 import { chunkText } from "./relevanceChunker";
 
 /**
@@ -18,46 +17,26 @@ import { chunkText } from "./relevanceChunker";
 const EMBEDDING_CHUNK_SIZE = 800;
 const EMBEDDING_CHUNK_OVERLAP = 100;
 
-/**
- * Default embedding model. Falls back across model names because the Manus
- * forge gateway may expose different families. The first one that succeeds
- * is cached for the lifetime of the process.
- */
-const EMBEDDING_MODEL_CANDIDATES = [
-  "text-embedding-3-small",
-  "gemini-embedding-001",
-  "embedding-001",
-];
-
-let resolvedEmbeddingModel: string | null = null;
 let embeddingApiAvailable: boolean | null = null; // null = untested
-
-function resolveEmbeddingsUrl(): string {
-  const base = ENV.forgeApiUrl?.trim();
-  if (base && base.length > 0) {
-    return `${base.replace(/\/$/, "")}/v1/embeddings`;
-  }
-  return "https://forge.manus.im/v1/embeddings";
-}
 
 interface EmbeddingApiResponse {
   data?: Array<{ embedding?: number[] }>;
 }
 
-async function callEmbeddingApi(input: string, model: string): Promise<number[] | null> {
-  if (!ENV.forgeApiKey) return null;
+async function callEmbeddingApi(input: string): Promise<number[] | null> {
+  const cfg = getLlmEmbeddingsConfig();
+  if (!cfg) return null;
   try {
-    const res = await fetch(resolveEmbeddingsUrl(), {
+    const res = await fetch(cfg.url, {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        authorization: `Bearer ${ENV.forgeApiKey}`,
+        authorization: `Bearer ${cfg.apiKey}`,
       },
-      body: JSON.stringify({ model, input }),
+      body: JSON.stringify({ model: cfg.model, input }),
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) {
-      // 404 / 400 / model-not-found → try next candidate at higher level
       return null;
     }
     const json = (await res.json()) as EmbeddingApiResponse;
@@ -70,28 +49,20 @@ async function callEmbeddingApi(input: string, model: string): Promise<number[] 
 
 /**
  * Embed a single piece of text. Returns null if the embedding API is not
- * available or all model candidates fail.
+ * configured or the call fails.
  */
 export async function getEmbedding(text: string): Promise<number[] | null> {
   if (embeddingApiAvailable === false) return null;
   const trimmed = text.trim();
   if (trimmed.length === 0) return null;
 
-  if (resolvedEmbeddingModel) {
-    return callEmbeddingApi(trimmed, resolvedEmbeddingModel);
+  const vec = await callEmbeddingApi(trimmed);
+  if (vec) {
+    embeddingApiAvailable = true;
+    return vec;
   }
 
-  for (const model of EMBEDDING_MODEL_CANDIDATES) {
-    const vec = await callEmbeddingApi(trimmed, model);
-    if (vec) {
-      resolvedEmbeddingModel = model;
-      embeddingApiAvailable = true;
-      return vec;
-    }
-  }
-
-  // None of the candidates returned a usable vector. Mark unavailable so we
-  // don't retry per-call until process restart.
+  // Mark unavailable so we don't retry per-call until process restart.
   embeddingApiAvailable = false;
   return null;
 }
@@ -148,5 +119,4 @@ export async function chunkAndEmbed(
  */
 export function _resetEmbeddingApiStateForTests(): void {
   embeddingApiAvailable = null;
-  resolvedEmbeddingModel = null;
 }
