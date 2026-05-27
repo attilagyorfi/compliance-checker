@@ -15,6 +15,13 @@
       "when": 1773915317023,
       "tag": "0001_bumpy_famine",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1778758728177,
+      "tag": "0002_cuddly_jamie_braddock",
+      "breakpoints": true
     }
   ]
 }
