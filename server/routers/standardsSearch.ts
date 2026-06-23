@@ -388,27 +388,87 @@ async function semanticSearch(
   });
 }
 
+// ── Hibrid keresés: normalizálás + cím-boost + rank fusion (V11.14) ─────────────
+
 /**
- * Merge keyword and semantic search results, deduplicating by documentName +
- * excerpt prefix and keeping the higher-scoring entry. Limit to maxItems.
+ * Kisbetűsít + eltávolítja az ékezeteket — így "acél" matchel "Acelszerkezetek"-kel
+ * (a régi szabvány-fájlnevek gyakran ékezet nélküliek).
  */
-function mergeSearchSources(
+export function normalizeForMatch(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "") // combining diacritical marks
+    .replace(/[^a-z0-9\s]/g, " ");
+}
+
+/** A kérdésből kinyeri a >3 karakteres tartalmi kulcsszavakat (normalizálva). */
+function extractQueryKeywords(query: string): string[] {
+  return normalizeForMatch(query)
+    .split(/\s+/)
+    .filter((w) => w.length > 3);
+}
+
+/**
+ * Cím-boost szorzó: hány kérdés-kulcsszó szerepel a dokumentum nevében.
+ * A dokumentum neve erős téma-jel (pl. "acél" a kérdésben → MSZ EN 1993
+ * "Acelszerkezetek"). Minden találat +12%-ot ad, maximum +48%.
+ */
+export function titleBoostFactor(queryKeywords: string[], documentName: string): number {
+  if (queryKeywords.length === 0) return 1;
+  const normName = normalizeForMatch(documentName);
+  let matches = 0;
+  for (const kw of queryKeywords) {
+    if (normName.includes(kw)) matches++;
+  }
+  return 1 + Math.min(matches, 4) * 0.12;
+}
+
+/**
+ * Hibrid forrás-egyesítés Reciprocal Rank Fusion-nel + cím-boosttal.
+ *
+ * A nyers score-ok (semantic cosine ~0.6 vs keyword ~0.5) NEM összemérhetők,
+ * ezért rang-alapú fúziót használunk: minden listában a rang számít, nem az
+ * abszolút pont. RRF: score = Σ 1/(K + rank). A K=60 a szakirodalmi default.
+ * A végén a dokumentum-név téma-egyezése (cím-boost) szorozza a fúziós pontot,
+ * így a kérdés tárgyához illő szabvány chunk-jai előrébb kerülnek.
+ */
+export function mergeSearchSources(
   keyword: SearchSource[],
   semantic: SearchSource[],
-  maxItems: number
+  maxItems: number,
+  query = ""
 ): SearchSource[] {
-  const all = [...semantic, ...keyword]; // semantic first so its score wins on dedupe ties
-  const seen = new Map<string, SearchSource>();
-  for (const s of all) {
-    const key = `${s.documentName}::${s.excerpt.slice(0, 80)}`;
-    const existing = seen.get(key);
-    if (!existing || (s.relevanceScore ?? 0) > (existing.relevanceScore ?? 0)) {
-      seen.set(key, s);
-    }
-  }
-  return Array.from(seen.values())
-    .sort((a, b) => (b.relevanceScore ?? 0) - (a.relevanceScore ?? 0))
-    .slice(0, maxItems);
+  const K = 60;
+  const queryKeywords = extractQueryKeywords(query);
+  const keyOf = (s: SearchSource) => `${s.documentName}::${s.excerpt.slice(0, 80)}`;
+
+  const fused = new Map<string, { source: SearchSource; score: number }>();
+  const addList = (list: SearchSource[]) => {
+    list.forEach((s, rank) => {
+      const key = keyOf(s);
+      const rrf = 1 / (K + rank);
+      const existing = fused.get(key);
+      if (existing) {
+        existing.score += rrf;
+      } else {
+        fused.set(key, { source: s, score: rrf });
+      }
+    });
+  };
+  addList(semantic);
+  addList(keyword);
+
+  // Cím-boost alkalmazása a fúziós pontra.
+  const boosted = Array.from(fused.values()).map(({ source, score }) => {
+    const boost = titleBoostFactor(queryKeywords, source.documentName);
+    return { source, score: score * boost };
+  });
+
+  return boosted
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxItems)
+    .map(({ source, score }) => ({ ...source, relevanceScore: score }));
 }
 
 /**
@@ -629,7 +689,7 @@ export const standardsSearchRouter = router({
         const kbSources = await searchKnowledgeBase(rewrittenQuestion);
         const semanticSources = await semanticSearch(rewrittenQuestion, "combined_with_web");
         const liveMszt = await liveMsztSources(rewrittenQuestion);
-        const allLibrary = mergeSearchSources([...libSources, ...kbSources, ...liveMszt], semanticSources, 8);
+        const allLibrary = mergeSearchSources([...libSources, ...kbSources, ...liveMszt], semanticSources, 8, rewrittenQuestion);
         // Merge: library + KB + semantic + live first, then web sources (deduplicate by URL)
         const seenUrls = new Set(allLibrary.map((s: SearchSource) => s.url).filter(Boolean));
         const dedupedWeb = webSources.filter((s: SearchSource) => !s.url || !seenUrls.has(s.url));
@@ -648,7 +708,7 @@ export const standardsSearchRouter = router({
         const liveMszt = (searchMode === "mszt" || searchMode === "combined")
           ? await liveMsztSources(rewrittenQuestion)
           : [];
-        sources = mergeSearchSources([...libSources, ...kbSources, ...liveMszt], semanticSources, 10);
+        sources = mergeSearchSources([...libSources, ...kbSources, ...liveMszt], semanticSources, 10, rewrittenQuestion);
       }
 
       // Step 3: Generate structured answer

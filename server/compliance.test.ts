@@ -260,6 +260,59 @@ describe("fixHungarianMojibake", () => {
   });
 });
 
+// ── Hybrid search helpers (V11.14) ────────────────────────────────────────────
+describe("hybrid search", () => {
+  it("normalizeForMatch lowercases and strips accents", async () => {
+    const { normalizeForMatch } = await import("./routers/standardsSearch");
+    expect(normalizeForMatch("Acélszerkezetek")).toBe("acelszerkezetek");
+    expect(normalizeForMatch("Fáradás vizsgálat")).toBe("faradas vizsgalat");
+    expect(normalizeForMatch("MSZ EN 1993-1-1")).toBe("msz en 1993 1 1");
+  });
+
+  it("titleBoostFactor rewards query keywords appearing in the document name", async () => {
+    const { titleBoostFactor, normalizeForMatch } = await import("./routers/standardsSearch");
+    void normalizeForMatch;
+    // "acél" (→acel) benne van az "Acelszerkezetek"-ben → boost > 1
+    expect(titleBoostFactor(["acel"], "MSZ EN 1993-1-1 Acelszerkezetek")).toBeGreaterThan(1);
+    // nincs egyezés → nincs boost
+    expect(titleBoostFactor(["beton"], "MSZ EN 1993-1-1 Acelszerkezetek")).toBe(1);
+    // több egyezés → nagyobb boost, de maxolva (4×0.12)
+    const many = titleBoostFactor(["acel", "szerkezet"], "Acelszerkezetek");
+    expect(many).toBeGreaterThan(1.1);
+    expect(many).toBeLessThanOrEqual(1.48);
+  });
+
+  it("titleBoostFactor returns 1 when there are no query keywords", async () => {
+    const { titleBoostFactor } = await import("./routers/standardsSearch");
+    expect(titleBoostFactor([], "Bármi")).toBe(1);
+  });
+
+  it("mergeSearchSources fuses keyword + semantic by rank and applies title boost", async () => {
+    const { mergeSearchSources } = await import("./routers/standardsSearch");
+    const semantic = [
+      { documentName: "MSZ EN 1995-1-1 Fa", excerpt: "kihajlás faszerkezet", relevanceScore: 0.62 },
+      { documentName: "MSZ EN 1993-1-1 Acelszerkezetek", excerpt: "acél oszlop kihajlás", relevanceScore: 0.60 },
+    ];
+    const keyword = [
+      { documentName: "MSZ EN 1993-1-1 Acelszerkezetek", excerpt: "acél oszlop kihajlás", relevanceScore: 0.5 },
+    ];
+    // "acél oszlop kihajlás" query → az acél-dok cím-boostot kap, így az élre kerül
+    // a fa-dok elé, holott a fa nyers semantic score-ja magasabb volt.
+    const merged = mergeSearchSources(keyword, semantic, 5, "acél oszlop kihajlás");
+    expect(merged[0].documentName).toContain("Acelszerkezetek");
+  });
+
+  it("mergeSearchSources without a query still returns results (no boost)", async () => {
+    const { mergeSearchSources } = await import("./routers/standardsSearch");
+    const merged = mergeSearchSources(
+      [{ documentName: "A", excerpt: "x", relevanceScore: 0.4 }],
+      [{ documentName: "B", excerpt: "y", relevanceScore: 0.9 }],
+      5,
+    );
+    expect(merged.length).toBe(2);
+  });
+});
+
 // ── Regulation scraper unit tests ─────────────────────────────────────────────
 describe("regulation scraper", () => {
   it("encryptPassword and decryptPassword are inverse operations", async () => {
