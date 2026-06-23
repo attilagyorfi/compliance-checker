@@ -229,6 +229,37 @@ describe("pdf export router", () => {
   });
 });
 
+// ── Document extractor: Hungarian mojibake repair (V11.13) ────────────────────
+describe("fixHungarianMojibake", () => {
+  it("restores corrupted long-accented characters from old MSZ EN PDFs", async () => {
+    const { fixHungarianMojibake } = await import("./documentExtractor");
+    // Valódi minta a megrendelő MSZ EN 1993-1-1 szabványából.
+    const corrupt = "kihajl·s·nak Ès kifordul·s·nak vizsg·lat·ra";
+    expect(fixHungarianMojibake(corrupt)).toBe("kihajlásának és kifordulásának vizsgálatára");
+  });
+
+  it("maps each known corrupted glyph to its Hungarian letter", async () => {
+    const { fixHungarianMojibake } = await import("./documentExtractor");
+    expect(fixHungarianMojibake("·ÈÛˆÌ˙¸¡")).toBe("áéóöíúüÁ");
+  });
+
+  it("is a no-op on already-correct Hungarian text (does not corrupt good files)", async () => {
+    const { fixHungarianMojibake } = await import("./documentExtractor");
+    const good = "Fáradásvizsgálat — erőtani vizsgálat hiányában a függőleges tűzhatás őrlő ű";
+    expect(fixHungarianMojibake(good)).toBe(good);
+  });
+
+  it("leaves ő and ű untouched (these extract correctly)", async () => {
+    const { fixHungarianMojibake } = await import("./documentExtractor");
+    expect(fixHungarianMojibake("előírások szűkítő")).toBe("előírások szűkítő");
+  });
+
+  it("handles empty / falsy input safely", async () => {
+    const { fixHungarianMojibake } = await import("./documentExtractor");
+    expect(fixHungarianMojibake("")).toBe("");
+  });
+});
+
 // ── Regulation scraper unit tests ─────────────────────────────────────────────
 describe("regulation scraper", () => {
   it("encryptPassword and decryptPassword are inverse operations", async () => {

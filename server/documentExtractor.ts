@@ -41,6 +41,42 @@ export function detectDiscipline(filename: string, textSample?: string): string 
   return "altalanos";
 }
 
+// ── Hungarian mojibake repair ───────────────────────────────────────────────────
+
+/**
+ * Magyar ékezet-helyreállítás a régi MSZ EN szabvány-PDF-ekhez.
+ *
+ * Ezek a PDF-ek egyedi font-kódolást használnak hibás/hiányos ToUnicode
+ * CMap-pel, így a pdfjs (pdf-parse alatt) a hosszú ékezetes karaktereket
+ * konzisztensen elrontja: á→·, é→È, í→Ì, ó→Û, ö→ˆ, ú→˙, ü→¸, Á→¡.
+ * (Az ő és ű helyesen jön ki, azokat nem érintjük.)
+ *
+ * A térkép adatból, a megrendelő 20 szabványán lett validálva: a romlott
+ * fájlokon hibátlan magyar szöveget ad, a helyesen kódolt fájlokon (amelyek
+ * nem tartalmazzák ezeket a forrás-karaktereket) no-op. Ezért feltétel nélkül
+ * alkalmazható.
+ *
+ * Megj.: a csere a magyar Unicode helyes alakot állítja vissza. A `·` (middle
+ * dot) néha legitim szorzásjel is lehet képletekben — de a szabványszövegben
+ * elenyésző, és a keresési haszon messze felülmúlja ezt a ritka mellékhatást.
+ */
+const HU_MOJIBAKE_MAP: Record<string, string> = {
+  "·": "á", // ·
+  "È": "é", // È
+  "Û": "ó", // Û
+  "ˆ": "ö", // ˆ
+  "Ì": "í", // Ì
+  "˙": "ú", // ˙
+  "¸": "ü", // ¸
+  "¡": "Á", // ¡
+};
+const HU_MOJIBAKE_RE = /[·ÈÛˆÌ˙¸¡]/g;
+
+export function fixHungarianMojibake(text: string): string {
+  if (!text) return text;
+  return text.replace(HU_MOJIBAKE_RE, (c) => HU_MOJIBAKE_MAP[c] ?? c);
+}
+
 // ── Text extractors ────────────────────────────────────────────────────────────
 
 /**
@@ -56,7 +92,8 @@ export async function extractFromPdf(buffer: Buffer): Promise<string> {
     const parser = new PDFParse({ data: new Uint8Array(buffer) });
     try {
       const result = await parser.getText();
-      return result.text || "";
+      // Magyar ékezet-helyreállítás (lásd fixHungarianMojibake).
+      return fixHungarianMojibake(result.text || "");
     } finally {
       await parser.destroy();
     }
