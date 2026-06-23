@@ -48,12 +48,22 @@ export function detectDiscipline(filename: string, textSample?: string): string 
  */
 export async function extractFromPdf(buffer: Buffer): Promise<string> {
   try {
-    const pdfModule = await import("pdf-parse");
-    const pdfParse = (pdfModule as any).default ?? pdfModule;
-    const data = await pdfParse(buffer);
-    return data.text || "";
-  } catch {
-    // Fallback: extract printable ASCII
+    // pdf-parse v2 API: a `PDFParse` osztály, nem default függvény. A korábbi
+    // `(pdfModule as any).default ?? pdfModule` hívás v2-vel TypeError-t dobott,
+    // ami a catch-ágon latin1-szemetet adott vissza a tényleges PDF-szöveg
+    // helyett — csendes minőségromlás. Ez a helyes osztály-alapú használat.
+    const { PDFParse } = await import("pdf-parse");
+    const parser = new PDFParse({ data: new Uint8Array(buffer) });
+    try {
+      const result = await parser.getText();
+      return result.text || "";
+    } finally {
+      await parser.destroy();
+    }
+  } catch (err) {
+    console.warn("[DocumentExtractor] PDF extraction failed:", err);
+    // Fallback: extract printable ASCII (csak végszükség esetén — ez ritka,
+    // jelzésértékű, és az OCR-detektálás amúgy is rövid szövegként kezeli).
     return buffer
       .toString("latin1")
       .replace(/[^\x20-\x7E\n\r\t]/g, " ")

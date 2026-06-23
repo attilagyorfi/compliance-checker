@@ -48,10 +48,11 @@ async function ocrPdf(buffer: Buffer): Promise<{ text: string; used: boolean }> 
 
 async function extractTextFromPdf(buffer: Buffer): Promise<{ text: string; ocrUsed: boolean; qualityWarning?: string }> {
   try {
-    const pdfModule = await import("pdf-parse");
-    const pdfParse = (pdfModule as any).default ?? pdfModule;
-    const data = await pdfParse(buffer);
-    const text = data.text || "";
+    // pdf-parse v2: PDFParse osztály-API (a korábbi default-függvény hívás
+    // TypeError-t dobott → latin1-szemét). Az extractFromPdf a documentExtractor-
+    // ban már a helyes hívást csinálja, azt használjuk a DRY kedvéért.
+    const { extractFromPdf } = await import("../documentExtractor");
+    const text = await extractFromPdf(buffer);
 
     // Check if OCR might be needed
     if (isLikelyScanned(text, buffer.length)) {
