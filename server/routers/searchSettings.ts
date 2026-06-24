@@ -21,7 +21,7 @@ const searchModeEnum = z.enum(["mszt", "internal", "combined", "web", "combined_
 const DEFAULTS = {
   answerLength: "standard" as const,
   operationMode: "accurate" as const,
-  searchMode: "combined" as const,
+  searchMode: "internal" as const,
 };
 
 export const searchSettingsRouter = router({

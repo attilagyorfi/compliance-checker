@@ -268,11 +268,10 @@ export default function DashboardPage() {
         </div>
 
         {/* Quick links */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
           {[
-            { href: "/knowledge-base", label: "Tudástár", desc: "Belső dokumentumok kezelése", icon: FileText },
-            { href: "/regulations", label: "Jogszabályok", desc: "Feltöltött jogszabályok", icon: BarChart3 },
-            { href: "/search-history", label: "Keresési előzmények", desc: "Korábbi szabványkeresések", icon: Search },
+            { href: "/search", label: "Szabványkereső", desc: "Kérdés a feltöltött jogszabályokból", icon: Search },
+            { href: "/regulations", label: "Jogszabályok", desc: "Feltöltött szabványok kezelése", icon: BarChart3 },
           ].map(({ href, label, desc, icon: Icon }) => (
             <Link key={href} href={href}>
               <div className="bg-surface rounded-xl border border-line p-4 flex items-center gap-4 hover:border-[#7CA9D3] hover:shadow-sm transition-all cursor-pointer">

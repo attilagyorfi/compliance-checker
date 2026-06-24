@@ -32,17 +32,12 @@ const ANSWER_LENGTH_OPTIONS: Array<{ value: AnswerLength; label: string; desc: s
   { value: "detailed", label: "Részletes", desc: "15-20 mondatos részletes elemzés" },
 ];
 
-const OPERATION_MODE_OPTIONS: Array<{ value: OperationMode; label: string; desc: string; icon: typeof Zap }> = [
-  { value: "fast",     label: "Gyors",  desc: "Általános AI tudást is felhasznál; gyorsabb, de kevésbé megbízható.", icon: Zap },
-  { value: "accurate", label: "Pontos", desc: "Csak forrásból dolgozik + self-check ellenőrzés. Lassabb, megbízhatóbb.", icon: Target },
-];
 
+// V11.15: 3 keresési mód. Az "internal" a feltöltött jogszabályokat jelenti.
 const SEARCH_MODE_OPTIONS: Array<{ value: SearchMode; label: string; desc: string; icon: typeof BookOpen }> = [
-  { value: "mszt",              label: "MSZT",              desc: "Csak importált MSZT-források",                  icon: BookOpen },
-  { value: "internal",          label: "Belső",             desc: "Jogszabály-könyvtár (nem-MSZT) + Tudástár",     icon: Database },
-  { value: "combined",          label: "Kombinált",         desc: "Minden belső forrás (jogszabálykönyvtár + KB)", icon: Search },
-  { value: "web",               label: "Internet",          desc: "Csak DuckDuckGo + felhasználói URL-ek",          icon: Globe },
-  { value: "combined_with_web", label: "Kombinált + Web",   desc: "Belső források + internet, dedupelve",           icon: Globe },
+  { value: "internal",          label: "Feltöltött jogszabályok", desc: "A betöltött szabványok között",        icon: BookOpen },
+  { value: "web",               label: "Internet",                desc: "DuckDuckGo + felhasználói URL-ek",       icon: Globe },
+  { value: "combined_with_web", label: "Jogszabály + internet",   desc: "Feltöltött jogszabályok + internet",     icon: Globe },
 ];
 
 export default function SettingsPage() {
@@ -51,15 +46,18 @@ export default function SettingsPage() {
   const { theme, toggleTheme } = useTheme();
 
   const [answerLength, setAnswerLength] = useState<AnswerLength>("standard");
-  const [operationMode, setOperationMode] = useState<OperationMode>("accurate");
-  const [searchMode, setSearchMode] = useState<SearchMode>("combined");
+  const [searchMode, setSearchMode] = useState<SearchMode>("internal");
+  // V11.15: a működési mód mindig "accurate" (Pontos) — nincs választó.
+  const operationMode: OperationMode = "accurate";
 
   // Sync local state from server when settings load
   useEffect(() => {
     if (settingsQuery.data) {
       setAnswerLength(settingsQuery.data.answerLength as AnswerLength);
-      setOperationMode(settingsQuery.data.operationMode as OperationMode);
-      setSearchMode(settingsQuery.data.searchMode as SearchMode);
+      const savedMode = settingsQuery.data.searchMode as SearchMode;
+      if (savedMode === "internal" || savedMode === "web" || savedMode === "combined_with_web") {
+        setSearchMode(savedMode);
+      }
     }
   }, [settingsQuery.data]);
 
@@ -189,22 +187,6 @@ export default function SettingsPage() {
               </Select>
               <p className="text-xs text-text-muted">
                 {SEARCH_MODE_OPTIONS.find((o) => o.value === searchMode)?.desc}
-              </p>
-            </div>
-
-            {/* Operation mode */}
-            <div className="space-y-2">
-              <Label htmlFor="set-op-mode" className="text-sm font-semibold">Működési mód</Label>
-              <Select value={operationMode} onValueChange={(v) => setOperationMode(v as OperationMode)}>
-                <SelectTrigger id="set-op-mode" className="h-11"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {OPERATION_MODE_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-text-muted">
-                {OPERATION_MODE_OPTIONS.find((o) => o.value === operationMode)?.desc}
               </p>
             </div>
 

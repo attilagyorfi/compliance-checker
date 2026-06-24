@@ -1,19 +1,22 @@
+/**
+ * SearchHistorySection — V11.15
+ *
+ * A keresési előzmények listája, beágyazható szekcióként (Header és
+ * oldal-keret nélkül). Az Admin oldalon jelenik meg; a korábbi önálló
+ * /search-history oldalt váltja ki. A standardsSearch.listHistory endpointot
+ * használja (a hívó saját előzményei).
+ */
+
 import { useState } from "react";
 import {
   History, Search, Trash2, ChevronDown, ChevronUp,
   Clock, BookOpen, CheckCircle2, AlertTriangle, XCircle, Info,
-  Loader2, ExternalLink
+  Loader2, ExternalLink,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { Link } from "wouter";
-import Header from "@/components/Header";
 import { trpc } from "@/lib/trpc";
-import { useActiveProject } from "@/contexts/ProjectContext";
-import { ProjectScopeBanner } from "@/components/ProjectScopeBanner";
 import { Streamdown } from "streamdown";
 import type { SearchSource } from "../../../drizzle/schema";
 
@@ -39,10 +42,13 @@ function ConfidenceBadge({ confidence }: { confidence: Confidence | null | undef
 }
 
 function SearchModeBadge({ mode }: { mode: string }) {
+  // V11.15: 3 aktív mód + legacy értékek.
   const labels: Record<string, string> = {
-    mszt: "MSZT",
-    internal: "Belső",
-    combined: "Kombinált",
+    internal: "Jogszabályok",
+    web: "Internet",
+    combined_with_web: "Jogszabály + internet",
+    mszt: "MSZT (régi)",
+    combined: "Kombinált (régi)",
   };
   return (
     <span className="text-xs px-2 py-0.5 rounded-full bg-hover text-text-default border border-line">
@@ -93,7 +99,7 @@ function HistoryItem({ item, onDelete }: {
               <Clock size={10} />
               {new Date(item.createdAt).toLocaleString("hu-HU", {
                 year: "numeric", month: "short", day: "numeric",
-                hour: "2-digit", minute: "2-digit"
+                hour: "2-digit", minute: "2-digit",
               })}
             </span>
             <SearchModeBadge mode={item.searchMode} />
@@ -103,9 +109,6 @@ function HistoryItem({ item, onDelete }: {
                 <XCircle size={10} />
                 Nincs forrás
               </span>
-            )}
-            {item.projectName && (
-              <span className="text-xs text-text-faint italic">{item.projectName}</span>
             )}
           </div>
         </div>
@@ -124,7 +127,6 @@ function HistoryItem({ item, onDelete }: {
       {/* Expanded content */}
       {expanded && (
         <div className="border-t" style={{ borderColor: "var(--line)" }}>
-          {/* Rewritten question */}
           {item.rewrittenQuestion && item.rewrittenQuestion !== item.question && (
             <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 flex items-start gap-2">
               <Info size={12} className="text-blue-400 mt-0.5 flex-shrink-0" />
@@ -134,7 +136,6 @@ function HistoryItem({ item, onDelete }: {
             </div>
           )}
 
-          {/* Self-check warning */}
           {!item.selfCheckPassed && item.selfCheckNotes && (
             <div className="px-4 py-2 bg-amber-50 border-b border-amber-100 flex items-start gap-2">
               <AlertTriangle size={12} className="text-amber-500 mt-0.5 flex-shrink-0" />
@@ -144,7 +145,6 @@ function HistoryItem({ item, onDelete }: {
             </div>
           )}
 
-          {/* Answer */}
           <div className="p-4">
             {item.answer ? (
               <div className="prose prose-sm max-w-none text-text-strong">
@@ -155,7 +155,6 @@ function HistoryItem({ item, onDelete }: {
             )}
           </div>
 
-          {/* Sources */}
           {sources.length > 0 && (
             <div className="px-4 pb-4">
               <Separator className="mb-3" />
@@ -193,8 +192,7 @@ function HistoryItem({ item, onDelete }: {
   );
 }
 
-export default function SearchHistoryPage() {
-  const { activeProjectId } = useActiveProject();
+export default function SearchHistorySection() {
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const debounceRef = useState<ReturnType<typeof setTimeout> | null>(null);
@@ -209,7 +207,6 @@ export default function SearchHistoryPage() {
     limit: 50,
     offset: 0,
     search: debouncedSearch || undefined,
-    projectId: activeProjectId ?? undefined,
   });
 
   const deleteMutation = trpc.standardsSearch.deleteQuery.useMutation({
@@ -223,91 +220,49 @@ export default function SearchHistoryPage() {
   const items = data?.items ?? [];
 
   return (
-    <div className="min-h-screen flex flex-col bg-surface">
-      <Header />
-
-      {/* Page header */}
-      <div className="border-b" style={{ borderColor: "var(--line)", backgroundColor: "var(--page-bg-subtle)" }}>
-        <div className="container py-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#7CA9D3" }}>
-                  <History size={16} className="text-white" />
-                </div>
-                <h1 className="text-2xl font-bold" style={{ color: "var(--text-strong)" }}>Keresési előzmények</h1>
-              </div>
-              <p className="text-text-muted text-sm ml-11">
-                Korábbi szabványkeresések és generált válaszok visszakereshetőek.
-              </p>
-            </div>
-            <Link href="/search">
-              <Button className="gap-2 text-white text-sm" style={{ backgroundColor: "#7CA9D3" }}>
-                <Search size={14} />
-                Új keresés
-              </Button>
-            </Link>
-          </div>
+    <div className="rounded-xl border bg-surface p-5" style={{ borderColor: "var(--line)" }}>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-base font-semibold text-text-strong flex items-center gap-2">
+          <History size={16} style={{ color: "#7CA9D3" }} />
+          Keresési előzmények
+        </h2>
+        <div className="relative w-full max-w-xs">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint" />
+          <Input
+            placeholder="Keresés az előzmények között..."
+            value={searchTerm}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="pl-9 border-line text-sm h-9"
+          />
         </div>
       </div>
 
-      <main className="flex-1 container py-8 space-y-4">
-        <ProjectScopeBanner describe={(name) => `Az alábbi keresési előzmények csak a(z) ${name} projektben végzettek.`} />
-        {/* Search bar */}
-        <div className="flex items-center gap-3 mb-6">
-          <div className="relative flex-1 max-w-md">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint" />
-            <Input
-              placeholder="Keresés az előzmények között..."
-              value={searchTerm}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              className="pl-9 border-line text-sm h-9"
-            />
-          </div>
-          {items.length > 0 && (
-            <span className="text-sm text-text-faint">{items.length} találat</span>
-          )}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 size={22} className="animate-spin" style={{ color: "#7CA9D3" }} />
         </div>
-
-        {/* Content */}
-        {isLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 size={24} className="animate-spin" style={{ color: "#7CA9D3" }} />
+      ) : items.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3" style={{ backgroundColor: "#EBF3FA" }}>
+            <History size={22} style={{ color: "#7CA9D3" }} />
           </div>
-        ) : items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: "#EBF3FA" }}>
-              <History size={28} style={{ color: "#7CA9D3" }} />
-            </div>
-            <h3 className="text-lg font-semibold text-text-default mb-2">
-              {debouncedSearch ? "Nincs találat" : "Még nincs keresési előzmény"}
-            </h3>
-            <p className="text-sm text-text-faint max-w-sm mb-6">
-              {debouncedSearch
-                ? "Próbáljon más keresési kifejezést."
-                : "Indítson el egy szabványkeresést, és az itt fog megjelenni."}
-            </p>
-            {!debouncedSearch && (
-              <Link href="/search">
-                <Button className="gap-2 text-white text-sm" style={{ backgroundColor: "#7CA9D3" }}>
-                  <Search size={14} />
-                  Első keresés indítása
-                </Button>
-              </Link>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {items.map((item) => (
-              <HistoryItem
-                key={item.id}
-                item={item as any}
-                onDelete={(id) => deleteMutation.mutate({ id })}
-              />
-            ))}
-          </div>
-        )}
-      </main>
+          <p className="text-sm text-text-faint max-w-sm">
+            {debouncedSearch
+              ? "Nincs találat erre a keresési kifejezésre."
+              : "Még nincs keresési előzmény. A szabványkeresések itt jelennek meg."}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {items.map((item) => (
+            <HistoryItem
+              key={item.id}
+              item={item as never}
+              onDelete={(id) => deleteMutation.mutate({ id })}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

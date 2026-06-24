@@ -10,32 +10,24 @@ import ReportsPage from "./pages/ReportsPage";
 import ResultPage from "./pages/ResultPage";
 import RegulationLibraryPage from "./pages/RegulationLibraryPage";
 import StandardsSearchPage from "./pages/StandardsSearchPage";
-import SearchHistoryPage from "./pages/SearchHistoryPage";
-import KnowledgeBasePage from "./pages/KnowledgeBasePage";
 import DashboardPage from "./pages/DashboardPage";
 import PlatformConnectionsPage from "./pages/PlatformConnectionsPage";
-import ProjectsPage from "./pages/ProjectsPage";
-import ProjectDetailPage from "./pages/ProjectDetailPage";
-import AuditPage from "./pages/AuditPage";
 import SettingsPage from "./pages/SettingsPage";
 import AdminPage from "./pages/AdminPage";
 import LoginPage from "./pages/LoginPage";
 
+// V11.15: a Projektek, Tudástár, Audit és Előzmények route-ok megszűntek.
+// (Az Előzmények az Admin oldalon érhető el szekcióként.)
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/dashboard" component={DashboardPage} />
-      <Route path="/projects" component={ProjectsPage} />
-      <Route path="/projects/:id" component={ProjectDetailPage} />
       <Route path="/search" component={StandardsSearchPage} />
-      <Route path="/knowledge-base" component={KnowledgeBasePage} />
       <Route path="/reports" component={ReportsPage} />
       <Route path="/result/:id" component={ResultPage} />
       <Route path="/regulations" component={RegulationLibraryPage} />
-      <Route path="/search-history" component={SearchHistoryPage} />
       <Route path="/platforms" component={PlatformConnectionsPage} />
-      <Route path="/audit" component={AuditPage} />
       <Route path="/settings" component={SettingsPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/login" component={LoginPage} />

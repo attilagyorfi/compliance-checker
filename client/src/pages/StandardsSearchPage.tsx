@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import {
   Search, Loader2, ChevronDown, ChevronUp, BookOpen, ExternalLink,
-  CheckCircle2, AlertTriangle, XCircle, Info, Zap, Target,
+  CheckCircle2, AlertTriangle, XCircle, Info, Target,
   FileText, Settings2, History, Send, RefreshCw, Copy, Check, Globe
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,6 @@ import { Link } from "wouter";
 import Header from "@/components/Header";
 import { trpc } from "@/lib/trpc";
 import { Streamdown } from "streamdown";
-import { useActiveProject } from "@/contexts/ProjectContext";
 import type { SearchSource } from "../../../drizzle/schema";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -137,12 +136,17 @@ function SourceCard({ source, index }: { source: SearchSource; index: number }) 
 function SettingsPanel({
   searchMode, setSearchMode,
   answerLength, setAnswerLength,
-  operationMode, setOperationMode,
 }: {
   searchMode: SearchMode; setSearchMode: (v: SearchMode) => void;
   answerLength: AnswerLength; setAnswerLength: (v: AnswerLength) => void;
-  operationMode: OperationMode; setOperationMode: (v: OperationMode) => void;
 }) {
+  // V11.15: 3 keresési mód. Az "internal" itt a feltöltött jogszabályokat jelenti
+  // (a Tudástár megszűnt). Az "mszt"/"combined" legacy enum-értékeket nem kínáljuk.
+  const MODES: Array<{ value: SearchMode; label: string; icon: React.ReactNode; desc: string; wide?: boolean }> = [
+    { value: "internal", label: "Feltöltött jogszabályok", icon: <BookOpen size={12} />, desc: "A betöltött szabványok között" },
+    { value: "web", label: "Internet", icon: <Globe size={12} />, desc: "Webes keresés" },
+    { value: "combined_with_web", label: "Jogszabály + internet", icon: <Search size={12} />, desc: "Mindkettő", wide: true },
+  ];
   return (
     <div className="rounded-xl border bg-surface p-4 space-y-4" style={{ borderColor: "var(--line)" }}>
       <h3 className="text-sm font-semibold text-text-default flex items-center gap-2">
@@ -153,13 +157,7 @@ function SettingsPanel({
       <div>
         <label className="text-xs font-medium text-text-muted mb-1.5 block uppercase tracking-wide">Keresési logika</label>
         <div className="grid grid-cols-2 gap-1.5">
-          {([
-            { value: "mszt", label: "MSZT", icon: <BookOpen size={12} />, desc: "Csak importált MSZT" },
-            { value: "internal", label: "Belső", icon: <FileText size={12} />, desc: "Jogszabály + Tudástár" },
-            { value: "combined", label: "Kombinált", icon: <Search size={12} />, desc: "Minden belső forrás" },
-            { value: "web", label: "Internet", icon: <Globe size={12} />, desc: "Web keresés" },
-            { value: "combined_with_web", label: "Kombinált + Web", icon: <Globe size={12} />, desc: "Belső + internet", wide: true },
-          ] as Array<{ value: SearchMode; label: string; icon: React.ReactNode; desc: string; wide?: boolean }>).map(({ value, label, icon, desc, wide }) => (
+          {MODES.map(({ value, label, icon, desc, wide }) => (
             <button
               key={value}
               onClick={() => setSearchMode(value)}
@@ -204,27 +202,12 @@ function SettingsPanel({
         </Select>
       </div>
 
-      <div>
-        <label className="text-xs font-medium text-text-muted mb-1.5 block uppercase tracking-wide">Működési mód</label>
-        <div className="grid grid-cols-2 gap-1.5">
-          {([
-            { value: "fast", label: "Gyors", desc: "Kevesebb ellenőrzés", icon: <Zap size={12} /> },
-            { value: "accurate", label: "Pontos", desc: "Teljes ellenőrzés", icon: <Target size={12} /> },
-          ] as const).map(({ value, label, desc, icon }) => (
-            <button
-              key={value}
-              onClick={() => setOperationMode(value)}
-              className={`flex flex-col items-start gap-0.5 p-2.5 rounded-lg border text-xs transition-all ${
-                operationMode === value
-                  ? "text-white border-transparent"
-                  : "text-text-default border-line bg-surface hover:border-gray-300"
-              }`}
-              style={operationMode === value ? { backgroundColor: "#7CA9D3" } : {}}
-            >
-              <span className="flex items-center gap-1 font-medium">{icon}{label}</span>
-              <span className={`text-xs ${operationMode === value ? "text-white/80" : "text-text-faint"}`}>{desc}</span>
-            </button>
-          ))}
+      {/* Működési mód: V11.15-től mindig "Pontos, teljes ellenőrzés" (nincs választó). */}
+      <div className="flex items-center gap-2 p-2.5 rounded-lg border bg-page-bg-subtle" style={{ borderColor: "var(--line)" }}>
+        <Target size={14} style={{ color: "#7CA9D3" }} />
+        <div className="text-xs">
+          <span className="font-medium text-text-default">Pontos mód</span>
+          <span className="text-text-faint ml-1">— teljes ellenőrzés, forrás-hivatkozásokkal</span>
         </div>
       </div>
     </div>
@@ -235,16 +218,16 @@ function SettingsPanel({
 
 export default function StandardsSearchPage() {
   const [question, setQuestion] = useState("");
-  const [searchMode, setSearchMode] = useState<SearchMode>("combined");
+  const [searchMode, setSearchMode] = useState<SearchMode>("internal");
   const [answerLength, setAnswerLength] = useState<AnswerLength>("standard");
-  const [operationMode, setOperationMode] = useState<OperationMode>("accurate");
+  // V11.15: a működési mód mindig "accurate" (Pontos) — nincs választó.
+  const operationMode: OperationMode = "accurate";
   const [result, setResult] = useState<SearchResult | null>(null);
   const [showExtended, setShowExtended] = useState(false);
   const [copied, setCopied] = useState(false);
   const [urlInput, setUrlInput] = useState("");
   const [defaultsApplied, setDefaultsApplied] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { activeProjectId } = useActiveProject();
 
   // Load saved per-user defaults once and apply them as initial values.
   // After the first apply, the user's tweaks on this page stay sticky for
@@ -255,9 +238,13 @@ export default function StandardsSearchPage() {
   });
   useEffect(() => {
     if (defaultsApplied || !settingsQuery.data) return;
-    setSearchMode(settingsQuery.data.searchMode as SearchMode);
+    // A mentett keresési mód már nem feltétlen a 3 új opció egyike (legacy
+    // "mszt"/"combined") — ilyenkor az alapértelmezett "internal"-t hagyjuk.
+    const savedMode = settingsQuery.data.searchMode as SearchMode;
+    if (savedMode === "internal" || savedMode === "web" || savedMode === "combined_with_web") {
+      setSearchMode(savedMode);
+    }
     setAnswerLength(settingsQuery.data.answerLength as AnswerLength);
-    setOperationMode(settingsQuery.data.operationMode as OperationMode);
     setDefaultsApplied(true);
   }, [defaultsApplied, settingsQuery.data]);
 
@@ -276,8 +263,8 @@ export default function StandardsSearchPage() {
 
   const isWebMode = searchMode === "web" || searchMode === "combined_with_web";
 
-  const handleSearch = () => {
-    if (!question.trim()) return;
+  const doSearch = (q: string) => {
+    if (!q.trim()) return;
     if (isWebMode && !urlInput.trim()) {
       toast.error("Internetes kereséshez adjon meg legalább egy URL-t");
       return;
@@ -287,13 +274,18 @@ export default function StandardsSearchPage() {
       ? urlInput.split(/[\n,]+/).map(u => u.trim()).filter(u => u.startsWith("http"))
       : undefined;
     searchMutation.mutate({
-      question: question.trim(),
+      question: q.trim(),
       searchMode,
       answerLength,
       operationMode,
       urls,
-      projectId: activeProjectId ?? undefined,
     });
+  };
+  const handleSearch = () => doSearch(question);
+  // Beégetett gyorskérdés: kitölti a keresőt ÉS azonnal keres.
+  const handleQuickQuestion = (q: string) => {
+    setQuestion(q);
+    doSearch(q);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -309,11 +301,14 @@ export default function StandardsSearchPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // V11.15: a megrendelő által megadott 5 beégetett kérdés. Gyorsgombként
+  // jelennek meg — kattintásra kitöltik a keresőt és azonnal keresnek.
   const exampleQuestions = [
-    "Mekkora minimális belmagasság szükséges ipari épületnél?",
-    "Milyen tűzállósági követelmények vonatkoznak a tartószerkezetekre?",
-    "Mi az előírt minimális lépcsőszélesség lakóépületben?",
-    "Milyen hőátbocsátási tényező szükséges külső falhoz?",
+    "Acél oszlop kihajlás számítása",
+    "Keresztmetszet osztályozás hogyan kell",
+    "Acél gerenda méretezés tűzre",
+    "Acél oszlop kihajlás vizsgálata",
+    "Acél fáradás vizsgálat",
   ];
 
   return (
@@ -335,12 +330,6 @@ export default function StandardsSearchPage() {
                 Tegyen fel természetes nyelvű kérdést – az AI megkeresi a releváns szabványokat és strukturált választ generál.
               </p>
             </div>
-            <Link href="/search-history">
-              <Button variant="outline" className="gap-2 text-sm border-line">
-                <History size={14} />
-                Előzmények
-              </Button>
-            </Link>
           </div>
         </div>
       </div>
@@ -405,12 +394,12 @@ export default function StandardsSearchPage() {
               {/* Example questions */}
               {!result && !searchMutation.isPending && (
                 <div className="mt-4 pt-4 border-t border-line-subtle">
-                  <p className="text-xs text-text-faint mb-2 font-medium">Példa kérdések:</p>
+                  <p className="text-xs text-text-faint mb-2 font-medium">Gyakori kérdések:</p>
                   <div className="flex flex-wrap gap-2">
                     {exampleQuestions.map((q) => (
                       <button
                         key={q}
-                        onClick={() => setQuestion(q)}
+                        onClick={() => handleQuickQuestion(q)}
                         className="text-xs px-3 py-1.5 rounded-full border border-line text-text-default hover:border-[#7CA9D3] hover:text-[#7CA9D3] transition-colors bg-surface"
                       >
                         {q}
@@ -601,7 +590,6 @@ export default function StandardsSearchPage() {
             <SettingsPanel
               searchMode={searchMode} setSearchMode={setSearchMode}
               answerLength={answerLength} setAnswerLength={setAnswerLength}
-              operationMode={operationMode} setOperationMode={setOperationMode}
             />
 
             {/* Info box */}

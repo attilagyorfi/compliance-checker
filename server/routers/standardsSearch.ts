@@ -101,14 +101,11 @@ async function keywordSearch(query: string, mode: SearchMode): Promise<SearchSou
       .where(or(...conditions))
       .limit(20);
 
-    // Filter by mode
-    if (mode === "mszt") {
-      sources = sources.filter((s) => s.sourceType === "mszt");
-    } else if (mode === "internal") {
-      sources = sources.filter((s) => s.sourceType !== "mszt");
-    } else if (mode === "web" || mode === "combined_with_web") {
-      // For web-only mode, skip library results entirely
-      if (mode === "web") return [];
+    // Mód-szűrés (V11.15): az "internal" a TELJES feltöltött jogszabály-
+    // állományt hozza (sourceType-tól függetlenül, mszt-t is). A "web" módban
+    // nincs könyvtári találat. A többi (legacy) érték is a teljes állományt adja.
+    if (mode === "web") {
+      return [];
     }
 
     // Extract relevant excerpts
@@ -282,9 +279,11 @@ async function semanticSearch(
   const queryEmbedding = await getEmbedding(query);
   if (!queryEmbedding) return [];
 
-  // Decide which source types to consider based on search mode.
+  // Decide which source types to consider based on search mode (V11.15).
+  // A Tudástár megszűnt — csak a feltöltött jogszabályok (regulation) chunk-jait
+  // vesszük figyelembe. Web módban nincs szemantikus könyvtári találat.
   const includeRegulations = mode !== "web";
-  const includeKnowledgeBase = mode === "internal" || mode === "combined" || mode === "combined_with_web";
+  const includeKnowledgeBase = false;
 
   type Row = {
     id: number;
@@ -654,7 +653,7 @@ export const standardsSearchRouter = router({
     .input(
       z.object({
         question: z.string().min(3).max(1000),
-        searchMode: z.enum(["mszt", "internal", "combined", "web", "combined_with_web"]).default("combined"),
+        searchMode: z.enum(["mszt", "internal", "combined", "web", "combined_with_web"]).default("internal"),
         answerLength: z.enum(["short", "standard", "detailed"]).default("standard"),
         operationMode: z.enum(["fast", "accurate"]).default("accurate"),
         projectId: z.number().int().positive().optional(),
@@ -670,7 +669,11 @@ export const standardsSearchRouter = router({
         ? await rewriteQuery(question)
         : question;
 
-      // Step 2: Hybrid search (library + optional web)
+      // Step 2: Hybrid search — 3 mód (V11.15 egyszerűsítés):
+      //   web                = csak internet
+      //   combined_with_web  = feltöltött jogszabályok + internet
+      //   internal (default) = csak a feltöltött jogszabályok (regulation_sources)
+      // A Tudástár (searchKnowledgeBase) és az élő MSZT keresés megszűnt.
       let sources: SearchSource[] = [];
 
       if (searchMode === "web") {
@@ -681,34 +684,21 @@ export const standardsSearchRouter = router({
           sources = await webSearchStandards(rewrittenQuestion, true);
         }
       } else if (searchMode === "combined_with_web") {
-        // Library + Knowledge Base + semantic + (optional) live MSZT + internet combined
+        // Feltöltött jogszabályok (keyword + szemantikus) + internet
         const webSources = urls && urls.length > 0
           ? await fetchUrlSources(urls, rewrittenQuestion)
           : await webSearchStandards(rewrittenQuestion, true);
-        const libSources = await keywordSearch(rewrittenQuestion, "combined");
-        const kbSources = await searchKnowledgeBase(rewrittenQuestion);
-        const semanticSources = await semanticSearch(rewrittenQuestion, "combined_with_web");
-        const liveMszt = await liveMsztSources(rewrittenQuestion);
-        const allLibrary = mergeSearchSources([...libSources, ...kbSources, ...liveMszt], semanticSources, 8, rewrittenQuestion);
-        // Merge: library + KB + semantic + live first, then web sources (deduplicate by URL)
+        const libSources = await keywordSearch(rewrittenQuestion, "internal");
+        const semanticSources = await semanticSearch(rewrittenQuestion, "internal");
+        const allLibrary = mergeSearchSources(libSources, semanticSources, 8, rewrittenQuestion);
         const seenUrls = new Set(allLibrary.map((s: SearchSource) => s.url).filter(Boolean));
         const dedupedWeb = webSources.filter((s: SearchSource) => !s.url || !seenUrls.has(s.url));
         sources = [...allLibrary, ...dedupedWeb].slice(0, 10);
       } else {
-        // mszt / internal / combined – library only
-        const libSources = await keywordSearch(rewrittenQuestion, searchMode);
-        // Knowledge Base is "internal" content — include for internal/combined modes,
-        // exclude for mszt (deliberate scope filter).
-        const kbSources = searchMode === "mszt"
-          ? []
-          : await searchKnowledgeBase(rewrittenQuestion);
-        const semanticSources = await semanticSearch(rewrittenQuestion, searchMode);
-        // Live MSZT search piggybacks onto mszt and combined modes when the
-        // feature flag is enabled and credentials are configured.
-        const liveMszt = (searchMode === "mszt" || searchMode === "combined")
-          ? await liveMsztSources(rewrittenQuestion)
-          : [];
-        sources = mergeSearchSources([...libSources, ...kbSources, ...liveMszt], semanticSources, 10, rewrittenQuestion);
+        // internal (és bármely legacy érték) — csak a feltöltött jogszabályok
+        const libSources = await keywordSearch(rewrittenQuestion, "internal");
+        const semanticSources = await semanticSearch(rewrittenQuestion, "internal");
+        sources = mergeSearchSources(libSources, semanticSources, 10, rewrittenQuestion);
       }
 
       // Step 3: Generate structured answer

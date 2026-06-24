@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import Header from "@/components/Header";
+import SearchHistorySection from "@/components/SearchHistorySection";
 import { trpc } from "@/lib/trpc";
 import { formatDate } from "@/lib/format";
 
@@ -328,6 +329,7 @@ export default function AdminPage() {
 
         <UsersSection />
         <ProjectsSection />
+        <SearchHistorySection />
       </main>
     </div>
   );
