@@ -114,3 +114,4 @@ client/public/__manus__/version.json
 
 # Megbízhatóság-teszt harness-ek (megrendelő jogvédett anyagára hivatkoznak, abszolút utak)
 reliability_*.mjs
+seed-eurocode.mjs
