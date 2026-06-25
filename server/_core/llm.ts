@@ -294,8 +294,16 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   }
 
   // OpenAI gpt-4o / gpt-4o-mini "max_tokens" → "max_completion_tokens" a 2024-09
-  // utáni API-ban. Mindkét nevet támogatjuk a backward-compat miatt.
-  payload.max_completion_tokens = 32768;
+  // utáni API-ban.
+  //
+  // FONTOS: a gpt-4o-mini (és gpt-4o) max. 16384 completion-tokent enged. A
+  // korábbi 32768 érték MINDEN chat-hívást 400-zal elbuktatott
+  // ("max_tokens is too large"), így a kereső-válasz és a compliance-elemzés is
+  // csendben "LLM hiba"-ra futott. 8192 bőven elég bármely válaszhoz/elemzéshez,
+  // és minden OpenAI-modellnél biztonságos. Env-ből felülírható (LLM_MAX_TOKENS).
+  const maxTokensEnv = Number(process.env.LLM_MAX_TOKENS);
+  payload.max_completion_tokens =
+    Number.isFinite(maxTokensEnv) && maxTokensEnv > 0 ? maxTokensEnv : 8192;
 
   const normalizedResponseFormat = normalizeResponseFormat({
     responseFormat,

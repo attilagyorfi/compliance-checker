@@ -122,9 +122,13 @@ function SourceCard({ source, index }: { source: SearchSource; index: number }) 
       {expanded && (
         <div className="px-3 pb-3 pt-0">
           <Separator className="mb-3" />
-          <p className="text-xs text-text-default leading-relaxed font-mono bg-page-bg-subtle rounded p-2 border border-line-subtle">
-            {source.excerpt}
-          </p>
+          <p className="text-xs text-text-muted mb-1.5 font-medium uppercase tracking-wide">Részlet a dokumentumból</p>
+          <blockquote
+            className="text-sm text-text-default leading-relaxed bg-page-bg-subtle rounded p-3 border-l-2"
+            style={{ borderColor: "#7CA9D3" }}
+          >
+            …{source.excerpt.trim()}…
+          </blockquote>
         </div>
       )}
     </div>

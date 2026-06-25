@@ -464,10 +464,15 @@ export function mergeSearchSources(
     return { source, score: score * boost };
   });
 
-  return boosted
-    .sort((a, b) => b.score - a.score)
-    .slice(0, maxItems)
-    .map(({ source, score }) => ({ ...source, relevanceScore: score }));
+  // A nyers RRF-pont (~0.016–0.03) önmagában nem értelmes százalék — a UI 2%-ot
+  // mutatott a legjobb találatra is. A top-találathoz normalizáljuk (legjobb =
+  // 1.0), így a relevancia a forrás relatív erősségét jelzi.
+  const sorted = boosted.sort((a, b) => b.score - a.score).slice(0, maxItems);
+  const maxScore = sorted[0]?.score ?? 1;
+  return sorted.map(({ source, score }) => ({
+    ...source,
+    relevanceScore: maxScore > 0 ? score / maxScore : 0,
+  }));
 }
 
 /**
