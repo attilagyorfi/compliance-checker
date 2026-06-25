@@ -144,12 +144,13 @@ function SettingsPanel({
   searchMode: SearchMode; setSearchMode: (v: SearchMode) => void;
   answerLength: AnswerLength; setAnswerLength: (v: AnswerLength) => void;
 }) {
-  // V11.15: 3 keresési mód. Az "internal" itt a feltöltött jogszabályokat jelenti
-  // (a Tudástár megszűnt). Az "mszt"/"combined" legacy enum-értékeket nem kínáljuk.
-  const MODES: Array<{ value: SearchMode; label: string; icon: React.ReactNode; desc: string; wide?: boolean }> = [
-    { value: "internal", label: "Feltöltött jogszabályok", icon: <BookOpen size={12} />, desc: "A betöltött szabványok között" },
-    { value: "web", label: "Internet", icon: <Globe size={12} />, desc: "Webes keresés" },
-    { value: "combined_with_web", label: "Jogszabály + internet", icon: <Search size={12} />, desc: "Mindkettő", wide: true },
+  // V11.16: 3 keresési mód, egymás alatt (teljes szélességben). Az "internal" a
+  // feltöltött jogszabályokat jelenti (a Tudástár megszűnt). Az "mszt"/"combined"
+  // legacy enum-értékeket nem kínáljuk.
+  const MODES: Array<{ value: SearchMode; label: string; icon: React.ReactNode; desc: string }> = [
+    { value: "internal", label: "Feltöltött jogszabályok", icon: <BookOpen size={14} />, desc: "A betöltött szabványok között" },
+    { value: "web", label: "Internet", icon: <Globe size={14} />, desc: "Webes keresés" },
+    { value: "combined_with_web", label: "Jogszabály + internet", icon: <Search size={14} />, desc: "Mindkettő" },
   ];
   return (
     <div className="rounded-xl border bg-surface p-4 space-y-4" style={{ borderColor: "var(--line)" }}>
@@ -160,21 +161,19 @@ function SettingsPanel({
 
       <div>
         <label className="text-xs font-medium text-text-muted mb-1.5 block uppercase tracking-wide">Keresési logika</label>
-        <div className="grid grid-cols-2 gap-1.5">
-          {MODES.map(({ value, label, icon, desc, wide }) => (
+        <div className="flex flex-col gap-1.5">
+          {MODES.map(({ value, label, icon, desc }) => (
             <button
               key={value}
               onClick={() => setSearchMode(value)}
-              className={`${
-                wide ? "col-span-2" : ""
-              } flex items-center gap-2 p-2.5 rounded-lg border text-xs font-medium transition-all ${
+              className={`w-full flex items-center gap-2.5 p-2.5 rounded-lg border text-xs font-medium transition-all text-left ${
                 searchMode === value
                   ? "text-white border-transparent"
                   : "text-text-default border-line bg-surface hover:border-gray-300"
               }`}
               style={searchMode === value ? { backgroundColor: value === "web" || value === "combined_with_web" ? "#4caf50" : "#7CA9D3" } : {}}
             >
-              {icon}
+              <span className="flex-shrink-0">{icon}</span>
               <span className="flex flex-col items-start">
                 <span>{label}</span>
                 <span className={`text-xs ${searchMode === value ? "opacity-80" : "text-text-faint"}`}>{desc}</span>
