@@ -7,11 +7,11 @@
  * elavult-figyelmeztetés és bulk-frissítés egy oldalon.
  */
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   BookOpen, Plus, Trash2, RefreshCw, Sparkles, Loader2, Search,
   Calendar, Link as LinkIcon, AlertTriangle, CheckCircle2, Info,
-  FileText, Database, Cpu, RotateCcw, Archive,
+  FileText, Database, Cpu, RotateCcw, Archive, Upload,
   CheckSquare, Square, MinusSquare, X as XIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -408,6 +408,89 @@ function SourceCard({
   );
 }
 
+// ── PDF feltöltő ────────────────────────────────────────────────────────────────
+
+/**
+ * PDF-feltöltő gomb. A kiválasztott fájlokat sorban feldolgozza: a szerver
+ * kinyeri a szöveget (ékezet-javítással) és AUTOMATIKUSAN legenerálja az
+ * embeddingeket — nincs külön "Embeddings" lépés.
+ */
+function PdfUploadButton({ onUploaded }: { onUploaded: () => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const uploadMut = trpc.regulationSources.createFromPdf.useMutation();
+
+  const readAsBase64 = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const r = reader.result as string;
+        const comma = r.indexOf(",");
+        resolve(comma >= 0 ? r.slice(comma + 1) : r);
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+
+  const handleFiles = async (files: FileList | null) => {
+    const list = Array.from(files ?? []).filter((f) => f.name.toLowerCase().endsWith(".pdf"));
+    if (list.length === 0) {
+      toast.error("Csak PDF fájlokat lehet feltölteni.");
+      return;
+    }
+    setBusy(true);
+    setProgress({ done: 0, total: list.length });
+    let ok = 0;
+    for (let i = 0; i < list.length; i++) {
+      const file = list[i]!;
+      try {
+        const dataBase64 = await readAsBase64(file);
+        const res = await uploadMut.mutateAsync({ filename: file.name, dataBase64 });
+        if (res.ok) {
+          ok++;
+          if (res.embeddingApiUnavailable) {
+            toast.warning(`${res.name}: betöltve, de az embedding nem készült el (API nem elérhető).`);
+          } else {
+            toast.success(`${res.name}: betöltve (${res.chunkCount} chunk beágyazva).`);
+          }
+        } else {
+          toast.warning(`${file.name}: ${res.message}`);
+        }
+      } catch (err) {
+        toast.error(`${file.name}: ${err instanceof Error ? err.message : "feltöltési hiba"}`);
+      }
+      setProgress({ done: i + 1, total: list.length });
+    }
+    setBusy(false);
+    setProgress({ done: 0, total: 0 });
+    if (ok > 0) onUploaded();
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="application/pdf,.pdf"
+        multiple
+        className="hidden"
+        onChange={(e) => handleFiles(e.target.files)}
+      />
+      <Button
+        onClick={() => inputRef.current?.click()}
+        disabled={busy}
+        className="gap-2 text-white"
+        style={{ backgroundColor: "#7CA9D3" }}
+      >
+        {busy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+        {busy ? `Feltöltés… (${progress.done}/${progress.total})` : "PDF feltöltése"}
+      </Button>
+    </>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function RegulationLibraryPage() {
@@ -557,7 +640,10 @@ export default function RegulationLibraryPage() {
                 )}
               </p>
             </div>
-            <CreateRegulationDialog onCreated={onChanged} />
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <PdfUploadButton onUploaded={onChanged} />
+              <CreateRegulationDialog onCreated={onChanged} />
+            </div>
           </div>
         </div>
       </div>

@@ -47,6 +47,43 @@ async function callEmbeddingApi(input: string): Promise<number[] | null> {
   }
 }
 
+interface BatchEmbeddingApiResponse {
+  data?: Array<{ index?: number; embedding?: number[] }>;
+}
+
+/**
+ * Több szöveg beágyazása egyetlen API-hívással (az OpenAI embeddings endpoint
+ * tömb-inputot is fogad). Nagy dokumentumoknál (több száz chunk) ez nagyságrenddel
+ * gyorsabb a chunkonkénti hívásnál. Egy átmeneti hibára egyszer újrapróbál.
+ */
+async function callEmbeddingApiBatch(inputs: string[], attempt = 1): Promise<(number[] | null)[]> {
+  const cfg = getLlmEmbeddingsConfig();
+  if (!cfg) return inputs.map(() => null);
+  try {
+    const res = await fetch(cfg.url, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${cfg.apiKey}` },
+      body: JSON.stringify({ model: cfg.model, input: inputs }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) throw new Error(`embed ${res.status}`);
+    const json = (await res.json()) as BatchEmbeddingApiResponse;
+    const byIndex = new Map<number, number[]>();
+    for (const d of json.data ?? []) {
+      if (typeof d.index === "number" && Array.isArray(d.embedding) && d.embedding.length > 0) {
+        byIndex.set(d.index, d.embedding);
+      }
+    }
+    return inputs.map((_, i) => byIndex.get(i) ?? null);
+  } catch {
+    if (attempt < 3) {
+      await new Promise((r) => setTimeout(r, 1000 * 2 ** (attempt - 1)));
+      return callEmbeddingApiBatch(inputs, attempt + 1);
+    }
+    return inputs.map(() => null);
+  }
+}
+
 /**
  * Embed a single piece of text. Returns null if the embedding API is not
  * configured or the call fails.
@@ -101,15 +138,24 @@ export async function chunkAndEmbed(
   chunkSize: number = EMBEDDING_CHUNK_SIZE,
   overlap: number = EMBEDDING_CHUNK_OVERLAP
 ): Promise<EmbeddedChunk[]> {
+  if (embeddingApiAvailable === false) return [];
   const chunks = chunkText(text, chunkSize, overlap).filter((c) => c.trim().length > 0);
+  if (chunks.length === 0) return [];
+
+  // Batch-elt beágyazás (50 chunk / hívás) — nagy szabványoknál (több száz chunk)
+  // ez nagyságrenddel gyorsabb, mint a chunkonkénti hívás.
+  const BATCH = 50;
   const result: EmbeddedChunk[] = [];
-  for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i]!;
-    const embedding = await getEmbedding(chunk);
-    if (embedding) {
-      result.push({ chunkIndex: i, text: chunk, embedding });
-    }
+  for (let i = 0; i < chunks.length; i += BATCH) {
+    const slice = chunks.slice(i, i + BATCH);
+    const vecs = await callEmbeddingApiBatch(slice);
+    slice.forEach((chunk, j) => {
+      const vec = vecs[j];
+      if (vec) result.push({ chunkIndex: i + j, text: chunk, embedding: vec });
+    });
   }
+  // Frissítsük a cache-elt elérhetőségi állapotot az eredmény alapján.
+  embeddingApiAvailable = result.length > 0;
   return result;
 }
 

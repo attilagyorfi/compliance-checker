@@ -113,6 +113,85 @@ export const regulationSourcesRouter = router({
     }),
 
   /**
+   * PDF feltöltése egy lépésben: szöveg-kinyerés (ékezet-javítással) → forrás
+   * létrehozása → AUTOMATIKUS chunk-embedding generálás. Nincs külön gomb.
+   *
+   * A fájlt base64-ként kapja (az Express body-limit 50mb). A discipline-t a
+   * fájlnévből + szövegből detektáljuk, a sourceType "pdf".
+   */
+  createFromPdf: publicProcedure
+    .input(
+      z.object({
+        filename: z.string().min(1),
+        dataBase64: z.string().min(1),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+
+      const { extractFromPdf, detectDiscipline } = await import("../documentExtractor");
+      const buffer = Buffer.from(input.dataBase64, "base64");
+      if (buffer.length === 0) {
+        return { ok: false as const, message: "Üres vagy érvénytelen fájl." };
+      }
+
+      const text = await extractFromPdf(buffer);
+      if (!text || text.trim().length < 50) {
+        return { ok: false as const, message: "A PDF-ből nem sikerült érdemi szöveget kinyerni (lehet, hogy szkennelt, kép alapú dokumentum)." };
+      }
+
+      const name = input.filename.replace(/\.pdf$/i, "").trim().slice(0, 512) || "Feltöltött dokumentum";
+      const existing = await db
+        .select({ id: regulationSources.id })
+        .from(regulationSources)
+        .where(and(eq(regulationSources.name, name), isNull(regulationSources.deletedAt)))
+        .limit(1);
+      if (existing.length > 0) {
+        return { ok: false as const, message: `Már létezik ilyen nevű forrás: „${name}”.` };
+      }
+
+      const shortCode = (name.match(/MSZ\s*E?N?\s*[\d.\-]+/i)?.[0] ?? "").trim().slice(0, 64) || null;
+      const discipline = detectDiscipline(name, text.slice(0, 2000)) as z.infer<typeof disciplineEnum>;
+      const now = new Date();
+      const result = await db.insert(regulationSources).values({
+        name,
+        shortCode,
+        discipline,
+        sourceType: "pdf",
+        content: text.slice(0, 16_000_000),
+        contentFetchedAt: now,
+        lastSyncAt: now,
+        syncStatus: "ok",
+        isActive: true,
+      });
+      const sourceId = (result[0] as any).insertId as number;
+
+      // Automatikus, batch-elt embedding-generálás.
+      const embedded = await chunkAndEmbed(text);
+      if (embedded.length > 0) {
+        await db.insert(chunkEmbeddings).values(
+          embedded.map((c) => ({
+            sourceType: "regulation" as const,
+            sourceId,
+            chunkIndex: c.chunkIndex,
+            text: c.text.slice(0, 65000),
+            embedding: c.embedding,
+          }))
+        );
+      }
+
+      return {
+        ok: true as const,
+        sourceId,
+        name,
+        characterCount: text.length,
+        chunkCount: embedded.length,
+        embeddingApiUnavailable: embedded.length === 0,
+      };
+    }),
+
+  /**
    * Update a regulation source.
    */
   update: publicProcedure
