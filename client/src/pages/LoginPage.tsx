@@ -33,7 +33,7 @@ export default function LoginPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           email: email.trim(),
-          callbackURL: "/dashboard",
+          callbackURL: "/search",
         }),
       });
       if (!res.ok) {

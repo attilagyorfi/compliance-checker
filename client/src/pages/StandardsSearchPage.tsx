@@ -231,6 +231,7 @@ export default function StandardsSearchPage() {
   const [copied, setCopied] = useState(false);
   const [urlInput, setUrlInput] = useState("");
   const [defaultsApplied, setDefaultsApplied] = useState(false);
+  const [searchHover, setSearchHover] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Load saved per-user defaults once and apply them as initial values.
@@ -380,9 +381,15 @@ export default function StandardsSearchPage() {
                 <p className="text-xs text-text-faint">Ctrl+Enter a kereséshez</p>
                 <Button
                   onClick={handleSearch}
+                  onMouseEnter={() => setSearchHover(true)}
+                  onMouseLeave={() => setSearchHover(false)}
                   disabled={!question.trim() || (isWebMode && !urlInput.trim()) || searchMutation.isPending}
-                  className="gap-2 text-white"
-                  style={{ backgroundColor: isWebMode ? "#4caf50" : "#7CA9D3" }}
+                  className="gap-2 text-white transition-colors"
+                  style={{
+                    backgroundColor: isWebMode
+                      ? (searchHover ? "#4caf50" : "#388E3C")
+                      : (searchHover ? "#7CA9D3" : "#4A7BA8"),
+                  }}
                 >
                   {searchMutation.isPending ? (
                     <Loader2 size={15} className="animate-spin" />

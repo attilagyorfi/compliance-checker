@@ -1,15 +1,14 @@
 import { Link, useLocation } from "wouter";
-import { Menu, X, BookOpen, Search, LayoutDashboard, Settings as SettingsIcon, Sun, Moon, ShieldAlert, Bell, ExternalLink } from "lucide-react";
+import { Menu, X, BookOpen, Search, Settings as SettingsIcon, Sun, Moon, ShieldAlert, Bell, ExternalLink } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { trpc } from "@/lib/trpc";
 
 const LOGO_URL = "https://d2xsxph8kpxj0f.cloudfront.net/109169450/Lkoz8HcKNEz8RQmUhyV4qZ/mmernoki_logo_326d035b.webp";
 
-// V11.15: leegyszerűsített menü. A Projektek, Tudástár, Előzmények és Audit
-// menüpontok megszűntek (az Előzmények az Admin oldalra költözött).
+// V11.16: leegyszerűsített menü. A Dashboard, Projektek, Tudástár, Előzmények és
+// Audit menüpontok megszűntek (az Előzmények az Admin oldalra költözött).
 const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/search", label: "Szabványkereső", icon: Search },
   { href: "/regulations", label: "Jogszabályok", icon: BookOpen },
 ];

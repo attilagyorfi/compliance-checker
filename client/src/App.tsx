@@ -10,7 +10,6 @@ import ReportsPage from "./pages/ReportsPage";
 import ResultPage from "./pages/ResultPage";
 import RegulationLibraryPage from "./pages/RegulationLibraryPage";
 import StandardsSearchPage from "./pages/StandardsSearchPage";
-import DashboardPage from "./pages/DashboardPage";
 import PlatformConnectionsPage from "./pages/PlatformConnectionsPage";
 import SettingsPage from "./pages/SettingsPage";
 import AdminPage from "./pages/AdminPage";
@@ -22,7 +21,6 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
-      <Route path="/dashboard" component={DashboardPage} />
       <Route path="/search" component={StandardsSearchPage} />
       <Route path="/reports" component={ReportsPage} />
       <Route path="/result/:id" component={ResultPage} />
