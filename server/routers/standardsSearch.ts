@@ -412,6 +412,11 @@ function extractQueryKeywords(query: string): string[] {
  * Cím-boost szorzó: hány kérdés-kulcsszó szerepel a dokumentum nevében.
  * A dokumentum neve erős téma-jel (pl. "acél" a kérdésben → MSZ EN 1993
  * "Acelszerkezetek"). Minden találat +12%-ot ad, maximum +48%.
+ *
+ * Megj.: egy korábbi kísérletben mérsékeltük ezt (+8%, max +24%), hogy a
+ * téma-specifikus szabványok ne szoruljanak ki — de a mérséklés több jó
+ * találatot rontott (öszvér → 1994, kihajlás → 1993-1-1 kiesett), mint amennyit
+ * javított, ezért visszaállt az eredeti, jól kalibrált értékre.
  */
 export function titleBoostFactor(queryKeywords: string[], documentName: string): number {
   if (queryKeywords.length === 0) return 1;
@@ -476,6 +481,22 @@ export function mergeSearchSources(
 }
 
 /**
+ * "Nincs lefedve" figyelmeztető szöveg — akkor jelenik meg, ha az önellenőrzés
+ * megbukott, azaz a válasz nem vezethető vissza megbízhatóan a forrásokra.
+ * A cél, hogy SOHA ne mutassunk magabiztos, de kitalált konkrétumot.
+ */
+function buildUnsupportedAnswerNotice(notes: string): string {
+  const lines = [
+    "**A betöltött szabványok ezt a kérdést nem fedik le megbízhatóan.**",
+    "",
+    "A rendszer talált kapcsolódó forrásokat (lásd a Hivatkozások szekciót), de az önellenőrzés szerint a válasz nem vezethető vissza egyértelműen ezekre. A megtévesztő, kitalált adatok elkerülése végett ezért nem jelenítünk meg konkrét választ.",
+  ];
+  if (notes) lines.push("", `_Az önellenőrzés észrevétele: ${notes}_`);
+  lines.push("", "Javaslat: töltse fel a témához tartozó szabványt a Jogszabályok oldalon, vagy fogalmazza át a kérdést pontosabban.");
+  return lines.join("\n");
+}
+
+/**
  * Generate a structured answer from sources using LLM.
  */
 async function generateStructuredAnswer(
@@ -504,7 +525,12 @@ async function generateStructuredAnswer(
   }[answerLength];
 
   const modeInstruction = operationMode === "accurate"
-    ? "Kizárólag a megadott forrásokból dolgozz. Minden állítást forráshivatkozással támasszál alá. Ha egy állítás nem szerepel a forrásokban, ne tedd bele a válaszba."
+    ? `Kizárólag a megadott forrásokból dolgozz. Minden állítást forráshivatkozással [n] támasszál alá.
+KRITIKUS: ha a források NEM tartalmazzák a kérdésre a választ, akkor KIZÁRÓLAG ennyit írj:
+"A betöltött szabványok ezt a kérdést nem fedik le." — és semmi mást.
+SOHA ne találj ki konkrét számokat, méreteket, szilárdsági/anyagosztályokat, határértékeket,
+képleteket vagy szabvány-jelöléseket, amelyek nem szerepelnek szó szerint a forrásokban. Ha
+bizonytalan vagy, hogy egy adat a forrásból származik-e, ne írd le.`
     : "Elsősorban a megadott forrásokból dolgozz, de szükség esetén általános mérnöki tudást is felhasználhatsz – ebben az esetben jelöld meg, hogy ez nem forrásból származik.";
 
   const sourcesText = sources
@@ -560,12 +586,14 @@ Kérlek, válaszolj a kérdésre a fenti források alapján. Jelöld meg a hivat
         messages: [
           {
             role: "system",
-            content: `Te egy ellenőrző AI vagy. Vizsgáld meg, hogy a generált válasz minden állítása visszavezethető-e a megadott forrásokra.
-Adj vissza JSON-t: { "passed": boolean, "issues": string[], "confidence": "low"|"medium"|"high" }`,
+            content: `Te egy ellenőrző AI vagy. Két különböző dolgot értékelj:
+- "answerable": a megadott források TARTALMAZNAK-E a kérdésre vonatkozó érdemi információt? (Igaz akkor is, ha a válasz nem tökéletes, de a téma le van fedve. Hamis, ha a források egyáltalán nem a kérdés tárgyáról szólnak.)
+- "passed": a válasz MINDEN konkrét állítása (számok, értékek, hivatkozások) pontosan visszavezethető-e a forrásokra?
+Adj vissza JSON-t: { "answerable": boolean, "passed": boolean, "issues": string[], "confidence": "low"|"medium"|"high" }`,
           },
           {
             role: "user",
-            content: `Generált válasz:\n${answer}\n\nForrások:\n${sourcesText}\n\nEllenőrzés:`,
+            content: `Kérdés: ${answer ? "(lásd a választ)" : ""}\n\nGenerált válasz:\n${answer}\n\nForrások:\n${sourcesText}\n\nÉrtékelés:`,
           },
         ],
         response_format: {
@@ -576,11 +604,12 @@ Adj vissza JSON-t: { "passed": boolean, "issues": string[], "confidence": "low"|
             schema: {
               type: "object",
               properties: {
+                answerable: { type: "boolean" },
                 passed: { type: "boolean" },
                 issues: { type: "array", items: { type: "string" } },
                 confidence: { type: "string", enum: ["low", "medium", "high"] },
               },
-              required: ["passed", "issues", "confidence"],
+              required: ["answerable", "passed", "issues", "confidence"],
               additionalProperties: false,
             },
           },
@@ -588,11 +617,28 @@ Adj vissza JSON-t: { "passed": boolean, "issues": string[], "confidence": "low"|
       });
 
       const checkContent = checkResponse.choices?.[0]?.message?.content;
+      let answerable = true;
       if (checkContent && typeof checkContent === "string") {
         const checkResult = JSON.parse(checkContent);
+        answerable = checkResult.answerable !== false;
         selfCheckPassed = checkResult.passed;
         selfCheckNotes = checkResult.issues?.join("; ") ?? "";
         confidence = checkResult.confidence as Confidence;
+      }
+
+      // V11.17 megbízhatósági kapu — két különböző eset, hogy a hallucinációt
+      // kiszűrjük, DE a jó (csak kissé pontatlan) válaszokat NE dobjuk el:
+      if (!answerable) {
+        // A források egyáltalán nem fedik le a kérdést → a magabiztos, esetleg
+        // hallucinált prózát lecseréljük egyértelmű figyelmeztetésre.
+        confidence = "low";
+        selfCheckPassed = false;
+        answer = buildUnsupportedAnswerNotice(selfCheckNotes);
+      } else if (!selfCheckPassed && confidence === "high") {
+        // Van érdemi forrás, de a válasz nem tökéletesen pontos → megtartjuk a
+        // választ (a self-check megjegyzés jelzi a felhasználónak), de a
+        // megbízhatóság nem lehet "high".
+        confidence = "medium";
       }
     } catch {
       // Self-check failed silently – don't block the answer
