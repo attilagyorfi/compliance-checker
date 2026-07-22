@@ -5139,6 +5139,53 @@ async function createApp() {
   const app = express();
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.get("/api/health", async (_req, res) => {
+    const out = {
+      ok: true,
+      nodeEnv: process.env.NODE_ENV ?? null,
+      hasOpenAiKey: Boolean(process.env.OPENAI_API_KEY),
+      hasAuthSecret: Boolean(process.env.BETTER_AUTH_SECRET),
+      demoLoginEnabled: isDemoLoginEnabled()
+    };
+    const raw = process.env.DATABASE_URL;
+    out.hasDatabaseUrl = Boolean(raw);
+    if (raw) {
+      try {
+        const u = new URL(raw);
+        out.dbHost = u.hostname;
+        out.dbName = u.pathname.replace(/^\//, "") || null;
+      } catch {
+        out.dbHost = "(\xE9rtelmezhetetlen DATABASE_URL)";
+      }
+    }
+    try {
+      const { getDb: getDb2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const db = await getDb2();
+      if (!db) {
+        out.db = "nem el\xE9rhet\u0151 (getDb null)";
+      } else {
+        const { sql: sql7 } = await import("drizzle-orm");
+        const r1 = await db.execute(sql7`SELECT COUNT(*) AS n FROM regulation_sources`);
+        const r2 = await db.execute(sql7`SELECT COUNT(*) AS n FROM chunk_embeddings`);
+        const pick = (r) => Number((Array.isArray(r) ? r[0] : r)?.[0]?.n ?? -1);
+        out.db = "ok";
+        out.regulationSources = pick(r1);
+        out.chunkEmbeddings = pick(r2);
+        try {
+          const r3 = await db.execute(
+            sql7`SELECT COUNT(*) AS n FROM chunk_embeddings WHERE embedding_vec IS NOT NULL`
+          );
+          out.vectorColumnRows = pick(r3);
+        } catch {
+          out.vectorColumnRows = "nincs embedding_vec oszlop";
+        }
+      }
+    } catch (err) {
+      out.ok = false;
+      out.db = "hiba: " + String(err instanceof Error ? err.message : err).slice(0, 300);
+    }
+    res.json(out);
+  });
   app.get("/api/demo-enabled", (_req, res) => {
     res.json({ enabled: isDemoLoginEnabled() });
   });

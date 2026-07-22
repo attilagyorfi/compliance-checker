@@ -28,6 +28,58 @@ export async function createApp(): Promise<Express> {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
+  // ── Állapot-diagnosztika ───────────────────────────────────────────────────
+  // Deploy után ezzel derül ki gyorsan, hogy az adatbázis és a kulcsok
+  // rendben vannak-e. SOHA nem ad vissza titkot (jelszót, kulcsot) — csak a
+  // hosztnevet és darabszámokat.
+  app.get("/api/health", async (_req, res) => {
+    const out: Record<string, unknown> = {
+      ok: true,
+      nodeEnv: process.env.NODE_ENV ?? null,
+      hasOpenAiKey: Boolean(process.env.OPENAI_API_KEY),
+      hasAuthSecret: Boolean(process.env.BETTER_AUTH_SECRET),
+      demoLoginEnabled: isDemoLoginEnabled(),
+    };
+    const raw = process.env.DATABASE_URL;
+    out.hasDatabaseUrl = Boolean(raw);
+    if (raw) {
+      try {
+        const u = new URL(raw);
+        out.dbHost = u.hostname; // jelszó/user nélkül
+        out.dbName = u.pathname.replace(/^\//, "") || null;
+      } catch {
+        out.dbHost = "(értelmezhetetlen DATABASE_URL)";
+      }
+    }
+    try {
+      const { getDb } = await import("../db");
+      const db = await getDb();
+      if (!db) {
+        out.db = "nem elérhető (getDb null)";
+      } else {
+        const { sql } = await import("drizzle-orm");
+        const r1: any = await db.execute(sql`SELECT COUNT(*) AS n FROM regulation_sources`);
+        const r2: any = await db.execute(sql`SELECT COUNT(*) AS n FROM chunk_embeddings`);
+        const pick = (r: any) => Number((Array.isArray(r) ? r[0] : r)?.[0]?.n ?? -1);
+        out.db = "ok";
+        out.regulationSources = pick(r1);
+        out.chunkEmbeddings = pick(r2);
+        try {
+          const r3: any = await db.execute(
+            sql`SELECT COUNT(*) AS n FROM chunk_embeddings WHERE embedding_vec IS NOT NULL`
+          );
+          out.vectorColumnRows = pick(r3);
+        } catch {
+          out.vectorColumnRows = "nincs embedding_vec oszlop";
+        }
+      }
+    } catch (err) {
+      out.ok = false;
+      out.db = "hiba: " + String(err instanceof Error ? err.message : err).slice(0, 300);
+    }
+    res.json(out);
+  });
+
   // ── Demo-belépés (csak ha a DEMO_PASSWORD env be van állítva) ──────────────
   // A megrendelői bemutatóhoz: közös jelszóval, e-mail nélkül lehet belépni.
   app.get("/api/demo-enabled", (_req, res) => {
