@@ -2,6 +2,59 @@
 
 > **Verzió:** V11.13 (Manus-leválasztás után). Ez a guide vezet végig egy nulláról-kezdéses prod-deploy-on, ami **havi ~$0-15-be kerül** kezdetben (mindenki free tieren elindul).
 
+---
+
+## ⚡ GYORS DEMO-DEPLOY (V11.18) — bemutatóhoz
+
+Ez a rövid út a megrendelői bemutatóhoz. **A TiDB-oldal már kész:** a séma fent
+van, és be van töltve a 20 szabvány + 5693 chunk-embedding, a DB-oldali
+vektor-kereséshez használt `embedding_vec` oszloppal együtt.
+
+### Amit a Vercelen be kell állítani (Environment Variables)
+
+| Változó | Érték / megjegyzés |
+|---|---|
+| `DATABASE_URL` | **a TiDB connection string** (a `?ssl=` rész nem kell — a kód automatikusan TLS-t használ távoli hosztnál). A végén a **saját adatbázis** neve legyen, ne `/sys`! |
+| `OPENAI_API_KEY` | az OpenAI kulcs (válasz-generálás + embeddingek) |
+| `BETTER_AUTH_SECRET` | hosszú véletlen string (`openssl rand -base64 32`) |
+| `BETTER_AUTH_URL` | a deploy URL-je, pl. `https://<projekt>.vercel.app` |
+| `DEMO_PASSWORD` | **a bemutató jelszava** — ettől jelenik meg a „Demo belépés" a login oldalon |
+| `NODE_ENV` | `production` |
+
+Opcionális: `LLM_MODEL` (alap: `gpt-4o-mini`), `EMBEDDING_MODEL`
+(alap: `text-embedding-3-small`), `DEMO_USER_EMAIL`, valamint az R2/Resend
+változók (a demóhoz nem szükségesek).
+
+### ⚠️ Vercel csomag: Hobby vs Pro
+
+A keresés egy kérdésre **5–12 másodperc** (ebből a DB-keresés csak ~0,5 mp, a
+többi az AI-hívás + önellenőrzés). Ezért:
+
+- **Pro** (60 mp függvény-időkorlát): minden kérdés belefér. ✅
+- **Hobby** (10 mp): a lassabb kérdések **timeoutolnak**, és a
+  `vercel.json`-ban lévő `maxDuration: 60` is hibát adhat deploykor —
+  ilyenkor vedd 10-re, de számíts megszakadó keresésekre.
+
+### Deploy
+
+```bash
+npx vercel login          # egyszer
+npx vercel link           # projekt összekötése
+npx vercel --prod         # deploy
+```
+
+Vagy egyszerűbben: a Vercel felületén **Import Git Repository** →
+`attilagyorfi/compliance-checker` → a fenti env-változók megadása → Deploy.
+Ezután minden `git push` automatikusan új deployt indít.
+
+### Ellenőrzés a deploy után
+
+1. `https://<projekt>.vercel.app/login` → **Demo belépés** a `DEMO_PASSWORD`-del
+2. Szabványkereső → az egyik beégetett gyorskérdés → jöjjön válasz hivatkozásokkal
+3. Jogszabályok oldal → látszik a 20 szabvány, mindegyiknél a chunk-szám
+
+---
+
 ## Mit fogunk felépíteni
 
 ```
