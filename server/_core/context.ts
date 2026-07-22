@@ -1,6 +1,13 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import type { User } from "../../drizzle/schema";
 import { getSessionFromHeaders } from "./auth";
+import {
+  DEMO_COOKIE_NAME,
+  demoUserEmail,
+  isDemoLoginEnabled,
+  parseCookieHeader,
+  verifyDemoToken,
+} from "./demoAuth";
 
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
@@ -28,6 +35,45 @@ async function maybeLoadDevUser(): Promise<User | null> {
     if (!db) return null;
     const rows = await db.select().from(users).where(eq(users.id, id)).limit(1);
     return rows[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Demo-belépés — ha érvényes, aláírt demo-cookie érkezett, a kérés a közös
+ * demo-userrel autentikáltnak számít. Csak akkor él, ha a DEMO_PASSWORD env be
+ * van állítva (bemutató-környezet); éles üzemben egyszerűen nincs beállítva.
+ *
+ * A demo-usert az e-mail alapján keressük, és ha még nincs, létrehozzuk. A
+ * szerepkör "admin", hogy a bemutatón minden funkció látszódjon.
+ */
+async function maybeLoadDemoUser(
+  req: CreateExpressContextOptions["req"]
+): Promise<User | null> {
+  if (!isDemoLoginEnabled()) return null;
+  const cookies = parseCookieHeader(req.headers.cookie);
+  if (!verifyDemoToken(cookies[DEMO_COOKIE_NAME])) return null;
+
+  try {
+    const { getDb } = await import("../db");
+    const { users } = await import("../../drizzle/schema");
+    const { eq } = await import("drizzle-orm");
+    const db = await getDb();
+    if (!db) return null;
+
+    const email = demoUserEmail();
+    const rows = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    if (rows[0]) return rows[0];
+
+    await db.insert(users).values({
+      email,
+      name: "Demo felhasználó",
+      role: "admin",
+      loginMethod: "demo",
+    });
+    const created = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    return created[0] ?? null;
   } catch {
     return null;
   }
@@ -80,6 +126,11 @@ export async function createContext(
     }
   } catch {
     user = null;
+  }
+
+  // Demo-belépés (bemutató-környezet): aláírt demo-cookie → közös demo-user.
+  if (!user) {
+    user = await maybeLoadDemoUser(opts.req);
   }
 
   // Dev-only fallback: if no real auth and LOCAL_DEV_USER_ID is set, inject

@@ -14,6 +14,12 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { handleAuthRequest } from "./auth";
+import {
+  DEMO_COOKIE_NAME,
+  checkDemoPassword,
+  isDemoLoginEnabled,
+  signDemoToken,
+} from "./demoAuth";
 
 export async function createApp(): Promise<Express> {
   const app = express();
@@ -21,6 +27,41 @@ export async function createApp(): Promise<Express> {
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+  // ── Demo-belépés (csak ha a DEMO_PASSWORD env be van állítva) ──────────────
+  // A megrendelői bemutatóhoz: közös jelszóval, e-mail nélkül lehet belépni.
+  app.get("/api/demo-enabled", (_req, res) => {
+    res.json({ enabled: isDemoLoginEnabled() });
+  });
+
+  app.post("/api/demo-login", (req, res) => {
+    if (!isDemoLoginEnabled()) {
+      res.status(404).json({ error: "A demo-belépés nincs engedélyezve." });
+      return;
+    }
+    if (!checkDemoPassword(req.body?.password)) {
+      res.status(401).json({ error: "Hibás demo-jelszó." });
+      return;
+    }
+    const token = signDemoToken();
+    if (!token) {
+      res.status(500).json({ error: "A demo-session nem hozható létre." });
+      return;
+    }
+    res.cookie(DEMO_COOKIE_NAME, token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 nap
+      path: "/",
+    });
+    res.json({ ok: true });
+  });
+
+  app.post("/api/demo-logout", (_req, res) => {
+    res.clearCookie(DEMO_COOKIE_NAME, { path: "/" });
+    res.json({ ok: true });
+  });
 
   // Better-auth handler (/api/auth/*) — Express → Web-Request adapter.
   app.all("/api/auth/*", async (req, res) => {

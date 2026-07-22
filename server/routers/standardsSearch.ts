@@ -18,7 +18,7 @@ import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db";
 import { searchQueries, regulationSources, knowledgeBaseDocuments, chunkEmbeddings } from "../../drizzle/schema";
 import type { SearchSource } from "../../drizzle/schema";
-import { and, desc, eq, like, or } from "drizzle-orm";
+import { and, desc, eq, like, or, sql } from "drizzle-orm";
 import { webSearchStandards, fetchUrlSources } from "../webSearch";
 import { getEmbedding, cosineSimilarity } from "../embeddings";
 import { searchMsztLive, isMsztLiveSearchEnabled, decryptPassword } from "../regulationScraper";
@@ -268,6 +268,75 @@ async function liveMsztSources(query: string, topK = 5): Promise<SearchSource[]>
  * case the caller falls back to pure keyword search and behavior is unchanged
  * from V11.
  */
+/**
+ * Cache-elt jelzés arról, hogy a DB támogatja-e a natív vektor-keresést.
+ * null = még nem próbáltuk, false = nem támogatja (lokál MySQL 8.0) → nem
+ * próbálkozunk újra minden keresésnél egy amúgy is hibára futó lekérdezéssel.
+ */
+let vectorSearchAvailable: boolean | null = null;
+
+/** Teszt-célú reset (a cache-elt vektor-támogatás állapotához). */
+export function _resetVectorSearchStateForTests(): void {
+  vectorSearchAvailable = null;
+}
+
+/**
+ * DB-oldali vektor-keresés a TiDB `VECTOR(1536)` oszlopán (HNSW indexszel).
+ *
+ * A hasonlóság-számítást az adatbázis végzi, és csak a legjobb `limit` sor jön
+ * vissza — szemben a JS-oldali megoldással, amely MINDEN embeddinget letölt
+ * (5693 chunk ≈ 130 MB kérésenként). Felhő-adatbázissal és serverless
+ * futtatással (Vercel) ez utóbbi használhatatlanul lassú lenne.
+ *
+ * `null`-t ad vissza, ha a környezet nem támogatja (nincs `embedding_vec`
+ * oszlop, vagy a motor nem ismeri a VEC_COSINE_DISTANCE-t) — ilyenkor a hívó a
+ * JS-oldali cosine fallbackre vált, így a lokál fejlesztés változatlan marad.
+ */
+async function vectorSearchTopK(
+  db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
+  queryEmbedding: number[],
+  limit: number
+): Promise<Array<{ row: { id: number; sourceType: "regulation" | "knowledge_base"; sourceId: number; chunkIndex: number; text: string; embedding: number[] }; score: number }> | null> {
+  if (vectorSearchAvailable === false) return null;
+  try {
+    const literal = `[${queryEmbedding.join(",")}]`;
+    const res = await db.execute(sql`
+      SELECT id, source_type AS sourceType, source_id AS sourceId,
+             chunk_index AS chunkIndex, text,
+             1 - VEC_COSINE_DISTANCE(embedding_vec, ${literal}) AS score
+      FROM chunk_embeddings
+      WHERE embedding_vec IS NOT NULL AND source_type = 'regulation'
+      ORDER BY VEC_COSINE_DISTANCE(embedding_vec, ${literal})
+      LIMIT ${limit}
+    `);
+    // A mysql2 driver [rows, fields] alakot ad vissza.
+    const raw = Array.isArray(res) ? (res[0] as unknown) : (res as unknown);
+    const rows = Array.isArray(raw) ? (raw as Array<Record<string, unknown>>) : [];
+    if (rows.length === 0) {
+      // Létezik az oszlop, de nincs benne adat → essünk vissza a JSON-oszlopra.
+      return null;
+    }
+    vectorSearchAvailable = true;
+    return rows
+      .map((r) => ({
+        row: {
+          id: Number(r.id),
+          sourceType: String(r.sourceType) as "regulation" | "knowledge_base",
+          sourceId: Number(r.sourceId),
+          chunkIndex: Number(r.chunkIndex),
+          text: String(r.text ?? ""),
+          embedding: [] as number[], // a vektor maga már nem kell a rangsoroláshoz
+        },
+        score: Number(r.score),
+      }))
+      .filter((r) => Number.isFinite(r.score) && r.score > 0.1);
+  } catch {
+    // Nem támogatott környezet (pl. lokál MySQL 8.0) — egyszer megjegyezzük.
+    vectorSearchAvailable = false;
+    return null;
+  }
+}
+
 async function semanticSearch(
   query: string,
   mode: SearchMode,
@@ -293,36 +362,47 @@ async function semanticSearch(
     text: string;
     embedding: number[];
   };
-
-  let rows: Row[] = [];
-  try {
-    rows = await db
-      .select({
-        id: chunkEmbeddings.id,
-        sourceType: chunkEmbeddings.sourceType,
-        sourceId: chunkEmbeddings.sourceId,
-        chunkIndex: chunkEmbeddings.chunkIndex,
-        text: chunkEmbeddings.text,
-        embedding: chunkEmbeddings.embedding,
-      })
-      .from(chunkEmbeddings) as Row[];
-  } catch (err) {
-    // Table may not exist yet on this environment (db:push not run for V12).
-    console.error("[StandardsSearch] semantic search skipped (chunk_embeddings table missing?):", err);
-    return [];
-  }
-
-  if (rows.length === 0) return [];
-
-  // Score each chunk and group by (sourceType, sourceId).
   type Scored = { row: Row; score: number };
-  const scored: Scored[] = [];
-  for (const row of rows) {
-    if (row.sourceType === "regulation" && !includeRegulations) continue;
-    if (row.sourceType === "knowledge_base" && !includeKnowledgeBase) continue;
-    if (!Array.isArray(row.embedding) || row.embedding.length === 0) continue;
-    const score = cosineSimilarity(queryEmbedding, row.embedding);
-    if (score > 0.1) scored.push({ row, score });
+
+  // ── 1. Elsődleges út: DB-oldali vektor-keresés (TiDB) ───────────────────────
+  // Csak a legjobb K sort hozza vissza, így NEM kell az összes embeddinget
+  // letölteni (5693 chunk ≈ 130 MB kérésenként), ami felhő-adatbázissal és
+  // serverless futtatással (Vercel) használhatatlanul lassú lenne.
+  let scored: Scored[] | null = await vectorSearchTopK(db, queryEmbedding, topK * 2);
+
+  // ── 2. Fallback: teljes betöltés + JS-oldali cosine ─────────────────────────
+  // Akkor fut, ha a környezet nem támogatja a VECTOR-keresést (pl. a lokál
+  // MySQL 8.0), így a fejlesztői gépen minden változatlanul működik.
+  if (scored === null) {
+    let rows: Row[] = [];
+    try {
+      rows = await db
+        .select({
+          id: chunkEmbeddings.id,
+          sourceType: chunkEmbeddings.sourceType,
+          sourceId: chunkEmbeddings.sourceId,
+          chunkIndex: chunkEmbeddings.chunkIndex,
+          text: chunkEmbeddings.text,
+          embedding: chunkEmbeddings.embedding,
+        })
+        .from(chunkEmbeddings) as Row[];
+    } catch (err) {
+      // Table may not exist yet on this environment (db:push not run for V12).
+      console.error("[StandardsSearch] semantic search skipped (chunk_embeddings table missing?):", err);
+      return [];
+    }
+
+    if (rows.length === 0) return [];
+
+    const jsScored: Scored[] = [];
+    for (const row of rows) {
+      if (row.sourceType === "regulation" && !includeRegulations) continue;
+      if (row.sourceType === "knowledge_base" && !includeKnowledgeBase) continue;
+      if (!Array.isArray(row.embedding) || row.embedding.length === 0) continue;
+      const score = cosineSimilarity(queryEmbedding, row.embedding);
+      if (score > 0.1) jsScored.push({ row, score });
+    }
+    scored = jsScored;
   }
 
   if (scored.length === 0) return [];

@@ -6,9 +6,9 @@
  * (jelenleg console-log placeholder, M5-ben SMTP/Resend integráció).
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Mail, Loader2, CheckCircle2, AlertCircle, BookOpen } from "lucide-react";
+import { Mail, Loader2, CheckCircle2, AlertCircle, BookOpen, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +20,44 @@ export default function LoginPage() {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Demo-belépés (csak akkor jelenik meg, ha a szerveren be van állítva
+  // DEMO_PASSWORD — azaz bemutató-környezetben).
+  const [demoEnabled, setDemoEnabled] = useState(false);
+  const [demoPassword, setDemoPassword] = useState("");
+  const [demoBusy, setDemoBusy] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/demo-enabled")
+      .then((r) => (r.ok ? r.json() : { enabled: false }))
+      .then((d) => setDemoEnabled(Boolean(d?.enabled)))
+      .catch(() => setDemoEnabled(false));
+  }, []);
+
+  const demoSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!demoPassword.trim()) return;
+    setDemoBusy(true);
+    try {
+      const res = await fetch("/api/demo-login", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: demoPassword }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error ?? `HTTP ${res.status}`);
+      }
+      toast.success("Belépve a demóba");
+      navigate("/search");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg);
+    } finally {
+      setDemoBusy(false);
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,6 +159,42 @@ export default function LoginPage() {
                 Belépési link kérése
               </Button>
             </form>
+          )}
+
+          {/* Demo-belépés — csak bemutató-környezetben jelenik meg */}
+          {demoEnabled && (
+            <>
+              <div className="flex items-center gap-3 my-5">
+                <div className="flex-1 h-px" style={{ backgroundColor: "var(--line)" }} />
+                <span className="text-xs text-text-faint uppercase tracking-wide">vagy</span>
+                <div className="flex-1 h-px" style={{ backgroundColor: "var(--line)" }} />
+              </div>
+              <form onSubmit={demoSubmit} className="space-y-2">
+                <Label htmlFor="demo-password" className="text-sm font-semibold text-text-strong">
+                  Demo belépés
+                </Label>
+                <Input
+                  id="demo-password"
+                  type="password"
+                  value={demoPassword}
+                  onChange={(e) => setDemoPassword(e.target.value)}
+                  placeholder="Demo jelszó"
+                  className="h-11"
+                />
+                <Button
+                  type="submit"
+                  variant="outline"
+                  className="w-full gap-2 h-11"
+                  disabled={demoBusy || !demoPassword.trim()}
+                >
+                  {demoBusy ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} />}
+                  Belépés a bemutatóhoz
+                </Button>
+                <p className="text-xs text-text-muted">
+                  Bemutató-hozzáférés e-mail nélkül, a kapott demo-jelszóval.
+                </p>
+              </form>
+            </>
           )}
         </div>
 
