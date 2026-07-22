@@ -25,15 +25,19 @@ Opcionális: `LLM_MODEL` (alap: `gpt-4o-mini`), `EMBEDDING_MODEL`
 (alap: `text-embedding-3-small`), `DEMO_USER_EMAIL`, valamint az R2/Resend
 változók (a demóhoz nem szükségesek).
 
-### ⚠️ Vercel csomag: Hobby vs Pro
+### Vercel csomag: a Hobby is elég
 
 A keresés egy kérdésre **5–12 másodperc** (ebből a DB-keresés csak ~0,5 mp, a
-többi az AI-hívás + önellenőrzés). Ezért:
+többi az AI-hívás + önellenőrzés).
 
-- **Pro** (60 mp függvény-időkorlát): minden kérdés belefér. ✅
-- **Hobby** (10 mp): a lassabb kérdések **timeoutolnak**, és a
-  `vercel.json`-ban lévő `maxDuration: 60` is hibát adhat deploykor —
-  ilyenkor vedd 10-re, de számíts megszakadó keresésekre.
+A fluid compute alapértelmezetté válása óta a függvény-időkorlát **Hobby
+csomagon is 300 másodperc** (a régi 10 mp-es korlát megszűnt), Pro/Enterprise
+esetén 800 mp-ig emelhető. A `vercel.json`-ban beállított **60 mp** tehát
+bőséges tartalékkal fér bele — nem kell fizetős csomag a bemutatóhoz.
+
+> Ellenőrizd, hogy a projektnél a **fluid compute be van kapcsolva**
+> (Settings → Functions). Új projekteknél ez az alapértelmezés; ha ki lenne
+> kapcsolva, a régi, jóval szűkebb korlátok élnek.
 
 ### Deploy
 
