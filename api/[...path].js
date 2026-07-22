@@ -5143,6 +5143,12 @@ async function createApp() {
     const out = {
       ok: true,
       nodeEnv: process.env.NODE_ENV ?? null,
+      // Melyik deploy fut? Ha env-változót írtunk át, de ez a commit/idő nem
+      // változik, akkor NEM történt újradeploy (a Vercelen az env csak új
+      // deploynál lép életbe).
+      vercelEnv: process.env.VERCEL_ENV ?? "(nem Vercel)",
+      commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? "").slice(0, 7) || null,
+      region: process.env.VERCEL_REGION ?? null,
       hasOpenAiKey: Boolean(process.env.OPENAI_API_KEY),
       hasAuthSecret: Boolean(process.env.BETTER_AUTH_SECRET),
       demoLoginEnabled: isDemoLoginEnabled()
