@@ -5,11 +5,36 @@ import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
+/**
+ * Kell-e TLS a kapcsolathoz?
+ *
+ * A felhő-szolgáltatók (TiDB Cloud, PlanetScale stb.) kötelező TLS-t várnak
+ * ("Connections using insecure transport are prohibited"), a lokál Docker MySQL
+ * viszont TLS nélkül fut. A hoszt alapján döntünk, kivéve ha az URL már
+ * tartalmaz explicit ssl paramétert.
+ */
+function needsTls(url: string): boolean {
+  if (/[?&]ssl=/.test(url)) return false; // az URL már rendelkezik róla
+  return !/@(localhost|127\.0\.0\.1|\[::1\])[:/]/.test(url);
+}
+
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      const url = process.env.DATABASE_URL;
+      if (needsTls(url)) {
+        // A drizzle mysql2-drivere a callback-alapú poolt várja (nem a
+        // mysql2/promise változatot) — belül maga promisify-ol.
+        const mysql = await import("mysql2");
+        const pool = mysql.default.createPool({
+          uri: url,
+          ssl: { minVersion: "TLSv1.2", rejectUnauthorized: true },
+        });
+        _db = drizzle(pool);
+      } else {
+        _db = drizzle(url);
+      }
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;

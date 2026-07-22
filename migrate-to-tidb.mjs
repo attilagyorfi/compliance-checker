@@ -30,27 +30,31 @@ if (!SRC_URL) {
   process.exit(1);
 }
 
-// ── 0. Séma felvitele a TiDB-re (drizzle migrációk) ───────────────────────────
-// Ugyanazok a migrációk futnak, mint lokálisan; a DATABASE_URL-t ideiglenesen a
-// TiDB-re irányítjuk. Idempotens: a már alkalmazott migrációkat kihagyja.
-console.log("Séma felvitele a TiDB-re (drizzle-kit migrate)…");
+// ── 0. Séma felvitele a TiDB-re ───────────────────────────────────────────────
+// A `drizzle-kit migrate` a TiDB-n némán elszáll (hibaüzenet nélkül, exit 1),
+// ezért a migrációs SQL-eket az apply-schema-tidb.mjs alkalmazza közvetlenül —
+// ott a TiDB-specifikus eltérések (pl. JSON DEFAULT) is kezelve vannak.
+console.log("Séma felvitele a TiDB-re…");
 try {
-  execSync("npx drizzle-kit migrate", {
-    stdio: "inherit",
-    env: { ...process.env, DATABASE_URL: DST_URL },
-  });
+  execSync("node apply-schema-tidb.mjs", { stdio: "inherit" });
 } catch {
-  console.error("A drizzle-kit migrate hibára futott — ellenőrizd a TIDB_DATABASE_URL-t.");
+  console.error("A séma felvitele hibára futott.");
   process.exit(1);
 }
 
-const src = await mysql.createConnection(SRC_URL).catch((e) => {
+// A TiDB Cloud kötelező TLS-t vár; a lokál Docker MySQL viszont TLS nélkül fut.
+const connect = (url) =>
+  /@(localhost|127\.0\.0\.1)[:/]/.test(url) || /[?&]ssl=/.test(url)
+    ? mysql.createConnection(url)
+    : mysql.createConnection({ uri: url, ssl: { minVersion: "TLSv1.2", rejectUnauthorized: true } });
+
+const src = await connect(SRC_URL).catch((e) => {
   console.error("A lokál MySQL nem elérhető (forrás). Indítsd el: docker compose up -d");
   console.error(String(e.message).slice(0, 120));
   process.exit(1);
 });
-const dst = await mysql.createConnection(DST_URL).catch((e) => {
-  console.error("A TiDB nem elérhető. Ellenőrizd a TIDB_DATABASE_URL-t (SSL kötelező).");
+const dst = await connect(DST_URL).catch((e) => {
+  console.error("A TiDB nem elérhető. Ellenőrizd a TIDB_DATABASE_URL-t.");
   console.error(String(e.message).slice(0, 160));
   process.exit(1);
 });
