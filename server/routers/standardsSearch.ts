@@ -605,12 +605,18 @@ async function generateStructuredAnswer(
   }[answerLength];
 
   const modeInstruction = operationMode === "accurate"
-    ? `Kizárólag a megadott forrásokból dolgozz. Minden állítást forráshivatkozással [n] támasszál alá.
-KRITIKUS: ha a források NEM tartalmazzák a kérdésre a választ, akkor KIZÁRÓLAG ennyit írj:
-"A betöltött szabványok ezt a kérdést nem fedik le." — és semmi mást.
-SOHA ne találj ki konkrét számokat, méreteket, szilárdsági/anyagosztályokat, határértékeket,
-képleteket vagy szabvány-jelöléseket, amelyek nem szerepelnek szó szerint a forrásokban. Ha
-bizonytalan vagy, hogy egy adat a forrásból származik-e, ne írd le.`
+    ? `Kizárólag a megadott forrásokból dolgozz, minden állítást forráshivatkozással [n] támasszál alá.
+
+Először döntsd el, hogy a források a kérdés TÁRGYÁRÓL szólnak-e:
+- Ha IGEN (a források a kérdés témájával foglalkoznak): foglald össze, amit a
+  források a témáról tartalmaznak, [n] hivatkozásokkal. Ha egy konkrét
+  részszámítás nincs a forrásokban, azt jelezd egy mondatban, de a témába vágó
+  információt add meg.
+- Ha NEM (a források egészen más tárgykörről szólnak, mint a kérdés): KIZÁRÓLAG
+  ezt írd: "A betöltött szabványok ezt a kérdést nem fedik le." — és semmi mást.
+
+SOHA ne találj ki konkrét számot, méretet, anyag- vagy szilárdsági osztályt,
+határértéket vagy képletet, amely nem szerepel szó szerint a forrásokban.`
     : "Elsősorban a megadott forrásokból dolgozz, de szükség esetén általános mérnöki tudást is felhasználhatsz – ebben az esetben jelöld meg, hogy ez nem forrásból származik.";
 
   const sourcesText = sources
@@ -706,19 +712,33 @@ Adj vissza JSON-t: { "answerable": boolean, "passed": boolean, "issues": string[
         confidence = checkResult.confidence as Confidence;
       }
 
-      // V11.17 megbízhatósági kapu — két különböző eset, hogy a hallucinációt
-      // kiszűrjük, DE a jó (csak kissé pontatlan) válaszokat NE dobjuk el:
-      if (!answerable) {
-        // A források egyáltalán nem fedik le a kérdést → a magabiztos, esetleg
-        // hallucinált prózát lecseréljük egyértelmű figyelmeztetésre.
+      // V11.18 megbízhatósági kapu.
+      //
+      // A "nincs lefedve" döntést a VÁLASZ-GENERÁLÓ modellre bízzuk, nem az
+      // önellenőrzésre — mert (a) a válasz-generáló látja a tényleges forrásokat
+      // és a témát, és (b) egyetlen determinisztikusabb döntés, szemben az
+      // önellenőrző hívás ingadozásával (ez okozta, hogy ugyanaz a jó kérdés
+      // hol érdemi választ, hol "nincs lefedve" jelzést kapott). A prompt
+      // utasítja a modellt, hogy nem-fedő kérdésnél pontosan ezzel a mondattal
+      // kezdjen — ezt detektáljuk.
+      const modelDeclined =
+        /^\s*(A betöltött szabványok ezt a kérdést nem fedik le|Nem található elegendő információ)/i.test(
+          answer.trim()
+        );
+
+      if (modelDeclined) {
+        // A modell szerint a források nem fedik le a kérdést → egységes, tiszta
+        // figyelmeztetés (nincs esély kitalált konkrétumra) + low.
         confidence = "low";
         selfCheckPassed = false;
-        answer = buildUnsupportedAnswerNotice(selfCheckNotes);
-      } else if (!selfCheckPassed && confidence === "high") {
-        // Van érdemi forrás, de a válasz nem tökéletesen pontos → megtartjuk a
-        // választ (a self-check megjegyzés jelzi a felhasználónak), de a
-        // megbízhatóság nem lehet "high".
-        confidence = "medium";
+        answer = buildUnsupportedAnswerNotice(
+          "A betöltött szabványok nem fedik le ezt a kérdést."
+        );
+      } else if (!answerable || !selfCheckPassed) {
+        // Van érdemi válasz, de az önellenőrzés aggályt jelzett (nem tökéletesen
+        // igazolható). A választ MEGTARTJUK — a felhasználó látja a forrásokat és
+        // a self-check megjegyzést —, de a megbízhatóság nem lehet "high".
+        if (confidence === "high") confidence = "medium";
       }
     } catch {
       // Self-check failed silently – don't block the answer
