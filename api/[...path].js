@@ -3335,12 +3335,18 @@ async function generateStructuredAnswer(question, rewrittenQuestion, sources, an
     standard: "Adj maximum 8-10 mondatos szakmai v\xE1laszt.",
     detailed: "Adj r\xE9szletes, 15-20 mondatos szakmai magyar\xE1zatot."
   }[answerLength];
-  const modeInstruction = operationMode === "accurate" ? `Kiz\xE1r\xF3lag a megadott forr\xE1sokb\xF3l dolgozz. Minden \xE1ll\xEDt\xE1st forr\xE1shivatkoz\xE1ssal [n] t\xE1massz\xE1l al\xE1.
-KRITIKUS: ha a forr\xE1sok NEM tartalmazz\xE1k a k\xE9rd\xE9sre a v\xE1laszt, akkor KIZ\xC1R\xD3LAG ennyit \xEDrj:
-"A bet\xF6lt\xF6tt szabv\xE1nyok ezt a k\xE9rd\xE9st nem fedik le." \u2014 \xE9s semmi m\xE1st.
-SOHA ne tal\xE1lj ki konkr\xE9t sz\xE1mokat, m\xE9reteket, szil\xE1rds\xE1gi/anyagoszt\xE1lyokat, hat\xE1r\xE9rt\xE9keket,
-k\xE9pleteket vagy szabv\xE1ny-jel\xF6l\xE9seket, amelyek nem szerepelnek sz\xF3 szerint a forr\xE1sokban. Ha
-bizonytalan vagy, hogy egy adat a forr\xE1sb\xF3l sz\xE1rmazik-e, ne \xEDrd le.` : "Els\u0151sorban a megadott forr\xE1sokb\xF3l dolgozz, de sz\xFCks\xE9g eset\xE9n \xE1ltal\xE1nos m\xE9rn\xF6ki tud\xE1st is felhaszn\xE1lhatsz \u2013 ebben az esetben jel\xF6ld meg, hogy ez nem forr\xE1sb\xF3l sz\xE1rmazik.";
+  const modeInstruction = operationMode === "accurate" ? `Kiz\xE1r\xF3lag a megadott forr\xE1sokb\xF3l dolgozz, minden \xE1ll\xEDt\xE1st forr\xE1shivatkoz\xE1ssal [n] t\xE1massz\xE1l al\xE1.
+
+El\u0151sz\xF6r d\xF6ntsd el, hogy a forr\xE1sok a k\xE9rd\xE9s T\xC1RGY\xC1R\xD3L sz\xF3lnak-e:
+- Ha IGEN (a forr\xE1sok a k\xE9rd\xE9s t\xE9m\xE1j\xE1val foglalkoznak): foglald \xF6ssze, amit a
+  forr\xE1sok a t\xE9m\xE1r\xF3l tartalmaznak, [n] hivatkoz\xE1sokkal. Ha egy konkr\xE9t
+  r\xE9szsz\xE1m\xEDt\xE1s nincs a forr\xE1sokban, azt jelezd egy mondatban, de a t\xE9m\xE1ba v\xE1g\xF3
+  inform\xE1ci\xF3t add meg.
+- Ha NEM (a forr\xE1sok eg\xE9szen m\xE1s t\xE1rgyk\xF6rr\u0151l sz\xF3lnak, mint a k\xE9rd\xE9s): KIZ\xC1R\xD3LAG
+  ezt \xEDrd: "A bet\xF6lt\xF6tt szabv\xE1nyok ezt a k\xE9rd\xE9st nem fedik le." \u2014 \xE9s semmi m\xE1st.
+
+SOHA ne tal\xE1lj ki konkr\xE9t sz\xE1mot, m\xE9retet, anyag- vagy szil\xE1rds\xE1gi oszt\xE1lyt,
+hat\xE1r\xE9rt\xE9ket vagy k\xE9pletet, amely nem szerepel sz\xF3 szerint a forr\xE1sokban.` : "Els\u0151sorban a megadott forr\xE1sokb\xF3l dolgozz, de sz\xFCks\xE9g eset\xE9n \xE1ltal\xE1nos m\xE9rn\xF6ki tud\xE1st is felhaszn\xE1lhatsz \u2013 ebben az esetben jel\xF6ld meg, hogy ez nem forr\xE1sb\xF3l sz\xE1rmazik.";
   const sourcesText = sources.map((s, i) => `[${i + 1}] ${s.documentName}
 ${s.excerpt}`).join("\n\n---\n\n");
   const systemPrompt = `Te egy magyar m\xE9rn\xF6ki szabv\xE1ny-tan\xE1csad\xF3 AI vagy.
@@ -3432,12 +3438,17 @@ ${sourcesText}
         selfCheckNotes = checkResult.issues?.join("; ") ?? "";
         confidence = checkResult.confidence;
       }
-      if (!answerable) {
+      const modelDeclined = /^\s*(A betöltött szabványok ezt a kérdést nem fedik le|Nem található elegendő információ)/i.test(
+        answer.trim()
+      );
+      if (modelDeclined) {
         confidence = "low";
         selfCheckPassed = false;
-        answer = buildUnsupportedAnswerNotice(selfCheckNotes);
-      } else if (!selfCheckPassed && confidence === "high") {
-        confidence = "medium";
+        answer = buildUnsupportedAnswerNotice(
+          "A bet\xF6lt\xF6tt szabv\xE1nyok nem fedik le ezt a k\xE9rd\xE9st."
+        );
+      } else if (!answerable || !selfCheckPassed) {
+        if (confidence === "high") confidence = "medium";
       }
     } catch {
       confidence = "medium";
