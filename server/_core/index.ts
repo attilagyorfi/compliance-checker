@@ -5,6 +5,7 @@
  * entry, ami közvetlenül exportálja a `createApp()` outputját.
  */
 
+import "./suppressWarnings";
 import "dotenv/config";
 import { createServer } from "http";
 import net from "net";

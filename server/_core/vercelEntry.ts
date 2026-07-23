@@ -14,6 +14,7 @@
  * `api/[...path].js` útvonalra, amely már minden szerver-kódot tartalmaz.
  */
 
+import "./suppressWarnings";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createApp } from "./app";
 

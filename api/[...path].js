@@ -1174,6 +1174,16 @@ var init_regulationScraper = __esm({
   }
 });
 
+// server/_core/suppressWarnings.ts
+var originalEmitWarning = process.emitWarning.bind(process);
+process.emitWarning = ((warning, ...args) => {
+  const opts = args[0];
+  const code = opts && typeof opts === "object" && "code" in opts ? opts.code : typeof args[1] === "string" ? args[1] : void 0;
+  const text2 = typeof warning === "string" ? warning : warning?.message ?? "";
+  if (code === "DEP0169" || text2.includes("url.parse()")) return;
+  return originalEmitWarning(warning, ...args);
+});
+
 // server/_core/app.ts
 import "dotenv/config";
 import express from "express";
