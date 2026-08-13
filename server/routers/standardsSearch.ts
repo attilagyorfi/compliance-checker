@@ -548,13 +548,32 @@ export function mergeSearchSources(
     const boost = titleBoostFactor(queryKeywords, source.documentName);
     return { source, score: score * boost };
   });
+  boosted.sort((a, b) => b.score - a.score);
+
+  // Semantic-top garancia: a szemantikusan legrelevánsabb néhány chunk MINDIG
+  // bekerül a végső listába, akkor is, ha a cím-boost más (rövid nevű, de témába
+  // vágó) szabványt húzna elé. Enélkül pl. a "szélteher" kérdésre az 1991-1-4
+  // (aminek a nevében nincs "szél") kiszorult, és a válasz "nincs lefedve" lett.
+  // A gyengébb boosted elemeket cseréljük le a kimaradt semantic-top elemekre.
+  const GUARANTEED_SEMANTIC = 4;
+  const chosen = boosted.slice(0, maxItems);
+  const inChosen = new Set(chosen.map((b) => keyOf(b.source)));
+  for (const s of semantic.slice(0, GUARANTEED_SEMANTIC)) {
+    const k = keyOf(s);
+    if (inChosen.has(k)) continue;
+    const item = boosted.find((b) => keyOf(b.source) === k);
+    if (!item || chosen.length === 0) continue;
+    chosen.pop();          // a leggyengébb választott elem helyére
+    chosen.push(item);
+    inChosen.add(k);
+  }
+  chosen.sort((a, b) => b.score - a.score);
 
   // A nyers RRF-pont (~0.016–0.03) önmagában nem értelmes százalék — a UI 2%-ot
   // mutatott a legjobb találatra is. A top-találathoz normalizáljuk (legjobb =
   // 1.0), így a relevancia a forrás relatív erősségét jelzi.
-  const sorted = boosted.sort((a, b) => b.score - a.score).slice(0, maxItems);
-  const maxScore = sorted[0]?.score ?? 1;
-  return sorted.map(({ source, score }) => ({
+  const maxScore = chosen[0]?.score ?? 1;
+  return chosen.map(({ source, score }) => ({
     ...source,
     relevanceScore: maxScore > 0 ? score / maxScore : 0,
   }));
@@ -815,7 +834,11 @@ export const standardsSearchRouter = router({
     .mutation(async ({ input }) => {
       const { question, searchMode, answerLength, operationMode, projectId, projectName, urls } = input;
 
-      // Step 1: Rewrite query
+      // Step 1: Rewrite query — CSAK a válasz-generálás kontextusához.
+      // A KERESÉST (retrieval) az EREDETI kérdéssel végezzük: a mérések szerint
+      // az átírt kérdés néha generikusabb, és elhúzza a találatokat a helyes,
+      // téma-specifikus szabványtól (pl. "szélteher" → az átírt kérdés az
+      // 1991-1-4 helyett az 1991-1-6/1998-at hozta elő).
       const rewrittenQuestion = operationMode === "accurate"
         ? await rewriteQuery(question)
         : question;
@@ -835,21 +858,24 @@ export const standardsSearchRouter = router({
           sources = await webSearchStandards(rewrittenQuestion, true);
         }
       } else if (searchMode === "combined_with_web") {
-        // Feltöltött jogszabályok (keyword + szemantikus) + internet
+        // Feltöltött jogszabályok (keyword + szemantikus) + internet.
+        // A könyvtári keresés az EREDETI kérdéssel (lásd Step 1), a webes rész
+        // az átírttal (ott a bővebb kifejezés jobb webes találatot ad).
         const webSources = urls && urls.length > 0
           ? await fetchUrlSources(urls, rewrittenQuestion)
           : await webSearchStandards(rewrittenQuestion, true);
-        const libSources = await keywordSearch(rewrittenQuestion, "internal");
-        const semanticSources = await semanticSearch(rewrittenQuestion, "internal");
-        const allLibrary = mergeSearchSources(libSources, semanticSources, 8, rewrittenQuestion);
+        const libSources = await keywordSearch(question, "internal");
+        const semanticSources = await semanticSearch(question, "internal");
+        const allLibrary = mergeSearchSources(libSources, semanticSources, 8, question);
         const seenUrls = new Set(allLibrary.map((s: SearchSource) => s.url).filter(Boolean));
         const dedupedWeb = webSources.filter((s: SearchSource) => !s.url || !seenUrls.has(s.url));
         sources = [...allLibrary, ...dedupedWeb].slice(0, 10);
       } else {
-        // internal (és bármely legacy érték) — csak a feltöltött jogszabályok
-        const libSources = await keywordSearch(rewrittenQuestion, "internal");
-        const semanticSources = await semanticSearch(rewrittenQuestion, "internal");
-        sources = mergeSearchSources(libSources, semanticSources, 10, rewrittenQuestion);
+        // internal (és bármely legacy érték) — csak a feltöltött jogszabályok,
+        // az EREDETI kérdéssel keresve.
+        const libSources = await keywordSearch(question, "internal");
+        const semanticSources = await semanticSearch(question, "internal");
+        sources = mergeSearchSources(libSources, semanticSources, 10, question);
       }
 
       // Step 3: Generate structured answer
