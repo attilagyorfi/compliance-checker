@@ -305,14 +305,18 @@ export default function StandardsSearchPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // V11.15: a megrendelő által megadott 5 beégetett kérdés. Gyorsgombként
-  // jelennek meg — kattintásra kitöltik a keresőt és azonnal keresnek.
+  // V11.19: beégetett gyorskérdések a bemutatóhoz — az egész betöltött Eurocode-
+  // készlet szélességét lefedik (acél, terhelések, vasbeton, geotechnika,
+  // alapelvek), és mindegyik mérve, érdemi választ ad. Kattintásra kitöltik a
+  // keresőt és azonnal keresnek.
   const exampleQuestions = [
     "Acél oszlop kihajlás számítása",
-    "Keresztmetszet osztályozás hogyan kell",
-    "Acél gerenda méretezés tűzre",
-    "Acél oszlop kihajlás vizsgálata",
-    "Acél fáradás vizsgálat",
+    "Csavaros kapcsolat méretezése acélszerkezetben",
+    "Szélteher számítása épületre",
+    "Hóteher a tetőn",
+    "Vasbeton gerenda hajlítási vasalása",
+    "Milyen talajvizsgálatok kellenek alapozáshoz?",
+    "Tartószerkezet tervezési alapelvei",
   ];
 
   return (
