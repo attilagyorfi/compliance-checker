@@ -63,8 +63,19 @@ const DISCIPLINE_LABELS: Record<string, string> = {
 
 const STALE_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000;
 
-function isStale(s: { lastSyncAt: Date | string | null; contentFetchedAt: Date | string | null; content: string | null }): boolean {
+function isStale(s: {
+  lastSyncAt: Date | string | null;
+  contentFetchedAt: Date | string | null;
+  content: string | null;
+  sourceUrl?: string | null;
+}): boolean {
   if (!s.content) return false;
+  // Feltöltött (URL nélküli) dokumentum statikus tartalom: nincs online forrás,
+  // amiről automatikusan frissülhetne, ezért a naptári kor alapján nem "avul el".
+  // A valódi frissítés ilyenkor új változat feltöltése. Az "elavult" jelzés így
+  // csak az online (URL-alapú) forrásokra vonatkozik, amelyeket a rendszer tud
+  // frissíteni.
+  if (!s.sourceUrl) return false;
   const last = s.lastSyncAt ?? s.contentFetchedAt;
   if (!last) return true;
   const ms = typeof last === "string" ? new Date(last).getTime() : last.getTime();

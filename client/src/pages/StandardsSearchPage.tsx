@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import {
   Search, Loader2, ChevronDown, ChevronUp, BookOpen, ExternalLink,
   CheckCircle2, AlertTriangle, XCircle, Info, Target,
-  FileText, Settings2, History, Send, RefreshCw, Copy, Check, Globe
+  FileText, Settings2, History, Send, RefreshCw, Copy, Check, Globe, Download
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -305,6 +305,71 @@ export default function StandardsSearchPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Nyomtatható riport a keresési eredményből — a böngésző nyomtató-dialógusán
+  // át PDF-be menthető. Kliens-oldali, nincs szerver-függőség (serverless-barát).
+  const handleDownloadReport = () => {
+    if (!result?.answer) return;
+    const esc = (s: unknown) =>
+      String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] as string));
+    // Minimális Markdown → HTML (félkövér + sortörések), az escape UTÁN (biztonságos).
+    const mdToHtml = (s: string) =>
+      esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br>");
+    const confLabel: Record<string, string> = { high: "Magas", medium: "Közepes", low: "Alacsony" };
+    const now = new Date().toLocaleString("hu-HU");
+    const answerText = showExtended && extendMutation.data?.extendedAnswer
+      ? extendMutation.data.extendedAnswer
+      : result.answer;
+    const srcs = result.sources ?? [];
+    const sourcesHtml = srcs.map((s, i) =>
+      `<li><span class="sn">[${i + 1}]</span> <strong>${esc(s.documentName)}</strong>` +
+      (s.page ? ` — ${esc(s.page)}. oldal` : "") +
+      (s.chapter ? ` — ${esc(s.chapter)}` : "") +
+      (s.url ? ` <span class="url">${esc(s.url)}</span>` : "") +
+      (s.excerpt ? `<div class="ex">…${esc(String(s.excerpt).trim().slice(0, 400))}…</div>` : "") +
+      `</li>`
+    ).join("");
+    const html = `<!doctype html><html lang="hu"><head><meta charset="utf-8">
+<title>Szabvány-keresési riport</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #1a1a1a; max-width: 800px; margin: 32px auto; padding: 0 24px; line-height: 1.55; }
+  .brand { display:flex; align-items:baseline; justify-content:space-between; border-bottom: 3px solid #7CA9D3; padding-bottom: 10px; }
+  .brand h1 { font-size: 18px; margin: 0; color:#161718; }
+  .brand .sub { color:#7CA9D3; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
+  .meta { color:#666; font-size:12px; margin: 8px 0 20px; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; }
+  .b-high{background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;} .b-medium{background:#fffbeb;color:#d97706;border:1px solid #fde68a;} .b-low{background:#fef2f2;color:#dc2626;border:1px solid #fecaca;}
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing:.04em; color:#7CA9D3; margin: 22px 0 6px; }
+  .q { font-size: 15px; font-weight: 600; }
+  .rw { color:#555; font-size: 13px; margin-top:4px; }
+  .answer { font-size: 14px; }
+  ol { padding-left: 20px; } li { margin-bottom: 10px; font-size: 13px; }
+  .sn { color:#7CA9D3; font-weight:700; } .url { color:#888; font-size:11px; word-break:break-all; }
+  .ex { color:#555; font-size:12px; background:#f6f8fa; border-left:2px solid #7CA9D3; padding:6px 10px; margin-top:4px; border-radius:3px; }
+  footer { margin-top: 28px; padding-top: 12px; border-top: 1px solid #ddd; color:#888; font-size: 11px; }
+  @media print { body { margin: 0; } }
+</style></head><body>
+  <div class="brand"><h1>M Mérnöki Iroda Kft.</h1><span class="sub">Szabvány-keresési riport</span></div>
+  <div class="meta">Készült: ${now} &middot; Megbízhatóság:
+    <span class="badge b-${esc(result.confidence)}">${confLabel[result.confidence] ?? esc(result.confidence)}</span></div>
+  <h2>Kérdés</h2><p class="q">${esc(question)}</p>
+  ${result.rewrittenQuestion && result.rewrittenQuestion !== question ? `<p class="rw"><strong>Pontosított kérdés:</strong> ${esc(result.rewrittenQuestion)}</p>` : ""}
+  ${!result.selfCheckPassed && result.selfCheckNotes ? `<p class="rw"><strong>Önellenőrzési megjegyzés:</strong> ${esc(result.selfCheckNotes)}</p>` : ""}
+  <h2>Válasz</h2><div class="answer">${mdToHtml(answerText)}</div>
+  <h2>Hivatkozott források (${srcs.length})</h2><ol>${sourcesHtml || "<li>Nincs forrás.</li>"}</ol>
+  <footer>Ezt a riportot a Tervmegfelelőség-ellenőrző AI állította elő ${now}-kor a betöltött szabványok alapján.
+  A válasz tájékoztató jellegű — kérjük, a végleges felhasználás előtt ellenőrizze a hivatkozott forrásokat.</footer>
+  <script>window.onload=function(){setTimeout(function(){window.print();},250);};</script>
+</body></html>`;
+    const w = window.open("", "_blank");
+    if (!w) {
+      toast.error("Engedélyezze a felugró ablakokat a riport letöltéséhez.");
+      return;
+    }
+    w.document.write(html);
+    w.document.close();
+  };
+
   // V11.19: beégetett gyorskérdések a bemutatóhoz — az egész betöltött Eurocode-
   // készlet szélességét lefedik (acél, terhelések, vasbeton, geotechnika,
   // alapelvek), és mindegyik mérve, érdemi választ ad. Kattintásra kitöltik a
@@ -470,6 +535,16 @@ export default function StandardsSearchPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-2">
+                      {result.hasSufficientSources && (
+                        <button
+                          onClick={handleDownloadReport}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium border border-line text-text-default hover:border-[#7CA9D3] hover:text-[#7CA9D3] transition-colors"
+                          title="Riport letöltése (PDF-ként nyomtatható)"
+                        >
+                          <Download size={13} />
+                          Riport
+                        </button>
+                      )}
                       <button
                         onClick={handleCopy}
                         className="p-1.5 rounded hover:bg-hover text-text-faint hover:text-text-default transition-colors"

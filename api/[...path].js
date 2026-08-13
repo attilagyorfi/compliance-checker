@@ -3311,9 +3311,22 @@ function mergeSearchSources(keyword, semantic, maxItems, query = "") {
     const boost = titleBoostFactor(queryKeywords, source.documentName);
     return { source, score: score * boost };
   });
-  const sorted = boosted.sort((a, b) => b.score - a.score).slice(0, maxItems);
-  const maxScore = sorted[0]?.score ?? 1;
-  return sorted.map(({ source, score }) => ({
+  boosted.sort((a, b) => b.score - a.score);
+  const GUARANTEED_SEMANTIC = 4;
+  const chosen = boosted.slice(0, maxItems);
+  const inChosen = new Set(chosen.map((b) => keyOf(b.source)));
+  for (const s of semantic.slice(0, GUARANTEED_SEMANTIC)) {
+    const k = keyOf(s);
+    if (inChosen.has(k)) continue;
+    const item = boosted.find((b) => keyOf(b.source) === k);
+    if (!item || chosen.length === 0) continue;
+    chosen.pop();
+    chosen.push(item);
+    inChosen.add(k);
+  }
+  chosen.sort((a, b) => b.score - a.score);
+  const maxScore = chosen[0]?.score ?? 1;
+  return chosen.map(({ source, score }) => ({
     ...source,
     relevanceScore: maxScore > 0 ? score / maxScore : 0
   }));
@@ -3535,16 +3548,16 @@ var standardsSearchRouter = router({
       }
     } else if (searchMode === "combined_with_web") {
       const webSources = urls && urls.length > 0 ? await fetchUrlSources(urls, rewrittenQuestion) : await webSearchStandards(rewrittenQuestion, true);
-      const libSources = await keywordSearch(rewrittenQuestion, "internal");
-      const semanticSources = await semanticSearch(rewrittenQuestion, "internal");
-      const allLibrary = mergeSearchSources(libSources, semanticSources, 8, rewrittenQuestion);
+      const libSources = await keywordSearch(question, "internal");
+      const semanticSources = await semanticSearch(question, "internal");
+      const allLibrary = mergeSearchSources(libSources, semanticSources, 8, question);
       const seenUrls = new Set(allLibrary.map((s) => s.url).filter(Boolean));
       const dedupedWeb = webSources.filter((s) => !s.url || !seenUrls.has(s.url));
       sources = [...allLibrary, ...dedupedWeb].slice(0, 10);
     } else {
-      const libSources = await keywordSearch(rewrittenQuestion, "internal");
-      const semanticSources = await semanticSearch(rewrittenQuestion, "internal");
-      sources = mergeSearchSources(libSources, semanticSources, 10, rewrittenQuestion);
+      const libSources = await keywordSearch(question, "internal");
+      const semanticSources = await semanticSearch(question, "internal");
+      sources = mergeSearchSources(libSources, semanticSources, 10, question);
     }
     const result = await generateStructuredAnswer(
       question,
