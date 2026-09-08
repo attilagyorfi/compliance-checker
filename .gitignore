@@ -117,3 +117,8 @@ reliability_*.mjs
 seed-eurocode.mjs
 
 seed-tidb-pdfs.mjs
+
+# Python ingestion pipeline (Fázis 1)
+ingestion/.venv/
+ingestion/preview/
+ingestion/__pycache__/

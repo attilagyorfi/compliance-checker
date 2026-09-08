@@ -1,0 +1,4 @@
+# Fázis 1 ingestion — Python-oldal (csak PDF-parse, hálózat nélkül).
+# A DB-írást és az embeddinget a Node-oldali ingest-v2.mjs végzi (mysql2 + fetch),
+# mert a Windows a venv python.exe kimenő kapcsolatát a 4000-es TiDB-porton tiltja.
+pymupdf==1.28.2
