@@ -1,0 +1,42 @@
+# Dokumentum-téma térkép — Fázis 2 (dokumentum-szintű irányítás).
+#
+# Melyik Eurocode-rész MIRŐL szól. Ha a kérdés egy téma-kulcsszót tartalmaz, a
+# rendszer az adott szabvány-családot előre sorolja — így pl. az "acél ... " kérdés
+# a 1993-as (acél) szériát kapja, nem a vasbeton (1992) szabványt, amely szintén
+# tartalmazza az "acél" (betonacél) szót. Mérnökök bővíthetik.
+#
+# match: az official_id-ban keresett részszöveg (a leghosszabb illeszkedő nyer).
+
+rules:
+  - match: "1990"     # Eurocode 0
+    topics: [tervezési alapelv, megbízhatóság, határállapot, tervezési élettartam, biztonsági tényező]
+  - match: "1991-1-1"
+    topics: [önsúly, hasznos teher, térfogatsűrűség]
+  - match: "1991-1-2"
+    topics: [tűz, tűzteher, tűzhatás]
+  - match: "1991-1-3"
+    topics: [hó, hóteher, hóterhelés]
+  - match: "1991-1-4"
+    topics: [szél, szélteher, szélhatás, szélnyomás]
+  - match: "1991-1-5"
+    topics: [hőmérséklet, hőmérsékleti hatás, hőtágulás]
+  - match: "1991-1-6"
+    topics: [kivitelezés, építés közbeni teher]
+  - match: "1991-1-7"
+    topics: [rendkívüli teher, ütközés, robbanás]
+  - match: "1991-2"
+    topics: [híd, hídteher, forgalmi teher, közúti híd]
+  - match: "1992"     # Eurocode 2
+    topics: [vasbeton, beton, betonszerkezet, feszített beton]
+  - match: "1993"     # Eurocode 3
+    topics: [acél, acélszerkezet, acélszerkezetek]
+  - match: "1994"     # Eurocode 4
+    topics: [öszvér, öszvérszerkezet, öszvértartó, öszvéroszlop]
+  - match: "1995"     # Eurocode 5
+    topics: [fa, faszerkezet, faanyag]
+  - match: "1996"     # Eurocode 6
+    topics: [falazat, falazott, teherhordó fal]
+  - match: "1997"     # Eurocode 7
+    topics: [geotechnika, talaj, alapozás, cölöp, talajvizsgálat]
+  - match: "1998"     # Eurocode 8
+    topics: [földrengés, szeizmikus, rengés, földrengési]

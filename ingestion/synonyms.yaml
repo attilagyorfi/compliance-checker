@@ -1,0 +1,50 @@
+# Domain szinonima-szótár — Fázis 2 (hibrid keresés lexikai ága).
+#
+# Fogalmi csoportok: egy keresés bármely tagra aktiválja az egész csoportot, így
+# pl. a "nyírás" a "nyíróerő"-t és a "V_Ed" jelölést is megtalálja. A magyar
+# ragozást a Snowball szótövező kezeli; ez a szótár a SZEMANTIKAI rokonságot adja.
+#
+# Mérnökök bővíthetik: elég egy új csoportot vagy tagot felvenni. A tagok
+# részszó-egyezéssel illeszkednek (kis/nagybetű nem számít).
+
+groups:
+  - id: nyiras
+    terms: [nyírás, nyíró, nyírt, nyírási, nyíróerő, nyírófeszültség, nyírt kapcsolat, "V_Ed", "V_Rd"]
+  - id: kihajlas
+    terms: [kihajlás, kihajlási, karcsúság, karcsúsági, stabilitás, stabilitásvesztés, kifordulás]
+  - id: keresztmetszet_osztaly
+    terms: [keresztmetszet, keresztmetszeti osztály, osztályozás, osztályba sorolás, alkotólemez]
+  - id: csavaras
+    terms: [csavarás, csavaró, csavarási, "T_Ed"]
+  - id: atszurodas
+    terms: [átszúródás, átszúródási, átlyukadás]
+  - id: fáradás
+    terms: [fáradás, fáradási, kifáradás, feszültségtartomány, terhelési ciklus]
+  - id: szelteher
+    terms: [szélteher, szélterhelés, szélhatás, szélnyomás, szélsebesség, torlónyomás]
+  - id: hoteher
+    terms: [hóteher, hóterhelés, hó, hófelhalmozódás]
+  - id: homerseklet
+    terms: [hőmérséklet, hőmérsékleti hatás, hőtágulás, hőhatás]
+  - id: onsuly_hasznos
+    terms: [önsúly, önsúlyteher, hasznos teher, hasznos terhelés, felhasználási teher]
+  - id: tuz
+    terms: [tűz, tűzállóság, tűzhatás, tűzvédelem, tűzteher, kritikus hőmérséklet]
+  - id: foldrenges
+    terms: [földrengés, földrengési, szeizmikus, rengés, viselkedési tényező]
+  - id: vasalas
+    terms: [vasalás, betonacél, kengyel, kengyeles, hosszvasalás, nyírási vasalás, vasmennyiség]
+  - id: teherbiras
+    terms: [teherbírás, ellenállás, tervezési érték, határállapot, teherbírási határállapot]
+  - id: hasznalhatosag
+    terms: [használhatóság, használhatósági határállapot, alakváltozás, lehajlás, repedéstágasság]
+  - id: talaj
+    terms: [talajvizsgálat, talajmechanika, geotechnika, cölöp, alapozás, talajszilárdság, nyomószondázás]
+  - id: alapelvek
+    terms: [megbízhatóság, tervezési élettartam, biztonsági tényező, parciális tényező, tervezési alapelv]
+  - id: oszver
+    terms: [öszvér, öszvérszerkezet, öszvértartó, nyírt kapcsolóelem, fejescsap]
+  - id: falazat
+    terms: [falazat, falazóelem, falazóhabarcs, teherhordó fal]
+  - id: fa
+    terms: [fa, faszerkezet, faanyag, rétegelt-ragasztott, tömörfa]
