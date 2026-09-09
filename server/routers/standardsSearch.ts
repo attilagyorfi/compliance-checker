@@ -920,6 +920,31 @@ export const standardsSearchRouter = router({
     }),
 
   /**
+   * V2 hivatkozás-központú keresés (Fázis 3) — a SEARCH_ENGINE=v2 flag mögött.
+   * A v2_* bizonyíték-magból ad idézhető találatokat (szakasz + oldalszám +
+   * teljes bekezdés + hivatkozás). A legacy `search` érintetlen.
+   */
+  searchV2: publicProcedure
+    .input(
+      z.object({
+        question: z.string().min(2).max(1000),
+        topK: z.number().int().min(1).max(20).default(8),
+        rerank: z.boolean().default(true),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const { hybridSearchV2 } = await import("../v2/search");
+      const hits = await hybridSearchV2(input.question, { topK: input.topK, rerank: input.rerank });
+      return { query: input.question, hits, engine: "v2" as const };
+    }),
+
+  /** A frontend így tudja, elérhető-e a v2 kereső (SEARCH_ENGINE=v2). */
+  engineInfo: publicProcedure.query(() => ({
+    searchEngine: (process.env.SEARCH_ENGINE ?? "legacy").toLowerCase(),
+    v2Available: true,
+  })),
+
+  /**
    * Generate extended answer for an existing search result
    */
   extendAnswer: publicProcedure

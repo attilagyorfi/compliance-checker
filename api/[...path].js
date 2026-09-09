@@ -71,6 +71,172 @@ var init_env = __esm({
   }
 });
 
+// server/_core/llm.ts
+async function invokeLLM(params) {
+  const cfg = getLlmChatConfig();
+  if (!cfg) {
+    throw new Error(
+      "Nincs LLM-provider konfigur\xE1lva. \xC1ll\xEDtsd be az OPENAI_API_KEY env-v\xE1ltoz\xF3t (vagy legacy: BUILT_IN_FORGE_API_KEY + BUILT_IN_FORGE_API_URL)."
+    );
+  }
+  const {
+    messages,
+    tools,
+    toolChoice,
+    tool_choice,
+    outputSchema,
+    output_schema,
+    responseFormat,
+    response_format
+  } = params;
+  const payload = {
+    model: cfg.model,
+    messages: messages.map(normalizeMessage)
+  };
+  if (tools && tools.length > 0) {
+    payload.tools = tools;
+  }
+  const normalizedToolChoice = normalizeToolChoice(
+    toolChoice || tool_choice,
+    tools
+  );
+  if (normalizedToolChoice) {
+    payload.tool_choice = normalizedToolChoice;
+  }
+  const maxTokensEnv = Number(process.env.LLM_MAX_TOKENS);
+  payload.max_completion_tokens = Number.isFinite(maxTokensEnv) && maxTokensEnv > 0 ? maxTokensEnv : 8192;
+  const normalizedResponseFormat = normalizeResponseFormat({
+    responseFormat,
+    response_format,
+    outputSchema,
+    output_schema
+  });
+  if (normalizedResponseFormat) {
+    payload.response_format = normalizedResponseFormat;
+  }
+  const response = await fetch(cfg.url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${cfg.apiKey}`
+    },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `LLM invoke failed (${cfg.model}): ${response.status} ${response.statusText} \u2013 ${errorText}`
+    );
+  }
+  return await response.json();
+}
+var ensureArray, normalizeContentPart, normalizeMessage, normalizeToolChoice, normalizeResponseFormat;
+var init_llm = __esm({
+  "server/_core/llm.ts"() {
+    "use strict";
+    init_env();
+    ensureArray = (value) => Array.isArray(value) ? value : [value];
+    normalizeContentPart = (part) => {
+      if (typeof part === "string") {
+        return { type: "text", text: part };
+      }
+      if (part.type === "text") {
+        return part;
+      }
+      if (part.type === "image_url") {
+        return part;
+      }
+      if (part.type === "file_url") {
+        return part;
+      }
+      throw new Error("Unsupported message content part");
+    };
+    normalizeMessage = (message) => {
+      const { role, name, tool_call_id } = message;
+      if (role === "tool" || role === "function") {
+        const content = ensureArray(message.content).map((part) => typeof part === "string" ? part : JSON.stringify(part)).join("\n");
+        return {
+          role,
+          name,
+          tool_call_id,
+          content
+        };
+      }
+      const contentParts = ensureArray(message.content).map(normalizeContentPart);
+      if (contentParts.length === 1 && contentParts[0].type === "text") {
+        return {
+          role,
+          name,
+          content: contentParts[0].text
+        };
+      }
+      return {
+        role,
+        name,
+        content: contentParts
+      };
+    };
+    normalizeToolChoice = (toolChoice, tools) => {
+      if (!toolChoice) return void 0;
+      if (toolChoice === "none" || toolChoice === "auto") {
+        return toolChoice;
+      }
+      if (toolChoice === "required") {
+        if (!tools || tools.length === 0) {
+          throw new Error(
+            "tool_choice 'required' was provided but no tools were configured"
+          );
+        }
+        if (tools.length > 1) {
+          throw new Error(
+            "tool_choice 'required' needs a single tool or specify the tool name explicitly"
+          );
+        }
+        return {
+          type: "function",
+          function: { name: tools[0].function.name }
+        };
+      }
+      if ("name" in toolChoice) {
+        return {
+          type: "function",
+          function: { name: toolChoice.name }
+        };
+      }
+      return toolChoice;
+    };
+    normalizeResponseFormat = ({
+      responseFormat,
+      response_format,
+      outputSchema,
+      output_schema
+    }) => {
+      const explicitFormat = responseFormat || response_format;
+      if (explicitFormat) {
+        if (explicitFormat.type === "json_schema" && !explicitFormat.json_schema?.schema) {
+          throw new Error(
+            "responseFormat json_schema requires a defined schema object"
+          );
+        }
+        return explicitFormat;
+      }
+      const schema = outputSchema || output_schema;
+      if (!schema) return void 0;
+      if (!schema.name || !schema.schema) {
+        throw new Error("outputSchema requires both name and schema");
+      }
+      return {
+        type: "json_schema",
+        json_schema: {
+          name: schema.name,
+          schema: schema.schema,
+          ...typeof schema.strict === "boolean" ? { strict: schema.strict } : {}
+        }
+      };
+    };
+  }
+});
+
 // drizzle/schema.ts
 var schema_exports = {};
 __export(schema_exports, {
@@ -476,6 +642,71 @@ var init_db = __esm({
     init_schema();
     init_env();
     _db = null;
+  }
+});
+
+// server/relevanceChunker.ts
+function tokenise(text2) {
+  return text2.toLowerCase().replace(/[^\w\s]/g, " ").split(/\s+/).filter((t2) => t2.length > 2);
+}
+function buildTF(tokens) {
+  const tf = /* @__PURE__ */ new Map();
+  for (const t2 of tokens) {
+    tf.set(t2, (tf.get(t2) ?? 0) + 1);
+  }
+  return tf;
+}
+function overlapScore(a, b) {
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (const [term, countA] of Array.from(a.entries())) {
+    normA += countA * countA;
+    const countB = b.get(term) ?? 0;
+    dot += countA * countB;
+  }
+  for (const [, countB] of Array.from(b.entries())) {
+    normB += countB * countB;
+  }
+  if (normA === 0 || normB === 0) return 0;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+function chunkText(text2, chunkSize = 3e3, overlap = 300) {
+  const chunks = [];
+  let start = 0;
+  while (start < text2.length) {
+    chunks.push(text2.slice(start, start + chunkSize));
+    start += chunkSize - overlap;
+    if (start + overlap >= text2.length) break;
+  }
+  if (chunks.length === 0 || text2.length > (chunks[chunks.length - 1]?.length ?? 0)) {
+    const lastStart = Math.max(0, text2.length - chunkSize);
+    const lastChunk = text2.slice(lastStart);
+    if (!chunks.includes(lastChunk)) chunks.push(lastChunk);
+  }
+  return chunks;
+}
+function selectRelevantChunks(planText, regulationText, topK = 5, chunkSize = 3e3, overlap = 300) {
+  const planTokens = tokenise(planText.slice(0, 8e3));
+  const planTF = buildTF(planTokens);
+  const chunks = chunkText(regulationText, chunkSize, overlap);
+  const scored = chunks.map((text2, chunkIndex) => {
+    const tokens = tokenise(text2);
+    const tf = buildTF(tokens);
+    const score = overlapScore(planTF, tf);
+    return { text: text2, score, chunkIndex };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, topK);
+}
+function buildRelevantExcerpt(planText, regulationText, topK = 5, chunkSize = 3e3, overlap = 300) {
+  const relevant = selectRelevantChunks(planText, regulationText, topK, chunkSize, overlap);
+  relevant.sort((a, b) => a.chunkIndex - b.chunkIndex);
+  return relevant.map((c) => c.text).join("\n\n---\n\n");
+}
+var init_relevanceChunker = __esm({
+  "server/relevanceChunker.ts"() {
+    "use strict";
   }
 });
 
@@ -1174,6 +1405,628 @@ var init_regulationScraper = __esm({
   }
 });
 
+// server/embeddings.ts
+async function callEmbeddingApi(input) {
+  const cfg = getLlmEmbeddingsConfig();
+  if (!cfg) return null;
+  try {
+    const res = await fetch(cfg.url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${cfg.apiKey}`
+      },
+      body: JSON.stringify({ model: cfg.model, input }),
+      signal: AbortSignal.timeout(15e3)
+    });
+    if (!res.ok) {
+      return null;
+    }
+    const json2 = await res.json();
+    const vec = json2.data?.[0]?.embedding;
+    return Array.isArray(vec) && vec.length > 0 ? vec : null;
+  } catch {
+    return null;
+  }
+}
+async function callEmbeddingApiBatch(inputs, attempt = 1) {
+  const cfg = getLlmEmbeddingsConfig();
+  if (!cfg) return inputs.map(() => null);
+  try {
+    const res = await fetch(cfg.url, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${cfg.apiKey}` },
+      body: JSON.stringify({ model: cfg.model, input: inputs }),
+      signal: AbortSignal.timeout(6e4)
+    });
+    if (!res.ok) throw new Error(`embed ${res.status}`);
+    const json2 = await res.json();
+    const byIndex = /* @__PURE__ */ new Map();
+    for (const d of json2.data ?? []) {
+      if (typeof d.index === "number" && Array.isArray(d.embedding) && d.embedding.length > 0) {
+        byIndex.set(d.index, d.embedding);
+      }
+    }
+    return inputs.map((_, i) => byIndex.get(i) ?? null);
+  } catch {
+    if (attempt < 3) {
+      await new Promise((r) => setTimeout(r, 1e3 * 2 ** (attempt - 1)));
+      return callEmbeddingApiBatch(inputs, attempt + 1);
+    }
+    return inputs.map(() => null);
+  }
+}
+async function getEmbedding(text2) {
+  if (embeddingApiAvailable === false) return null;
+  const trimmed = text2.trim();
+  if (trimmed.length === 0) return null;
+  const vec = await callEmbeddingApi(trimmed);
+  if (vec) {
+    embeddingApiAvailable = true;
+    return vec;
+  }
+  embeddingApiAvailable = false;
+  return null;
+}
+function cosineSimilarity(a, b) {
+  if (a.length !== b.length || a.length === 0) return 0;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  if (normA === 0 || normB === 0) return 0;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+async function chunkAndEmbed(text2, chunkSize = EMBEDDING_CHUNK_SIZE, overlap = EMBEDDING_CHUNK_OVERLAP) {
+  if (embeddingApiAvailable === false) return [];
+  const chunks = chunkText(text2, chunkSize, overlap).filter((c) => c.trim().length > 0);
+  if (chunks.length === 0) return [];
+  const BATCH = 50;
+  const result = [];
+  for (let i = 0; i < chunks.length; i += BATCH) {
+    const slice = chunks.slice(i, i + BATCH);
+    const vecs = await callEmbeddingApiBatch(slice);
+    slice.forEach((chunk, j) => {
+      const vec = vecs[j];
+      if (vec) result.push({ chunkIndex: i + j, text: chunk, embedding: vec });
+    });
+  }
+  embeddingApiAvailable = result.length > 0;
+  return result;
+}
+var EMBEDDING_CHUNK_SIZE, EMBEDDING_CHUNK_OVERLAP, embeddingApiAvailable;
+var init_embeddings = __esm({
+  "server/embeddings.ts"() {
+    "use strict";
+    init_env();
+    init_relevanceChunker();
+    EMBEDDING_CHUNK_SIZE = 800;
+    EMBEDDING_CHUNK_OVERLAP = 100;
+    embeddingApiAvailable = null;
+  }
+});
+
+// server/v2/config.generated.ts
+var synonymGroups, docRules;
+var init_config_generated = __esm({
+  "server/v2/config.generated.ts"() {
+    "use strict";
+    synonymGroups = [
+      {
+        "id": "nyiras",
+        "terms": [
+          "ny\xEDr\xE1s",
+          "ny\xEDr\xF3",
+          "ny\xEDrt",
+          "ny\xEDr\xE1si",
+          "ny\xEDr\xF3er\u0151",
+          "ny\xEDr\xF3fesz\xFClts\xE9g",
+          "ny\xEDrt kapcsolat",
+          "V_Ed",
+          "V_Rd"
+        ]
+      },
+      {
+        "id": "kihajlas",
+        "terms": [
+          "kihajl\xE1s",
+          "kihajl\xE1si",
+          "karcs\xFAs\xE1g",
+          "karcs\xFAs\xE1gi",
+          "stabilit\xE1s",
+          "stabilit\xE1sveszt\xE9s",
+          "kifordul\xE1s"
+        ]
+      },
+      {
+        "id": "keresztmetszet_osztaly",
+        "terms": [
+          "keresztmetszet",
+          "keresztmetszeti oszt\xE1ly",
+          "oszt\xE1lyoz\xE1s",
+          "oszt\xE1lyba sorol\xE1s",
+          "alkot\xF3lemez"
+        ]
+      },
+      {
+        "id": "csavaras",
+        "terms": [
+          "csavar\xE1s",
+          "csavar\xF3",
+          "csavar\xE1si",
+          "T_Ed"
+        ]
+      },
+      {
+        "id": "atszurodas",
+        "terms": [
+          "\xE1tsz\xFAr\xF3d\xE1s",
+          "\xE1tsz\xFAr\xF3d\xE1si",
+          "\xE1tlyukad\xE1s"
+        ]
+      },
+      {
+        "id": "f\xE1rad\xE1s",
+        "terms": [
+          "f\xE1rad\xE1s",
+          "f\xE1rad\xE1si",
+          "kif\xE1rad\xE1s",
+          "fesz\xFClts\xE9gtartom\xE1ny",
+          "terhel\xE9si ciklus"
+        ]
+      },
+      {
+        "id": "szelteher",
+        "terms": [
+          "sz\xE9lteher",
+          "sz\xE9lterhel\xE9s",
+          "sz\xE9lhat\xE1s",
+          "sz\xE9lnyom\xE1s",
+          "sz\xE9lsebess\xE9g",
+          "torl\xF3nyom\xE1s"
+        ]
+      },
+      {
+        "id": "hoteher",
+        "terms": [
+          "h\xF3teher",
+          "h\xF3terhel\xE9s",
+          "h\xF3",
+          "h\xF3felhalmoz\xF3d\xE1s"
+        ]
+      },
+      {
+        "id": "homerseklet",
+        "terms": [
+          "h\u0151m\xE9rs\xE9klet",
+          "h\u0151m\xE9rs\xE9kleti hat\xE1s",
+          "h\u0151t\xE1gul\xE1s",
+          "h\u0151hat\xE1s"
+        ]
+      },
+      {
+        "id": "onsuly_hasznos",
+        "terms": [
+          "\xF6ns\xFAly",
+          "\xF6ns\xFAlyteher",
+          "hasznos teher",
+          "hasznos terhel\xE9s",
+          "felhaszn\xE1l\xE1si teher"
+        ]
+      },
+      {
+        "id": "tuz",
+        "terms": [
+          "t\u0171z",
+          "t\u0171z\xE1ll\xF3s\xE1g",
+          "t\u0171zhat\xE1s",
+          "t\u0171zv\xE9delem",
+          "t\u0171zteher",
+          "kritikus h\u0151m\xE9rs\xE9klet"
+        ]
+      },
+      {
+        "id": "foldrenges",
+        "terms": [
+          "f\xF6ldreng\xE9s",
+          "f\xF6ldreng\xE9si",
+          "szeizmikus",
+          "reng\xE9s",
+          "viselked\xE9si t\xE9nyez\u0151"
+        ]
+      },
+      {
+        "id": "vasalas",
+        "terms": [
+          "vasal\xE1s",
+          "betonac\xE9l",
+          "kengyel",
+          "kengyeles",
+          "hosszvasal\xE1s",
+          "ny\xEDr\xE1si vasal\xE1s",
+          "vasmennyis\xE9g"
+        ]
+      },
+      {
+        "id": "teherbiras",
+        "terms": [
+          "teherb\xEDr\xE1s",
+          "ellen\xE1ll\xE1s",
+          "tervez\xE9si \xE9rt\xE9k",
+          "hat\xE1r\xE1llapot",
+          "teherb\xEDr\xE1si hat\xE1r\xE1llapot"
+        ]
+      },
+      {
+        "id": "hasznalhatosag",
+        "terms": [
+          "haszn\xE1lhat\xF3s\xE1g",
+          "haszn\xE1lhat\xF3s\xE1gi hat\xE1r\xE1llapot",
+          "alakv\xE1ltoz\xE1s",
+          "lehajl\xE1s",
+          "reped\xE9st\xE1gass\xE1g"
+        ]
+      },
+      {
+        "id": "talaj",
+        "terms": [
+          "talajvizsg\xE1lat",
+          "talajmechanika",
+          "geotechnika",
+          "c\xF6l\xF6p",
+          "alapoz\xE1s",
+          "talajszil\xE1rds\xE1g",
+          "nyom\xF3szond\xE1z\xE1s"
+        ]
+      },
+      {
+        "id": "alapelvek",
+        "terms": [
+          "megb\xEDzhat\xF3s\xE1g",
+          "tervez\xE9si \xE9lettartam",
+          "biztons\xE1gi t\xE9nyez\u0151",
+          "parci\xE1lis t\xE9nyez\u0151",
+          "tervez\xE9si alapelv"
+        ]
+      },
+      {
+        "id": "oszver",
+        "terms": [
+          "\xF6szv\xE9r",
+          "\xF6szv\xE9rszerkezet",
+          "\xF6szv\xE9rtart\xF3",
+          "ny\xEDrt kapcsol\xF3elem",
+          "fejescsap"
+        ]
+      },
+      {
+        "id": "falazat",
+        "terms": [
+          "falazat",
+          "falaz\xF3elem",
+          "falaz\xF3habarcs",
+          "teherhord\xF3 fal"
+        ]
+      },
+      {
+        "id": "fa",
+        "terms": [
+          "fa",
+          "faszerkezet",
+          "faanyag",
+          "r\xE9tegelt-ragasztott",
+          "t\xF6m\xF6rfa"
+        ]
+      }
+    ];
+    docRules = [
+      {
+        "match": "1990",
+        "topics": [
+          "tervez\xE9si alapelv",
+          "megb\xEDzhat\xF3s\xE1g",
+          "hat\xE1r\xE1llapot",
+          "tervez\xE9si \xE9lettartam",
+          "biztons\xE1gi t\xE9nyez\u0151"
+        ]
+      },
+      {
+        "match": "1991-1-1",
+        "topics": [
+          "\xF6ns\xFAly",
+          "hasznos teher",
+          "t\xE9rfogats\u0171r\u0171s\xE9g"
+        ]
+      },
+      {
+        "match": "1991-1-2",
+        "topics": [
+          "t\u0171z",
+          "t\u0171zteher",
+          "t\u0171zhat\xE1s"
+        ]
+      },
+      {
+        "match": "1991-1-3",
+        "topics": [
+          "h\xF3",
+          "h\xF3teher",
+          "h\xF3terhel\xE9s"
+        ]
+      },
+      {
+        "match": "1991-1-4",
+        "topics": [
+          "sz\xE9l",
+          "sz\xE9lteher",
+          "sz\xE9lhat\xE1s",
+          "sz\xE9lnyom\xE1s"
+        ]
+      },
+      {
+        "match": "1991-1-5",
+        "topics": [
+          "h\u0151m\xE9rs\xE9klet",
+          "h\u0151m\xE9rs\xE9kleti hat\xE1s",
+          "h\u0151t\xE1gul\xE1s"
+        ]
+      },
+      {
+        "match": "1991-1-6",
+        "topics": [
+          "kivitelez\xE9s",
+          "\xE9p\xEDt\xE9s k\xF6zbeni teher"
+        ]
+      },
+      {
+        "match": "1991-1-7",
+        "topics": [
+          "rendk\xEDv\xFCli teher",
+          "\xFCtk\xF6z\xE9s",
+          "robban\xE1s"
+        ]
+      },
+      {
+        "match": "1991-2",
+        "topics": [
+          "h\xEDd",
+          "h\xEDdteher",
+          "forgalmi teher",
+          "k\xF6z\xFAti h\xEDd"
+        ]
+      },
+      {
+        "match": "1992",
+        "topics": [
+          "vasbeton",
+          "beton",
+          "betonszerkezet",
+          "fesz\xEDtett beton"
+        ]
+      },
+      {
+        "match": "1993",
+        "topics": [
+          "ac\xE9l",
+          "ac\xE9lszerkezet",
+          "ac\xE9lszerkezetek"
+        ]
+      },
+      {
+        "match": "1994",
+        "topics": [
+          "\xF6szv\xE9r",
+          "\xF6szv\xE9rszerkezet",
+          "\xF6szv\xE9rtart\xF3",
+          "\xF6szv\xE9roszlop"
+        ]
+      },
+      {
+        "match": "1995",
+        "topics": [
+          "fa",
+          "faszerkezet",
+          "faanyag"
+        ]
+      },
+      {
+        "match": "1996",
+        "topics": [
+          "falazat",
+          "falazott",
+          "teherhord\xF3 fal"
+        ]
+      },
+      {
+        "match": "1997",
+        "topics": [
+          "geotechnika",
+          "talaj",
+          "alapoz\xE1s",
+          "c\xF6l\xF6p",
+          "talajvizsg\xE1lat"
+        ]
+      },
+      {
+        "match": "1998",
+        "topics": [
+          "f\xF6ldreng\xE9s",
+          "szeizmikus",
+          "reng\xE9s",
+          "f\xF6ldreng\xE9si"
+        ]
+      }
+    ];
+  }
+});
+
+// server/v2/search.ts
+var search_exports = {};
+__export(search_exports, {
+  hybridSearchV2: () => hybridSearchV2
+});
+import { sql as sql2 } from "drizzle-orm";
+import stemmerPkg from "snowball-stemmers";
+function expandQuery(query) {
+  const qStems = new Set(tokenize(query).map(stem));
+  const qStemArr = Array.from(qStems);
+  const lexTerms = /* @__PURE__ */ new Set();
+  for (const g of groupStems) {
+    if (qStemArr.some((s) => g.stems.has(s))) g.terms.forEach((t2) => lexTerms.add(t2.toLowerCase()));
+  }
+  tokenize(query).filter((t2) => t2.length >= 4).forEach((t2) => lexTerms.add(t2));
+  const wantedMatches = ruleStems.filter((r) => Array.from(r.stems).some((s) => qStems.has(s))).map((r) => r.match);
+  return { lexTerms: Array.from(lexTerms), wantedMatches };
+}
+function rows(res) {
+  const r = Array.isArray(res) ? res[0] : res;
+  return Array.isArray(r) ? r : [];
+}
+async function hybridSearchV2(query, opts = {}) {
+  const { topK = 8, rerank = true } = opts;
+  const db = await getDb();
+  if (!db) return [];
+  const { lexTerms, wantedMatches } = expandQuery(query);
+  const qv = await getEmbedding(query);
+  if (!qv) return [];
+  const lit = JSON.stringify(qv);
+  const semRes = await db.execute(sql2`
+    SELECT chunk_id AS chunkId, MIN(VEC_COSINE_DISTANCE(embedding_vec, ${lit})) dist
+    FROM v2_embeddings GROUP BY chunk_id ORDER BY dist LIMIT 40`);
+  const semRanked = rows(semRes).map((r) => Number(r.chunkId));
+  let lexRanked = [];
+  if (lexTerms.length) {
+    const likeParts = lexTerms.map((t2) => sql2`LOWER(text) LIKE ${"%" + t2 + "%"}`);
+    const lexRes = await db.execute(sql2`
+      SELECT id, breadcrumb, text FROM v2_chunks WHERE ${sql2.join(likeParts, sql2` OR `)} LIMIT 400`);
+    const scored = rows(lexRes).map((r) => {
+      const hay = (r.text + " " + (r.breadcrumb || "")).toLowerCase();
+      const bc = (r.breadcrumb || "").toLowerCase();
+      let hits2 = 0, head = 0;
+      for (const t2 of lexTerms) {
+        if (hay.includes(t2)) hits2++;
+        if (bc.includes(t2)) head++;
+      }
+      return { id: Number(r.id), score: hits2 + head * 0.5 };
+    }).sort((a, b) => b.score - a.score);
+    lexRanked = scored.map((s) => s.id);
+  }
+  const fused = /* @__PURE__ */ new Map();
+  const add = (list, w) => list.forEach((id, rank) => fused.set(id, (fused.get(id) || 0) + w / (RRF_K + rank)));
+  add(semRanked, 1);
+  add(lexRanked, 0.9);
+  if (fused.size === 0) return [];
+  const cand = Array.from(fused.keys());
+  if (wantedMatches.length) {
+    const oidRes = await db.execute(sql2`
+      SELECT ch.id, d.official_id AS oid FROM v2_chunks ch JOIN v2_documents d ON d.id = ch.doc_id
+      WHERE ch.id IN (${sql2.join(cand.map((i) => sql2`${i}`), sql2`,`)})`);
+    const oidById = new Map(rows(oidRes).map((r) => [Number(r.id), r.oid || ""]));
+    for (const id of cand) {
+      const oid = oidById.get(id) || "";
+      if (wantedMatches.some((m) => oid.includes(m))) fused.set(id, fused.get(id) * 1.6);
+    }
+  }
+  const ranked = Array.from(fused.entries()).sort((a, b) => b[1] - a[1]).map(([id]) => id);
+  const take = rerank ? Math.max(topK, 12) : topK;
+  let hits = await hydrate(db, ranked.slice(0, take));
+  if (rerank) hits = await rerankLLM(query, hits);
+  return hits.slice(0, topK);
+}
+async function hydrate(db, ids) {
+  if (!ids.length) return [];
+  const res = await db.execute(sql2`
+    SELECT ch.id, ch.breadcrumb, ch.clause_no AS clauseNo, ch.node_key AS nodeKey,
+           ch.printed_page AS printedPage, ch.pdf_page AS pdfPage, ch.text,
+           d.official_id AS officialId, d.edition_year AS editionYear, d.slug
+    FROM v2_chunks ch JOIN v2_documents d ON d.id = ch.doc_id
+    WHERE ch.id IN (${sql2.join(ids.map((i) => sql2`${i}`), sql2`,`)})`);
+  const byId = /* @__PURE__ */ new Map();
+  for (const r of rows(res)) {
+    const nodeKey = r.nodeKey || null;
+    const officialId = r.officialId || "";
+    const editionYear = r.editionYear != null ? Number(r.editionYear) : null;
+    const clauseNo = r.clauseNo || null;
+    const printedPage = r.printedPage != null ? Number(r.printedPage) : null;
+    const citation = `${officialId}${editionYear ? ":" + editionYear : ""}` + (nodeKey ? `, ${nodeKey}. szakasz` : "") + (clauseNo ? ` (${clauseNo}) bek.` : "") + (printedPage != null ? `, ${printedPage}. o.` : "");
+    byId.set(Number(r.id), {
+      chunkId: Number(r.id),
+      breadcrumb: r.breadcrumb || "",
+      sectionNumber: nodeKey,
+      clauseNo,
+      printedPage,
+      pdfPage: r.pdfPage != null ? Number(r.pdfPage) : null,
+      text: r.text || "",
+      officialId,
+      editionYear,
+      slug: r.slug || "",
+      citation
+    });
+  }
+  return ids.map((id) => byId.get(id)).filter((x) => Boolean(x));
+}
+async function rerankLLM(query, cands) {
+  if (cands.length <= 1) return cands;
+  const list = cands.map(
+    (c, i) => `[${i}] ${c.breadcrumb ? c.breadcrumb + " \u2014 " : ""}${c.text.replace(/\s+/g, " ").slice(0, 320)}`
+  ).join("\n");
+  try {
+    const resp = await invokeLLM({
+      messages: [
+        { role: "system", content: `M\xE9rn\xF6ki szabv\xE1ny-keres\u0151 \xFAjrarangsorol\xF3. A sz\xF6vegr\xE9szletek k\xF6z\xFCl rangsorold azokat, amelyek K\xD6ZVETLEN\xDCL megv\xE1laszolj\xE1k a k\xE9rd\xE9st. \xDCgyelj a k\xE9rd\xE9s t\xE1rgy\xE1ra (pl. "ac\xE9l" \u2192 ac\xE9lszabv\xE1ny, ne betonszabv\xE1ny). V\xE1lasz JSON: {"order":[indexek cs\xF6kken\u0151 relevancia szerint]}. Legfeljebb 8 indexet sorolj.` },
+        { role: "user", content: `K\xE9rd\xE9s: "${query}"
+
+Sz\xF6vegr\xE9szletek:
+${list}` }
+      ],
+      response_format: { type: "json_object" }
+    });
+    const content = resp.choices?.[0]?.message?.content;
+    const order = JSON.parse(typeof content === "string" ? content : "{}").order;
+    if (!Array.isArray(order)) return cands;
+    const seen = /* @__PURE__ */ new Set();
+    const ranked = [];
+    for (const i of order) {
+      if (Number.isInteger(i) && i >= 0 && i < cands.length && !seen.has(i)) {
+        seen.add(i);
+        ranked.push(cands[i]);
+      }
+    }
+    cands.forEach((c, i) => {
+      if (!seen.has(i)) ranked.push(c);
+    });
+    return ranked;
+  } catch {
+    return cands;
+  }
+}
+var stemmer, stem, tokenize, groupStems, ruleStems, RRF_K;
+var init_search = __esm({
+  "server/v2/search.ts"() {
+    "use strict";
+    init_db();
+    init_embeddings();
+    init_llm();
+    init_config_generated();
+    stemmer = stemmerPkg.newStemmer("hungarian");
+    stem = (w) => stemmer.stem(w.toLowerCase());
+    tokenize = (s) => (s.toLowerCase().match(/[a-z0-9áéíóöőúüű_,]+/gi) || []).filter((t2) => t2.length >= 3);
+    groupStems = synonymGroups.map((g) => ({
+      terms: g.terms,
+      stems: new Set(g.terms.flatMap((t2) => tokenize(t2).map(stem)))
+    }));
+    ruleStems = docRules.map((r) => ({
+      match: r.match,
+      stems: new Set(r.topics.flatMap((t2) => tokenize(t2).map(stem)))
+    }));
+    RRF_K = 60;
+  }
+});
+
 // server/_core/suppressWarnings.ts
 var originalEmitWarning = process.emitWarning.bind(process);
 process.emitWarning = ((warning, ...args) => {
@@ -1234,167 +2087,8 @@ var adminProcedure = t.procedure.use(
 );
 
 // server/routers/compliance.ts
+init_llm();
 import { TRPCError as TRPCError2 } from "@trpc/server";
-
-// server/_core/llm.ts
-init_env();
-var ensureArray = (value) => Array.isArray(value) ? value : [value];
-var normalizeContentPart = (part) => {
-  if (typeof part === "string") {
-    return { type: "text", text: part };
-  }
-  if (part.type === "text") {
-    return part;
-  }
-  if (part.type === "image_url") {
-    return part;
-  }
-  if (part.type === "file_url") {
-    return part;
-  }
-  throw new Error("Unsupported message content part");
-};
-var normalizeMessage = (message) => {
-  const { role, name, tool_call_id } = message;
-  if (role === "tool" || role === "function") {
-    const content = ensureArray(message.content).map((part) => typeof part === "string" ? part : JSON.stringify(part)).join("\n");
-    return {
-      role,
-      name,
-      tool_call_id,
-      content
-    };
-  }
-  const contentParts = ensureArray(message.content).map(normalizeContentPart);
-  if (contentParts.length === 1 && contentParts[0].type === "text") {
-    return {
-      role,
-      name,
-      content: contentParts[0].text
-    };
-  }
-  return {
-    role,
-    name,
-    content: contentParts
-  };
-};
-var normalizeToolChoice = (toolChoice, tools) => {
-  if (!toolChoice) return void 0;
-  if (toolChoice === "none" || toolChoice === "auto") {
-    return toolChoice;
-  }
-  if (toolChoice === "required") {
-    if (!tools || tools.length === 0) {
-      throw new Error(
-        "tool_choice 'required' was provided but no tools were configured"
-      );
-    }
-    if (tools.length > 1) {
-      throw new Error(
-        "tool_choice 'required' needs a single tool or specify the tool name explicitly"
-      );
-    }
-    return {
-      type: "function",
-      function: { name: tools[0].function.name }
-    };
-  }
-  if ("name" in toolChoice) {
-    return {
-      type: "function",
-      function: { name: toolChoice.name }
-    };
-  }
-  return toolChoice;
-};
-var normalizeResponseFormat = ({
-  responseFormat,
-  response_format,
-  outputSchema,
-  output_schema
-}) => {
-  const explicitFormat = responseFormat || response_format;
-  if (explicitFormat) {
-    if (explicitFormat.type === "json_schema" && !explicitFormat.json_schema?.schema) {
-      throw new Error(
-        "responseFormat json_schema requires a defined schema object"
-      );
-    }
-    return explicitFormat;
-  }
-  const schema = outputSchema || output_schema;
-  if (!schema) return void 0;
-  if (!schema.name || !schema.schema) {
-    throw new Error("outputSchema requires both name and schema");
-  }
-  return {
-    type: "json_schema",
-    json_schema: {
-      name: schema.name,
-      schema: schema.schema,
-      ...typeof schema.strict === "boolean" ? { strict: schema.strict } : {}
-    }
-  };
-};
-async function invokeLLM(params) {
-  const cfg = getLlmChatConfig();
-  if (!cfg) {
-    throw new Error(
-      "Nincs LLM-provider konfigur\xE1lva. \xC1ll\xEDtsd be az OPENAI_API_KEY env-v\xE1ltoz\xF3t (vagy legacy: BUILT_IN_FORGE_API_KEY + BUILT_IN_FORGE_API_URL)."
-    );
-  }
-  const {
-    messages,
-    tools,
-    toolChoice,
-    tool_choice,
-    outputSchema,
-    output_schema,
-    responseFormat,
-    response_format
-  } = params;
-  const payload = {
-    model: cfg.model,
-    messages: messages.map(normalizeMessage)
-  };
-  if (tools && tools.length > 0) {
-    payload.tools = tools;
-  }
-  const normalizedToolChoice = normalizeToolChoice(
-    toolChoice || tool_choice,
-    tools
-  );
-  if (normalizedToolChoice) {
-    payload.tool_choice = normalizedToolChoice;
-  }
-  const maxTokensEnv = Number(process.env.LLM_MAX_TOKENS);
-  payload.max_completion_tokens = Number.isFinite(maxTokensEnv) && maxTokensEnv > 0 ? maxTokensEnv : 8192;
-  const normalizedResponseFormat = normalizeResponseFormat({
-    responseFormat,
-    response_format,
-    outputSchema,
-    output_schema
-  });
-  if (normalizedResponseFormat) {
-    payload.response_format = normalizedResponseFormat;
-  }
-  const response = await fetch(cfg.url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${cfg.apiKey}`
-    },
-    body: JSON.stringify(payload)
-  });
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `LLM invoke failed (${cfg.model}): ${response.status} ${response.statusText} \u2013 ${errorText}`
-    );
-  }
-  return await response.json();
-}
 
 // server/storage.ts
 init_env();
@@ -1488,67 +2182,8 @@ async function storagePut(relKey, data, contentType = "application/octet-stream"
 
 // server/routers/compliance.ts
 init_db();
+init_relevanceChunker();
 import { nanoid } from "nanoid";
-
-// server/relevanceChunker.ts
-function tokenise(text2) {
-  return text2.toLowerCase().replace(/[^\w\s]/g, " ").split(/\s+/).filter((t2) => t2.length > 2);
-}
-function buildTF(tokens) {
-  const tf = /* @__PURE__ */ new Map();
-  for (const t2 of tokens) {
-    tf.set(t2, (tf.get(t2) ?? 0) + 1);
-  }
-  return tf;
-}
-function overlapScore(a, b) {
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (const [term, countA] of Array.from(a.entries())) {
-    normA += countA * countA;
-    const countB = b.get(term) ?? 0;
-    dot += countA * countB;
-  }
-  for (const [, countB] of Array.from(b.entries())) {
-    normB += countB * countB;
-  }
-  if (normA === 0 || normB === 0) return 0;
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-}
-function chunkText(text2, chunkSize = 3e3, overlap = 300) {
-  const chunks = [];
-  let start = 0;
-  while (start < text2.length) {
-    chunks.push(text2.slice(start, start + chunkSize));
-    start += chunkSize - overlap;
-    if (start + overlap >= text2.length) break;
-  }
-  if (chunks.length === 0 || text2.length > (chunks[chunks.length - 1]?.length ?? 0)) {
-    const lastStart = Math.max(0, text2.length - chunkSize);
-    const lastChunk = text2.slice(lastStart);
-    if (!chunks.includes(lastChunk)) chunks.push(lastChunk);
-  }
-  return chunks;
-}
-function selectRelevantChunks(planText, regulationText, topK = 5, chunkSize = 3e3, overlap = 300) {
-  const planTokens = tokenise(planText.slice(0, 8e3));
-  const planTF = buildTF(planTokens);
-  const chunks = chunkText(regulationText, chunkSize, overlap);
-  const scored = chunks.map((text2, chunkIndex) => {
-    const tokens = tokenise(text2);
-    const tf = buildTF(tokens);
-    const score = overlapScore(planTF, tf);
-    return { text: text2, score, chunkIndex };
-  });
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, topK);
-}
-function buildRelevantExcerpt(planText, regulationText, topK = 5, chunkSize = 3e3, overlap = 300) {
-  const relevant = selectRelevantChunks(planText, regulationText, topK, chunkSize, overlap);
-  relevant.sort((a, b) => a.chunkIndex - b.chunkIndex);
-  return relevant.map((c) => c.text).join("\n\n---\n\n");
-}
 
 // server/auditLog.ts
 init_db();
@@ -2224,109 +2859,10 @@ import { z as z3 } from "zod";
 init_db();
 init_schema();
 init_regulationScraper();
+init_embeddings();
 import { TRPCError as TRPCError4 } from "@trpc/server";
 import { sql, isNull } from "drizzle-orm";
 import { and, eq as eq2, asc, inArray } from "drizzle-orm";
-
-// server/embeddings.ts
-init_env();
-var EMBEDDING_CHUNK_SIZE = 800;
-var EMBEDDING_CHUNK_OVERLAP = 100;
-var embeddingApiAvailable = null;
-async function callEmbeddingApi(input) {
-  const cfg = getLlmEmbeddingsConfig();
-  if (!cfg) return null;
-  try {
-    const res = await fetch(cfg.url, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${cfg.apiKey}`
-      },
-      body: JSON.stringify({ model: cfg.model, input }),
-      signal: AbortSignal.timeout(15e3)
-    });
-    if (!res.ok) {
-      return null;
-    }
-    const json2 = await res.json();
-    const vec = json2.data?.[0]?.embedding;
-    return Array.isArray(vec) && vec.length > 0 ? vec : null;
-  } catch {
-    return null;
-  }
-}
-async function callEmbeddingApiBatch(inputs, attempt = 1) {
-  const cfg = getLlmEmbeddingsConfig();
-  if (!cfg) return inputs.map(() => null);
-  try {
-    const res = await fetch(cfg.url, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${cfg.apiKey}` },
-      body: JSON.stringify({ model: cfg.model, input: inputs }),
-      signal: AbortSignal.timeout(6e4)
-    });
-    if (!res.ok) throw new Error(`embed ${res.status}`);
-    const json2 = await res.json();
-    const byIndex = /* @__PURE__ */ new Map();
-    for (const d of json2.data ?? []) {
-      if (typeof d.index === "number" && Array.isArray(d.embedding) && d.embedding.length > 0) {
-        byIndex.set(d.index, d.embedding);
-      }
-    }
-    return inputs.map((_, i) => byIndex.get(i) ?? null);
-  } catch {
-    if (attempt < 3) {
-      await new Promise((r) => setTimeout(r, 1e3 * 2 ** (attempt - 1)));
-      return callEmbeddingApiBatch(inputs, attempt + 1);
-    }
-    return inputs.map(() => null);
-  }
-}
-async function getEmbedding(text2) {
-  if (embeddingApiAvailable === false) return null;
-  const trimmed = text2.trim();
-  if (trimmed.length === 0) return null;
-  const vec = await callEmbeddingApi(trimmed);
-  if (vec) {
-    embeddingApiAvailable = true;
-    return vec;
-  }
-  embeddingApiAvailable = false;
-  return null;
-}
-function cosineSimilarity(a, b) {
-  if (a.length !== b.length || a.length === 0) return 0;
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  if (normA === 0 || normB === 0) return 0;
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-}
-async function chunkAndEmbed(text2, chunkSize = EMBEDDING_CHUNK_SIZE, overlap = EMBEDDING_CHUNK_OVERLAP) {
-  if (embeddingApiAvailable === false) return [];
-  const chunks = chunkText(text2, chunkSize, overlap).filter((c) => c.trim().length > 0);
-  if (chunks.length === 0) return [];
-  const BATCH = 50;
-  const result = [];
-  for (let i = 0; i < chunks.length; i += BATCH) {
-    const slice = chunks.slice(i, i + BATCH);
-    const vecs = await callEmbeddingApiBatch(slice);
-    slice.forEach((chunk, j) => {
-      const vec = vecs[j];
-      if (vec) result.push({ chunkIndex: i + j, text: chunk, embedding: vec });
-    });
-  }
-  embeddingApiAvailable = result.length > 0;
-  return result;
-}
-
-// server/routers/regulationSources.ts
 var disciplineEnum = z3.enum([
   "altalanos",
   "epiteszet",
@@ -2352,8 +2888,8 @@ var regulationSourcesRouter = router({
     const includeDeleted = input?.includeDeleted ?? false;
     const query = db.select().from(regulationSources);
     try {
-      const rows = includeDeleted ? await query.orderBy(asc(regulationSources.discipline), asc(regulationSources.name)) : await query.where(isNull(regulationSources.deletedAt)).orderBy(asc(regulationSources.discipline), asc(regulationSources.name));
-      return rows;
+      const rows2 = includeDeleted ? await query.orderBy(asc(regulationSources.discipline), asc(regulationSources.name)) : await query.where(isNull(regulationSources.deletedAt)).orderBy(asc(regulationSources.discipline), asc(regulationSources.name));
+      return rows2;
     } catch (err) {
       console.warn("[regulationSources.list] deletedAt column missing? Falling back to unfiltered:", err);
       return db.select().from(regulationSources).orderBy(asc(regulationSources.discipline), asc(regulationSources.name));
@@ -2369,11 +2905,11 @@ var regulationSourcesRouter = router({
     const db = await getDb();
     if (!db) return [];
     try {
-      const rows = await db.select({
+      const rows2 = await db.select({
         sourceId: chunkEmbeddings.sourceId,
         chunkCount: sql`count(*)`
       }).from(chunkEmbeddings).where(eq2(chunkEmbeddings.sourceType, "regulation")).groupBy(chunkEmbeddings.sourceId);
-      return rows.map((r) => ({ sourceId: r.sourceId, chunkCount: Number(r.chunkCount) }));
+      return rows2.map((r) => ({ sourceId: r.sourceId, chunkCount: Number(r.chunkCount) }));
     } catch (err) {
       console.error("[regulationSources] getEmbeddingCounts skipped:", err);
       return [];
@@ -2579,8 +3115,8 @@ var regulationSourcesRouter = router({
   fetchContent: publicProcedure.input(z3.object({ id: z3.number() })).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
-    const rows = await db.select().from(regulationSources).where(eq2(regulationSources.id, input.id)).limit(1);
-    const source = rows[0];
+    const rows2 = await db.select().from(regulationSources).where(eq2(regulationSources.id, input.id)).limit(1);
+    const source = rows2[0];
     if (!source) throw new TRPCError4({ code: "NOT_FOUND", message: "Jogszab\xE1ly forr\xE1s nem tal\xE1lhat\xF3" });
     if (!source.sourceUrl) {
       throw new TRPCError4({ code: "BAD_REQUEST", message: "Nincs URL megadva ehhez a forr\xE1shoz" });
@@ -2686,8 +3222,8 @@ var regulationSourcesRouter = router({
   regenerateEmbeddings: publicProcedure.input(z3.object({ id: z3.number().int().positive() })).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
-    const rows = await db.select().from(regulationSources).where(eq2(regulationSources.id, input.id)).limit(1);
-    const source = rows[0];
+    const rows2 = await db.select().from(regulationSources).where(eq2(regulationSources.id, input.id)).limit(1);
+    const source = rows2[0];
     if (!source) throw new TRPCError4({ code: "NOT_FOUND", message: "Jogszab\xE1ly forr\xE1s nem tal\xE1lhat\xF3" });
     if (!source.content || source.content.trim().length === 0) {
       return { chunkCount: 0, embeddingApiUnavailable: false, message: "A forr\xE1snak nincs let\xF6lt\xF6tt sz\xF6vege." };
@@ -2820,8 +3356,8 @@ var platformCredentialsRouter = router({
   testConnection: publicProcedure.input(z4.object({ platform: platformEnum })).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError5({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
-    const rows = await db.select().from(platformCredentials).where(eq3(platformCredentials.platform, input.platform)).limit(1);
-    const cred = rows[0];
+    const rows2 = await db.select().from(platformCredentials).where(eq3(platformCredentials.platform, input.platform)).limit(1);
+    const cred = rows2[0];
     if (!cred?.username || !cred?.encryptedPassword) {
       throw new TRPCError5({ code: "BAD_REQUEST", message: "Nincsenek mentett hiteles\xEDt\u0151 adatok ehhez a platformhoz." });
     }
@@ -2851,10 +3387,11 @@ var platformCredentialsRouter = router({
 
 // server/routers/standardsSearch.ts
 import { z as z5 } from "zod";
-import { TRPCError as TRPCError6 } from "@trpc/server";
+init_llm();
 init_db();
 init_schema();
-import { and as and2, desc as desc3, eq as eq4, like, or, sql as sql2 } from "drizzle-orm";
+import { TRPCError as TRPCError6 } from "@trpc/server";
+import { and as and2, desc as desc3, eq as eq4, like, or, sql as sql3 } from "drizzle-orm";
 
 // server/webSearch.ts
 import * as cheerio2 from "cheerio";
@@ -3079,6 +3616,7 @@ async function fetchUrlSources(urls, query) {
 }
 
 // server/routers/standardsSearch.ts
+init_embeddings();
 init_regulationScraper();
 init_schema();
 async function rewriteQuery(question) {
@@ -3161,7 +3699,7 @@ async function vectorSearchTopK(db, queryEmbedding, limit) {
   if (vectorSearchAvailable === false) return null;
   try {
     const literal = `[${queryEmbedding.join(",")}]`;
-    const res = await db.execute(sql2`
+    const res = await db.execute(sql3`
       SELECT id, source_type AS sourceType, source_id AS sourceId,
              chunk_index AS chunkIndex, text,
              1 - VEC_COSINE_DISTANCE(embedding_vec, ${literal}) AS score
@@ -3171,12 +3709,12 @@ async function vectorSearchTopK(db, queryEmbedding, limit) {
       LIMIT ${limit}
     `);
     const raw = Array.isArray(res) ? res[0] : res;
-    const rows = Array.isArray(raw) ? raw : [];
-    if (rows.length === 0) {
+    const rows2 = Array.isArray(raw) ? raw : [];
+    if (rows2.length === 0) {
       return null;
     }
     vectorSearchAvailable = true;
-    return rows.map((r) => ({
+    return rows2.map((r) => ({
       row: {
         id: Number(r.id),
         sourceType: String(r.sourceType),
@@ -3202,9 +3740,9 @@ async function semanticSearch(query, mode, topK = 8) {
   const includeKnowledgeBase = false;
   let scored = await vectorSearchTopK(db, queryEmbedding, topK * 2);
   if (scored === null) {
-    let rows = [];
+    let rows2 = [];
     try {
-      rows = await db.select({
+      rows2 = await db.select({
         id: chunkEmbeddings.id,
         sourceType: chunkEmbeddings.sourceType,
         sourceId: chunkEmbeddings.sourceId,
@@ -3216,9 +3754,9 @@ async function semanticSearch(query, mode, topK = 8) {
       console.error("[StandardsSearch] semantic search skipped (chunk_embeddings table missing?):", err);
       return [];
     }
-    if (rows.length === 0) return [];
+    if (rows2.length === 0) return [];
     const jsScored = [];
-    for (const row of rows) {
+    for (const row of rows2) {
       if (row.sourceType === "regulation" && !includeRegulations) continue;
       if (row.sourceType === "knowledge_base" && !includeKnowledgeBase) continue;
       if (!Array.isArray(row.embedding) || row.embedding.length === 0) continue;
@@ -3596,6 +4134,27 @@ var standardsSearchRouter = router({
     };
   }),
   /**
+   * V2 hivatkozás-központú keresés (Fázis 3) — a SEARCH_ENGINE=v2 flag mögött.
+   * A v2_* bizonyíték-magból ad idézhető találatokat (szakasz + oldalszám +
+   * teljes bekezdés + hivatkozás). A legacy `search` érintetlen.
+   */
+  searchV2: publicProcedure.input(
+    z5.object({
+      question: z5.string().min(2).max(1e3),
+      topK: z5.number().int().min(1).max(20).default(8),
+      rerank: z5.boolean().default(true)
+    })
+  ).mutation(async ({ input }) => {
+    const { hybridSearchV2: hybridSearchV22 } = await Promise.resolve().then(() => (init_search(), search_exports));
+    const hits = await hybridSearchV22(input.question, { topK: input.topK, rerank: input.rerank });
+    return { query: input.question, hits, engine: "v2" };
+  }),
+  /** A frontend így tudja, elérhető-e a v2 kereső (SEARCH_ENGINE=v2). */
+  engineInfo: publicProcedure.query(() => ({
+    searchEngine: (process.env.SEARCH_ENGINE ?? "legacy").toLowerCase(),
+    v2Available: true
+  })),
+  /**
    * Generate extended answer for an existing search result
    */
   extendAnswer: publicProcedure.input(
@@ -3605,8 +4164,8 @@ var standardsSearchRouter = router({
   ).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError6({ code: "INTERNAL_SERVER_ERROR", message: "Adatb\xE1zis nem el\xE9rhet\u0151." });
-    const rows = await db.select().from(searchQueries).where(eq4(searchQueries.id, input.queryId)).limit(1);
-    const query = rows[0];
+    const rows2 = await db.select().from(searchQueries).where(eq4(searchQueries.id, input.queryId)).limit(1);
+    const query = rows2[0];
     if (!query) throw new TRPCError6({ code: "NOT_FOUND", message: "Keres\xE9s nem tal\xE1lhat\xF3." });
     if (!query.answer) throw new TRPCError6({ code: "BAD_REQUEST", message: "Nincs alap v\xE1lasz a b\u0151v\xEDt\xE9shez." });
     if (query.extendedAnswer) {
@@ -3661,9 +4220,9 @@ var standardsSearchRouter = router({
   getQuery: publicProcedure.input(z5.object({ id: z5.number() })).query(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError6({ code: "INTERNAL_SERVER_ERROR", message: "Adatb\xE1zis nem el\xE9rhet\u0151." });
-    const rows = await db.select().from(searchQueries).where(eq4(searchQueries.id, input.id)).limit(1);
-    if (!rows[0]) throw new TRPCError6({ code: "NOT_FOUND", message: "Keres\xE9s nem tal\xE1lhat\xF3." });
-    return rows[0];
+    const rows2 = await db.select().from(searchQueries).where(eq4(searchQueries.id, input.id)).limit(1);
+    if (!rows2[0]) throw new TRPCError6({ code: "NOT_FOUND", message: "Keres\xE9s nem tal\xE1lhat\xF3." });
+    return rows2[0];
   }),
   /**
    * Delete a search query from history
@@ -3681,8 +4240,9 @@ import { z as z6 } from "zod";
 import { TRPCError as TRPCError7 } from "@trpc/server";
 init_db();
 init_schema();
-import { and as and3, eq as eq5, inArray as inArray2, isNull as isNull2, like as like2, or as or2, desc as desc4, sql as sql3 } from "drizzle-orm";
+import { and as and3, eq as eq5, inArray as inArray2, isNull as isNull2, like as like2, or as or2, desc as desc4, sql as sql4 } from "drizzle-orm";
 init_documentExtractor();
+init_embeddings();
 import { nanoid as nanoid2 } from "nanoid";
 var knowledgeBaseRouter = router({
   // List all documents, optionally filtered by search query, project, and
@@ -3847,11 +4407,11 @@ var knowledgeBaseRouter = router({
     const db = await getDb();
     if (!db) return [];
     try {
-      const rows = await db.select({
+      const rows2 = await db.select({
         sourceId: chunkEmbeddings.sourceId,
-        chunkCount: sql3`count(*)`
+        chunkCount: sql4`count(*)`
       }).from(chunkEmbeddings).where(eq5(chunkEmbeddings.sourceType, "knowledge_base")).groupBy(chunkEmbeddings.sourceId);
-      return rows.map((r) => ({ sourceId: r.sourceId, chunkCount: Number(r.chunkCount) }));
+      return rows2.map((r) => ({ sourceId: r.sourceId, chunkCount: Number(r.chunkCount) }));
     } catch (err) {
       console.error("[knowledgeBase] getEmbeddingCounts skipped:", err);
       return [];
@@ -3865,8 +4425,8 @@ var knowledgeBaseRouter = router({
   regenerateEmbeddings: publicProcedure.input(z6.object({ id: z6.number().int().positive() })).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError7({ code: "INTERNAL_SERVER_ERROR", message: "Adatb\xE1zis nem el\xE9rhet\u0151" });
-    const rows = await db.select().from(knowledgeBaseDocuments).where(eq5(knowledgeBaseDocuments.id, input.id)).limit(1);
-    const doc = rows[0];
+    const rows2 = await db.select().from(knowledgeBaseDocuments).where(eq5(knowledgeBaseDocuments.id, input.id)).limit(1);
+    const doc = rows2[0];
     if (!doc) throw new TRPCError7({ code: "NOT_FOUND", message: "Tud\xE1st\xE1r dokumentum nem tal\xE1lhat\xF3" });
     if (!doc.extractedText || doc.extractedText.trim().length === 0) {
       return { chunkCount: 0, embeddingApiUnavailable: false, message: "A dokumentumnak nincs kinyert sz\xF6vege." };
@@ -3930,8 +4490,8 @@ init_db();
 init_schema();
 var roleEnum = z7.enum(["owner", "member", "reviewer"]);
 async function getProjectMembership(db, projectId, userId) {
-  const rows = await db.select({ role: projectMembers.role }).from(projectMembers).where(and4(eq6(projectMembers.projectId, projectId), eq6(projectMembers.userId, userId))).limit(1);
-  return rows[0] ?? null;
+  const rows2 = await db.select({ role: projectMembers.role }).from(projectMembers).where(and4(eq6(projectMembers.projectId, projectId), eq6(projectMembers.userId, userId))).limit(1);
+  return rows2[0] ?? null;
 }
 async function requireMembership(db, projectId, userId) {
   const m = await getProjectMembership(db, projectId, userId);
@@ -3947,8 +4507,8 @@ async function requireOwnerForProject(db, projectId, userId) {
   }
 }
 async function countOwners(db, projectId) {
-  const rows = await db.select({ id: projectMembers.id }).from(projectMembers).where(and4(eq6(projectMembers.projectId, projectId), eq6(projectMembers.role, "owner")));
-  return rows.length;
+  const rows2 = await db.select({ id: projectMembers.id }).from(projectMembers).where(and4(eq6(projectMembers.projectId, projectId), eq6(projectMembers.role, "owner")));
+  return rows2.length;
 }
 var projectMembersRouter = router({
   /**
@@ -3957,7 +4517,7 @@ var projectMembersRouter = router({
   list: publicProcedure.input(z7.object({ projectId: z7.number().int().positive() })).query(async ({ input }) => {
     const db = await getDb();
     if (!db) return [];
-    const rows = await db.select({
+    const rows2 = await db.select({
       id: projectMembers.id,
       projectId: projectMembers.projectId,
       userId: projectMembers.userId,
@@ -3966,7 +4526,7 @@ var projectMembersRouter = router({
       userName: users.name,
       userEmail: users.email
     }).from(projectMembers).leftJoin(users, eq6(projectMembers.userId, users.id)).where(eq6(projectMembers.projectId, input.projectId));
-    return rows;
+    return rows2;
   }),
   /**
    * Add a user to a project by email. Owner-only.
@@ -4098,8 +4658,8 @@ var projectsRouter = router({
     if (!db) return [];
     const includeDeleted = input?.includeDeleted ?? false;
     const query = db.select().from(projects);
-    const rows = includeDeleted ? await query.orderBy(desc5(projects.createdAt)) : await query.where(ne(projects.status, "deleted")).orderBy(desc5(projects.createdAt));
-    return rows;
+    const rows2 = includeDeleted ? await query.orderBy(desc5(projects.createdAt)) : await query.where(ne(projects.status, "deleted")).orderBy(desc5(projects.createdAt));
+    return rows2;
   }),
   /**
    * Get a single project by id.
@@ -4107,8 +4667,8 @@ var projectsRouter = router({
   getById: publicProcedure.input(z8.object({ id: z8.number().int().positive() })).query(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError9({ code: "INTERNAL_SERVER_ERROR", message: "Adatb\xE1zis nem el\xE9rhet\u0151." });
-    const rows = await db.select().from(projects).where(eq7(projects.id, input.id)).limit(1);
-    const project = rows[0];
+    const rows2 = await db.select().from(projects).where(eq7(projects.id, input.id)).limit(1);
+    const project = rows2[0];
     if (!project) throw new TRPCError9({ code: "NOT_FOUND", message: "Projekt nem tal\xE1lhat\xF3." });
     return project;
   }),
@@ -4428,7 +4988,7 @@ var projectsRouter = router({
 
 // server/routers/audit.ts
 import { z as z9 } from "zod";
-import { and as and6, desc as desc6, eq as eq8, gte, sql as sql4 } from "drizzle-orm";
+import { and as and6, desc as desc6, eq as eq8, gte, sql as sql5 } from "drizzle-orm";
 init_db();
 init_schema();
 var eventTypeFilter = z9.enum([
@@ -4497,7 +5057,7 @@ var auditRouter = router({
     const items = await filtered.orderBy(desc6(auditLogs.createdAt)).limit(limit).offset(offset);
     let total = items.length;
     try {
-      const countQuery = db.select({ n: sql4`count(*)` }).from(auditLogs);
+      const countQuery = db.select({ n: sql5`count(*)` }).from(auditLogs);
       const countFiltered = conditions.length === 0 ? countQuery : conditions.length === 1 ? countQuery.where(conditions[0]) : countQuery.where(and6(...conditions));
       const countRows = await countFiltered;
       total = Number(countRows[0]?.n ?? items.length);
@@ -4515,8 +5075,8 @@ var auditRouter = router({
     const sinceDays = input?.sinceDays ?? 30;
     const cutoff = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1e3);
     try {
-      const rows = await db.select({ eventType: auditLogs.eventType, count: sql4`count(*)` }).from(auditLogs).where(gte(auditLogs.createdAt, cutoff)).groupBy(auditLogs.eventType).orderBy(desc6(sql4`count(*)`));
-      return rows.map((r) => ({ eventType: r.eventType, count: Number(r.count) }));
+      const rows2 = await db.select({ eventType: auditLogs.eventType, count: sql5`count(*)` }).from(auditLogs).where(gte(auditLogs.createdAt, cutoff)).groupBy(auditLogs.eventType).orderBy(desc6(sql5`count(*)`));
+      return rows2.map((r) => ({ eventType: r.eventType, count: Number(r.count) }));
     } catch (err) {
       console.error("[audit.summary] error:", err);
       return [];
@@ -4529,8 +5089,8 @@ var auditRouter = router({
     const db = await getDb();
     if (!db) return [];
     try {
-      const rows = await db.selectDistinct({ resourceType: auditLogs.resourceType }).from(auditLogs);
-      return rows.map((r) => r.resourceType).filter((r) => !!r).sort();
+      const rows2 = await db.selectDistinct({ resourceType: auditLogs.resourceType }).from(auditLogs);
+      return rows2.map((r) => r.resourceType).filter((r) => !!r).sort();
     } catch {
       return [];
     }
@@ -4559,8 +5119,8 @@ var searchSettingsRouter = router({
   get: protectedProcedure.query(async ({ ctx }) => {
     const db = await getDb();
     if (!db) return { ...DEFAULTS, isCustom: false };
-    const rows = await db.select().from(searchSettings).where(eq9(searchSettings.userId, ctx.user.id)).limit(1);
-    const row = rows[0];
+    const rows2 = await db.select().from(searchSettings).where(eq9(searchSettings.userId, ctx.user.id)).limit(1);
+    const row = rows2[0];
     if (!row) return { ...DEFAULTS, isCustom: false };
     return {
       answerLength: row.answerLength,
@@ -4613,7 +5173,7 @@ var searchSettingsRouter = router({
 // server/routers/admin.ts
 import { z as z11 } from "zod";
 import { TRPCError as TRPCError11 } from "@trpc/server";
-import { and as and7, desc as desc7, eq as eq10, isNotNull, sql as sql5 } from "drizzle-orm";
+import { and as and7, desc as desc7, eq as eq10, isNotNull, sql as sql6 } from "drizzle-orm";
 init_db();
 init_schema();
 var userRoleEnum = z11.enum(["user", "admin", "reviewer"]);
@@ -4625,22 +5185,22 @@ var adminRouter = router({
     const db = await getDb();
     if (!db) return null;
     try {
-      const [userCount] = await db.select({ n: sql5`count(*)` }).from(users);
-      const [projectCount] = await db.select({ n: sql5`count(*)` }).from(projects).where(eq10(projects.status, "active"));
-      const [analysisCount] = await db.select({ n: sql5`count(*)` }).from(analyses);
-      const [kbCount] = await db.select({ n: sql5`count(*)` }).from(knowledgeBaseDocuments);
-      const [regCount] = await db.select({ n: sql5`count(*)` }).from(regulationSources);
-      const [searchCount] = await db.select({ n: sql5`count(*)` }).from(searchQueries);
-      const [auditCount] = await db.select({ n: sql5`count(*)` }).from(auditLogs);
+      const [userCount] = await db.select({ n: sql6`count(*)` }).from(users);
+      const [projectCount] = await db.select({ n: sql6`count(*)` }).from(projects).where(eq10(projects.status, "active"));
+      const [analysisCount] = await db.select({ n: sql6`count(*)` }).from(analyses);
+      const [kbCount] = await db.select({ n: sql6`count(*)` }).from(knowledgeBaseDocuments);
+      const [regCount] = await db.select({ n: sql6`count(*)` }).from(regulationSources);
+      const [searchCount] = await db.select({ n: sql6`count(*)` }).from(searchQueries);
+      const [auditCount] = await db.select({ n: sql6`count(*)` }).from(auditLogs);
       let kbTrash = 0;
       let regTrash = 0;
       try {
-        const [r] = await db.select({ n: sql5`count(*)` }).from(knowledgeBaseDocuments).where(isNotNull(knowledgeBaseDocuments.deletedAt));
+        const [r] = await db.select({ n: sql6`count(*)` }).from(knowledgeBaseDocuments).where(isNotNull(knowledgeBaseDocuments.deletedAt));
         kbTrash = Number(r?.n ?? 0);
       } catch {
       }
       try {
-        const [r] = await db.select({ n: sql5`count(*)` }).from(regulationSources).where(isNotNull(regulationSources.deletedAt));
+        const [r] = await db.select({ n: sql6`count(*)` }).from(regulationSources).where(isNotNull(regulationSources.deletedAt));
         regTrash = Number(r?.n ?? 0);
       } catch {
       }
@@ -4665,7 +5225,7 @@ var adminRouter = router({
   listUsers: adminProcedure.input(z11.object({ search: z11.string().optional() }).optional()).query(async ({ input }) => {
     const db = await getDb();
     if (!db) return [];
-    const rows = await db.select({
+    const rows2 = await db.select({
       id: users.id,
       name: users.name,
       email: users.email,
@@ -4676,11 +5236,11 @@ var adminRouter = router({
     }).from(users).orderBy(desc7(users.lastSignedIn));
     if (input?.search?.trim()) {
       const q = input.search.trim().toLowerCase();
-      return rows.filter(
+      return rows2.filter(
         (u) => (u.name?.toLowerCase().includes(q) ?? false) || (u.email?.toLowerCase().includes(q) ?? false)
       );
     }
-    return rows;
+    return rows2;
   }),
   /**
    * Change a user's role. Admin-only. Cannot demote yourself if you'd be
@@ -4724,10 +5284,10 @@ var adminRouter = router({
       ownerEmail: users.email,
       createdAt: projects.createdAt,
       updatedAt: projects.updatedAt,
-      memberCount: sql5`(SELECT COUNT(*) FROM ${projectMembers} WHERE ${projectMembers.projectId} = ${projects.id})`
+      memberCount: sql6`(SELECT COUNT(*) FROM ${projectMembers} WHERE ${projectMembers.projectId} = ${projects.id})`
     }).from(projects).leftJoin(users, eq10(projects.ownerId, users.id));
-    const rows = includeDeleted ? await baseQuery.orderBy(desc7(projects.createdAt)) : await baseQuery.where(and7(eq10(projects.status, "active"))).orderBy(desc7(projects.createdAt));
-    return rows.map((r) => ({ ...r, memberCount: Number(r.memberCount) }));
+    const rows2 = includeDeleted ? await baseQuery.orderBy(desc7(projects.createdAt)) : await baseQuery.where(and7(eq10(projects.status, "active"))).orderBy(desc7(projects.createdAt));
+    return rows2.map((r) => ({ ...r, memberCount: Number(r.memberCount) }));
   }),
   /**
    * Empty trash — permanently deletes ALL soft-deleted regulationSources and
@@ -4765,7 +5325,7 @@ var adminRouter = router({
 // server/routers/notifications.ts
 import { z as z12 } from "zod";
 import { TRPCError as TRPCError12 } from "@trpc/server";
-import { and as and8, desc as desc8, eq as eq11, sql as sql6 } from "drizzle-orm";
+import { and as and8, desc as desc8, eq as eq11, sql as sql7 } from "drizzle-orm";
 init_db();
 init_schema();
 var notificationsRouter = router({
@@ -4797,8 +5357,8 @@ var notificationsRouter = router({
     const db = await getDb();
     if (!db) return { count: 0 };
     try {
-      const rows = await db.select({ n: sql6`count(*)` }).from(notifications).where(and8(eq11(notifications.userId, ctx.user.id), eq11(notifications.isRead, false)));
-      return { count: Number(rows[0]?.n ?? 0) };
+      const rows2 = await db.select({ n: sql7`count(*)` }).from(notifications).where(and8(eq11(notifications.userId, ctx.user.id), eq11(notifications.isRead, false)));
+      return { count: Number(rows2[0]?.n ?? 0) };
     } catch {
       return { count: 0 };
     }
@@ -5089,8 +5649,8 @@ async function maybeLoadDevUser() {
     const { eq: eq12 } = await import("drizzle-orm");
     const db = await getDb2();
     if (!db) return null;
-    const rows = await db.select().from(users2).where(eq12(users2.id, id)).limit(1);
-    return rows[0] ?? null;
+    const rows2 = await db.select().from(users2).where(eq12(users2.id, id)).limit(1);
+    return rows2[0] ?? null;
   } catch {
     return null;
   }
@@ -5106,8 +5666,8 @@ async function maybeLoadDemoUser(req) {
     const db = await getDb2();
     if (!db) return null;
     const email = demoUserEmail();
-    const rows = await db.select().from(users2).where(eq12(users2.email, email)).limit(1);
-    if (rows[0]) return rows[0];
+    const rows2 = await db.select().from(users2).where(eq12(users2.email, email)).limit(1);
+    if (rows2[0]) return rows2[0];
     await db.insert(users2).values({
       email,
       name: "Demo felhaszn\xE1l\xF3",
@@ -5127,8 +5687,8 @@ async function loadUserById(id) {
     const { eq: eq12 } = await import("drizzle-orm");
     const db = await getDb2();
     if (!db) return null;
-    const rows = await db.select().from(users2).where(eq12(users2.id, id)).limit(1);
-    return rows[0] ?? null;
+    const rows2 = await db.select().from(users2).where(eq12(users2.id, id)).limit(1);
+    return rows2[0] ?? null;
   } catch {
     return null;
   }
@@ -5204,16 +5764,16 @@ async function createApp() {
       if (!db) {
         out.db = "nem el\xE9rhet\u0151 (getDb null)";
       } else {
-        const { sql: sql7 } = await import("drizzle-orm");
-        const r1 = await db.execute(sql7`SELECT COUNT(*) AS n FROM regulation_sources`);
-        const r2 = await db.execute(sql7`SELECT COUNT(*) AS n FROM chunk_embeddings`);
+        const { sql: sql8 } = await import("drizzle-orm");
+        const r1 = await db.execute(sql8`SELECT COUNT(*) AS n FROM regulation_sources`);
+        const r2 = await db.execute(sql8`SELECT COUNT(*) AS n FROM chunk_embeddings`);
         const pick = (r) => Number((Array.isArray(r) ? r[0] : r)?.[0]?.n ?? -1);
         out.db = "ok";
         out.regulationSources = pick(r1);
         out.chunkEmbeddings = pick(r2);
         try {
           const r3 = await db.execute(
-            sql7`SELECT COUNT(*) AS n FROM chunk_embeddings WHERE embedding_vec IS NOT NULL`
+            sql8`SELECT COUNT(*) AS n FROM chunk_embeddings WHERE embedding_vec IS NOT NULL`
           );
           out.vectorColumnRows = pick(r3);
         } catch {
