@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Menu, X, BookOpen, Search, Settings as SettingsIcon, Sun, Moon, ShieldAlert, Bell, ExternalLink } from "lucide-react";
+import { Menu, X, BookOpen, Search, FileSearch, Settings as SettingsIcon, Sun, Moon, ShieldAlert, Bell, ExternalLink } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { trpc } from "@/lib/trpc";
@@ -10,6 +10,7 @@ const LOGO_URL = "https://d2xsxph8kpxj0f.cloudfront.net/109169450/Lkoz8HcKNEz8RQ
 // Audit menüpontok megszűntek (az Előzmények az Admin oldalra költözött).
 const navItems = [
   { href: "/search", label: "Szabványkereső", icon: Search },
+  { href: "/v2", label: "Hivatkozás-kereső", icon: FileSearch },
   { href: "/regulations", label: "Jogszabályok", icon: BookOpen },
 ];
 
