@@ -113,14 +113,20 @@ function expressHeadersToFetch(req: CreateExpressContextOptions["req"]): Headers
   return headers;
 }
 
-export async function createContext(
-  opts: CreateExpressContextOptions
-): Promise<TrpcContext> {
+/**
+ * A kérés autentikált felhasználójának feloldása (better-auth session → demo-cookie
+ * → dev-fallback), ugyanabban a sorrendben, mint a tRPC-context. Nyers Express
+ * route-ok (pl. a v2 PDF-proxy) is ezt használják, hogy a jogosultsági kapu
+ * egyetlen helyen legyen definiálva.
+ */
+export async function resolveUserFromReq(
+  req: CreateExpressContextOptions["req"]
+): Promise<User | null> {
   let user: User | null = null;
 
   // Primary: better-auth session
   try {
-    const sessionInfo = await getSessionFromHeaders(expressHeadersToFetch(opts.req));
+    const sessionInfo = await getSessionFromHeaders(expressHeadersToFetch(req));
     if (sessionInfo?.user?.id) {
       user = await loadUserById(sessionInfo.user.id);
     }
@@ -130,7 +136,7 @@ export async function createContext(
 
   // Demo-belépés (bemutató-környezet): aláírt demo-cookie → közös demo-user.
   if (!user) {
-    user = await maybeLoadDemoUser(opts.req);
+    user = await maybeLoadDemoUser(req);
   }
 
   // Dev-only fallback: if no real auth and LOCAL_DEV_USER_ID is set, inject
@@ -139,6 +145,13 @@ export async function createContext(
     user = await maybeLoadDevUser();
   }
 
+  return user;
+}
+
+export async function createContext(
+  opts: CreateExpressContextOptions
+): Promise<TrpcContext> {
+  const user = await resolveUserFromReq(opts.req);
   return {
     req: opts.req,
     res: opts.res,

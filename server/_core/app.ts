@@ -12,7 +12,7 @@ import "dotenv/config";
 import express, { type Express } from "express";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
-import { createContext } from "./context";
+import { createContext, resolveUserFromReq } from "./context";
 import { handleAuthRequest } from "./auth";
 import {
   DEMO_COOKIE_NAME,
@@ -150,6 +150,62 @@ export async function createApp(): Promise<Express> {
     } catch (err) {
       console.error("[auth-handler] error:", err);
       res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // ── V2 PDF-proxy (Fázis 4) ─────────────────────────────────────────────────
+  // A viewer innen tölti a szabvány-PDF-et (azonos origin → nincs CORS-gond, és
+  // a privát R2 presigned URL sose kerül a böngészőbe). Csak belépett/demo user
+  // kérheti, mert a szabványok szerzői jogvédettek. A `?page=` csak a viewer
+  // kényelmi paramétere, itt nincs szerepe (a teljes PDF megy vissza).
+  app.get("/api/v2/pdf/:chunkId", async (req, res) => {
+    try {
+      const user = await resolveUserFromReq(req);
+      if (!user) {
+        res.status(401).json({ error: "Belépés szükséges a szabvány megnyitásához." });
+        return;
+      }
+      const chunkId = Number(req.params.chunkId);
+      if (!Number.isInteger(chunkId) || chunkId <= 0) {
+        res.status(400).json({ error: "Érvénytelen azonosító." });
+        return;
+      }
+
+      const { getDb } = await import("../db");
+      const { sql } = await import("drizzle-orm");
+      const db = await getDb();
+      if (!db) {
+        res.status(500).json({ error: "Adatbázis nem elérhető." });
+        return;
+      }
+      const qres: unknown = await db.execute(sql`
+        SELECT d.pdf_r2_key AS r2Key, d.slug AS slug
+        FROM v2_chunks ch JOIN v2_documents d ON d.id = ch.doc_id
+        WHERE ch.id = ${chunkId} LIMIT 1`);
+      const first = Array.isArray(qres) ? (qres[0] as unknown) : (qres as unknown);
+      const arr = Array.isArray(first) ? first : [];
+      const row = arr[0] as { r2Key: string | null; slug: string | null } | undefined;
+      if (!row?.r2Key) {
+        res.status(404).json({ error: "Ehhez a szabványhoz nincs feltöltött PDF." });
+        return;
+      }
+
+      const { storageGet } = await import("../storage");
+      const { url } = await storageGet(row.r2Key);
+      const upstream = await fetch(url);
+      if (!upstream.ok || !upstream.body) {
+        res.status(502).json({ error: `A PDF nem tölthető le (${upstream.status}).` });
+        return;
+      }
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Length", String(buf.length));
+      res.setHeader("Content-Disposition", `inline; filename="${(row.slug || "szabvany")}.pdf"`);
+      res.setHeader("Cache-Control", "private, max-age=3600");
+      res.status(200).end(buf);
+    } catch (err) {
+      console.error("[v2-pdf] error:", err);
+      res.status(500).json({ error: "Váratlan hiba a PDF kiszolgálásakor." });
     }
   });
 

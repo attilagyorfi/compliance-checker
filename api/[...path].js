@@ -237,6 +237,132 @@ var init_llm = __esm({
   }
 });
 
+// server/storage.ts
+var storage_exports = {};
+__export(storage_exports, {
+  storageGet: () => storageGet,
+  storagePut: () => storagePut
+});
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+function pickProvider() {
+  if (process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY && process.env.R2_BUCKET) {
+    return "r2";
+  }
+  if (ENV.forgeApiUrl && ENV.forgeApiKey) {
+    return "forge";
+  }
+  return null;
+}
+function getR2Client() {
+  const accountId = process.env.R2_ACCOUNT_ID ?? "";
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID ?? "";
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY ?? "";
+  const bucket = process.env.R2_BUCKET ?? "";
+  const publicBaseUrl = process.env.R2_PUBLIC_BASE_URL?.trim() || null;
+  if (!accountId || !accessKeyId || !secretAccessKey || !bucket) {
+    throw new Error(
+      "R2 storage missing config. Required env: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET."
+    );
+  }
+  if (!_r2Client) {
+    _r2Client = new S3Client({
+      region: "auto",
+      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+      credentials: { accessKeyId, secretAccessKey }
+    });
+  }
+  return { client: _r2Client, bucket, publicBaseUrl };
+}
+function normalizeKey(relKey) {
+  return relKey.replace(/^\/+/, "");
+}
+async function r2Put(relKey, data, contentType) {
+  const { client, bucket, publicBaseUrl } = getR2Client();
+  const key = normalizeKey(relKey);
+  const body = typeof data === "string" ? Buffer.from(data, "utf8") : data;
+  await client.send(new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    Body: body,
+    ContentType: contentType
+  }));
+  const url = publicBaseUrl ? `${publicBaseUrl.replace(/\/+$/, "")}/${key}` : await getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn: 24 * 60 * 60 });
+  return { key, url };
+}
+async function r2Get(relKey) {
+  const { client, bucket, publicBaseUrl } = getR2Client();
+  const key = normalizeKey(relKey);
+  const url = publicBaseUrl ? `${publicBaseUrl.replace(/\/+$/, "")}/${key}` : await getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn: 24 * 60 * 60 });
+  return { key, url };
+}
+function ensureTrailingSlash(value) {
+  return value.endsWith("/") ? value : `${value}/`;
+}
+function buildAuthHeaders(apiKey) {
+  return { Authorization: `Bearer ${apiKey}` };
+}
+function toFormData(data, contentType, fileName) {
+  const blob = typeof data === "string" ? new Blob([data], { type: contentType }) : new Blob([data], { type: contentType });
+  const form = new FormData();
+  form.append("file", blob, fileName || "file");
+  return form;
+}
+async function forgePut(relKey, data, contentType) {
+  const baseUrl = ENV.forgeApiUrl.replace(/\/+$/, "");
+  const apiKey = ENV.forgeApiKey;
+  const key = normalizeKey(relKey);
+  const uploadUrl = new URL("v1/storage/upload", ensureTrailingSlash(baseUrl));
+  uploadUrl.searchParams.set("path", key);
+  const formData = toFormData(data, contentType, key.split("/").pop() ?? key);
+  const response = await fetch(uploadUrl, {
+    method: "POST",
+    headers: buildAuthHeaders(apiKey),
+    body: formData
+  });
+  if (!response.ok) {
+    const message = await response.text().catch(() => response.statusText);
+    throw new Error(`Storage upload failed (${response.status} ${response.statusText}): ${message}`);
+  }
+  const url = (await response.json()).url;
+  return { key, url };
+}
+async function forgeGet(relKey) {
+  const baseUrl = ENV.forgeApiUrl.replace(/\/+$/, "");
+  const apiKey = ENV.forgeApiKey;
+  const key = normalizeKey(relKey);
+  const downloadApiUrl = new URL("v1/storage/downloadUrl", ensureTrailingSlash(baseUrl));
+  downloadApiUrl.searchParams.set("path", key);
+  const response = await fetch(downloadApiUrl, {
+    method: "GET",
+    headers: buildAuthHeaders(apiKey)
+  });
+  const url = (await response.json()).url;
+  return { key, url };
+}
+async function storagePut(relKey, data, contentType = "application/octet-stream") {
+  const provider = pickProvider();
+  if (provider === "r2") return r2Put(relKey, data, contentType);
+  if (provider === "forge") return forgePut(relKey, data, contentType);
+  throw new Error(
+    "Storage nincs konfigur\xE1lva. \xDAj deploy: R2_ACCOUNT_ID + R2_ACCESS_KEY_ID + R2_SECRET_ACCESS_KEY + R2_BUCKET. Legacy: BUILT_IN_FORGE_API_URL + BUILT_IN_FORGE_API_KEY."
+  );
+}
+async function storageGet(relKey) {
+  const provider = pickProvider();
+  if (provider === "r2") return r2Get(relKey);
+  if (provider === "forge") return forgeGet(relKey);
+  throw new Error("Storage nincs konfigur\xE1lva.");
+}
+var _r2Client;
+var init_storage = __esm({
+  "server/storage.ts"() {
+    "use strict";
+    init_env();
+    _r2Client = null;
+  }
+});
+
 // drizzle/schema.ts
 var schema_exports = {};
 __export(schema_exports, {
@@ -1941,7 +2067,7 @@ async function hydrate(db, ids) {
   if (!ids.length) return [];
   const res = await db.execute(sql2`
     SELECT ch.id, ch.breadcrumb, ch.clause_no AS clauseNo, ch.node_key AS nodeKey,
-           ch.printed_page AS printedPage, ch.pdf_page AS pdfPage, ch.text,
+           ch.printed_page AS printedPage, ch.pdf_page AS pdfPage, ch.text, ch.bbox_json AS bboxJson,
            d.official_id AS officialId, d.edition_year AS editionYear, d.slug
     FROM v2_chunks ch JOIN v2_documents d ON d.id = ch.doc_id
     WHERE ch.id IN (${sql2.join(ids.map((i) => sql2`${i}`), sql2`,`)})`);
@@ -1952,6 +2078,18 @@ async function hydrate(db, ids) {
     const editionYear = r.editionYear != null ? Number(r.editionYear) : null;
     const clauseNo = r.clauseNo || null;
     const printedPage = r.printedPage != null ? Number(r.printedPage) : null;
+    let bbox = null;
+    const bboxRaw = r.bboxJson;
+    if (typeof bboxRaw === "string" && bboxRaw.trim()) {
+      try {
+        const parsed = JSON.parse(bboxRaw);
+        if (Array.isArray(parsed) && parsed.length === 4 && parsed.every((n) => typeof n === "number")) {
+          bbox = parsed;
+        }
+      } catch {
+        bbox = null;
+      }
+    }
     const citation = `${officialId}${editionYear ? ":" + editionYear : ""}` + (nodeKey ? `, ${nodeKey}. szakasz` : "") + (clauseNo ? ` (${clauseNo}) bek.` : "") + (printedPage != null ? `, ${printedPage}. o.` : "");
     byId.set(Number(r.id), {
       chunkId: Number(r.id),
@@ -1964,7 +2102,8 @@ async function hydrate(db, ids) {
       officialId,
       editionYear,
       slug: r.slug || "",
-      citation
+      citation,
+      bbox
     });
   }
   return ids.map((id) => byId.get(id)).filter((x) => Boolean(x));
@@ -2088,101 +2227,10 @@ var adminProcedure = t.procedure.use(
 
 // server/routers/compliance.ts
 init_llm();
-import { TRPCError as TRPCError2 } from "@trpc/server";
-
-// server/storage.ts
-init_env();
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-function pickProvider() {
-  if (process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY && process.env.R2_BUCKET) {
-    return "r2";
-  }
-  if (ENV.forgeApiUrl && ENV.forgeApiKey) {
-    return "forge";
-  }
-  return null;
-}
-var _r2Client = null;
-function getR2Client() {
-  const accountId = process.env.R2_ACCOUNT_ID ?? "";
-  const accessKeyId = process.env.R2_ACCESS_KEY_ID ?? "";
-  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY ?? "";
-  const bucket = process.env.R2_BUCKET ?? "";
-  const publicBaseUrl = process.env.R2_PUBLIC_BASE_URL?.trim() || null;
-  if (!accountId || !accessKeyId || !secretAccessKey || !bucket) {
-    throw new Error(
-      "R2 storage missing config. Required env: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET."
-    );
-  }
-  if (!_r2Client) {
-    _r2Client = new S3Client({
-      region: "auto",
-      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
-      credentials: { accessKeyId, secretAccessKey }
-    });
-  }
-  return { client: _r2Client, bucket, publicBaseUrl };
-}
-function normalizeKey(relKey) {
-  return relKey.replace(/^\/+/, "");
-}
-async function r2Put(relKey, data, contentType) {
-  const { client, bucket, publicBaseUrl } = getR2Client();
-  const key = normalizeKey(relKey);
-  const body = typeof data === "string" ? Buffer.from(data, "utf8") : data;
-  await client.send(new PutObjectCommand({
-    Bucket: bucket,
-    Key: key,
-    Body: body,
-    ContentType: contentType
-  }));
-  const url = publicBaseUrl ? `${publicBaseUrl.replace(/\/+$/, "")}/${key}` : await getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn: 24 * 60 * 60 });
-  return { key, url };
-}
-function ensureTrailingSlash(value) {
-  return value.endsWith("/") ? value : `${value}/`;
-}
-function buildAuthHeaders(apiKey) {
-  return { Authorization: `Bearer ${apiKey}` };
-}
-function toFormData(data, contentType, fileName) {
-  const blob = typeof data === "string" ? new Blob([data], { type: contentType }) : new Blob([data], { type: contentType });
-  const form = new FormData();
-  form.append("file", blob, fileName || "file");
-  return form;
-}
-async function forgePut(relKey, data, contentType) {
-  const baseUrl = ENV.forgeApiUrl.replace(/\/+$/, "");
-  const apiKey = ENV.forgeApiKey;
-  const key = normalizeKey(relKey);
-  const uploadUrl = new URL("v1/storage/upload", ensureTrailingSlash(baseUrl));
-  uploadUrl.searchParams.set("path", key);
-  const formData = toFormData(data, contentType, key.split("/").pop() ?? key);
-  const response = await fetch(uploadUrl, {
-    method: "POST",
-    headers: buildAuthHeaders(apiKey),
-    body: formData
-  });
-  if (!response.ok) {
-    const message = await response.text().catch(() => response.statusText);
-    throw new Error(`Storage upload failed (${response.status} ${response.statusText}): ${message}`);
-  }
-  const url = (await response.json()).url;
-  return { key, url };
-}
-async function storagePut(relKey, data, contentType = "application/octet-stream") {
-  const provider = pickProvider();
-  if (provider === "r2") return r2Put(relKey, data, contentType);
-  if (provider === "forge") return forgePut(relKey, data, contentType);
-  throw new Error(
-    "Storage nincs konfigur\xE1lva. \xDAj deploy: R2_ACCOUNT_ID + R2_ACCESS_KEY_ID + R2_SECRET_ACCESS_KEY + R2_BUCKET. Legacy: BUILT_IN_FORGE_API_URL + BUILT_IN_FORGE_API_KEY."
-  );
-}
-
-// server/routers/compliance.ts
+init_storage();
 init_db();
 init_relevanceChunker();
+import { TRPCError as TRPCError2 } from "@trpc/server";
 import { nanoid } from "nanoid";
 
 // server/auditLog.ts
@@ -4240,9 +4288,10 @@ import { z as z6 } from "zod";
 import { TRPCError as TRPCError7 } from "@trpc/server";
 init_db();
 init_schema();
-import { and as and3, eq as eq5, inArray as inArray2, isNull as isNull2, like as like2, or as or2, desc as desc4, sql as sql4 } from "drizzle-orm";
+init_storage();
 init_documentExtractor();
 init_embeddings();
+import { and as and3, eq as eq5, inArray as inArray2, isNull as isNull2, like as like2, or as or2, desc as desc4, sql as sql4 } from "drizzle-orm";
 import { nanoid as nanoid2 } from "nanoid";
 var knowledgeBaseRouter = router({
   // List all documents, optionally filtered by search query, project, and
@@ -5705,10 +5754,10 @@ function expressHeadersToFetch(req) {
   }
   return headers;
 }
-async function createContext(opts) {
+async function resolveUserFromReq(req) {
   let user = null;
   try {
-    const sessionInfo = await getSessionFromHeaders(expressHeadersToFetch(opts.req));
+    const sessionInfo = await getSessionFromHeaders(expressHeadersToFetch(req));
     if (sessionInfo?.user?.id) {
       user = await loadUserById(sessionInfo.user.id);
     }
@@ -5716,11 +5765,15 @@ async function createContext(opts) {
     user = null;
   }
   if (!user) {
-    user = await maybeLoadDemoUser(opts.req);
+    user = await maybeLoadDemoUser(req);
   }
   if (!user) {
     user = await maybeLoadDevUser();
   }
+  return user;
+}
+async function createContext(opts) {
+  const user = await resolveUserFromReq(opts.req);
   return {
     req: opts.req,
     res: opts.res,
@@ -5843,6 +5896,54 @@ async function createApp() {
     } catch (err) {
       console.error("[auth-handler] error:", err);
       res.status(500).json({ error: String(err) });
+    }
+  });
+  app.get("/api/v2/pdf/:chunkId", async (req, res) => {
+    try {
+      const user = await resolveUserFromReq(req);
+      if (!user) {
+        res.status(401).json({ error: "Bel\xE9p\xE9s sz\xFCks\xE9ges a szabv\xE1ny megnyit\xE1s\xE1hoz." });
+        return;
+      }
+      const chunkId = Number(req.params.chunkId);
+      if (!Number.isInteger(chunkId) || chunkId <= 0) {
+        res.status(400).json({ error: "\xC9rv\xE9nytelen azonos\xEDt\xF3." });
+        return;
+      }
+      const { getDb: getDb2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const { sql: sql8 } = await import("drizzle-orm");
+      const db = await getDb2();
+      if (!db) {
+        res.status(500).json({ error: "Adatb\xE1zis nem el\xE9rhet\u0151." });
+        return;
+      }
+      const qres = await db.execute(sql8`
+        SELECT d.pdf_r2_key AS r2Key, d.slug AS slug
+        FROM v2_chunks ch JOIN v2_documents d ON d.id = ch.doc_id
+        WHERE ch.id = ${chunkId} LIMIT 1`);
+      const first = Array.isArray(qres) ? qres[0] : qres;
+      const arr = Array.isArray(first) ? first : [];
+      const row = arr[0];
+      if (!row?.r2Key) {
+        res.status(404).json({ error: "Ehhez a szabv\xE1nyhoz nincs felt\xF6lt\xF6tt PDF." });
+        return;
+      }
+      const { storageGet: storageGet2 } = await Promise.resolve().then(() => (init_storage(), storage_exports));
+      const { url } = await storageGet2(row.r2Key);
+      const upstream = await fetch(url);
+      if (!upstream.ok || !upstream.body) {
+        res.status(502).json({ error: `A PDF nem t\xF6lthet\u0151 le (${upstream.status}).` });
+        return;
+      }
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Length", String(buf.length));
+      res.setHeader("Content-Disposition", `inline; filename="${row.slug || "szabvany"}.pdf"`);
+      res.setHeader("Cache-Control", "private, max-age=3600");
+      res.status(200).end(buf);
+    } catch (err) {
+      console.error("[v2-pdf] error:", err);
+      res.status(500).json({ error: "V\xE1ratlan hiba a PDF kiszolg\xE1l\xE1sakor." });
     }
   });
   app.use(

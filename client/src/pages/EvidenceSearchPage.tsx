@@ -9,12 +9,13 @@
 
 import { useState, useRef } from "react";
 import {
-  Search, Loader2, Copy, Check, Send, ChevronDown, ChevronUp, FileText, BookOpen, Info,
+  Search, Loader2, Copy, Check, Send, ChevronDown, ChevronUp, FileText, BookOpen, Info, Locate,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import Header from "@/components/Header";
+import PdfViewerModal from "@/components/PdfViewerModal";
 import { trpc } from "@/lib/trpc";
 
 const PINNED = [
@@ -27,7 +28,7 @@ const PINNED = [
   "Tartószerkezet tervezési alapelvei",
 ];
 
-function HitCard({ hit }: { hit: any }) {
+function HitCard({ hit, onOpenSource }: { hit: any; onOpenSource: () => void }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const long = (hit.text || "").length > 420;
@@ -79,14 +80,24 @@ function HitCard({ hit }: { hit: any }) {
         >
           {long && !open ? (hit.text.slice(0, 420) + "…") : hit.text}
         </blockquote>
-        {long && (
+        <div className="flex items-center justify-between gap-2 mt-2">
           <button
-            onClick={() => setOpen((v) => !v)}
-            className="mt-1.5 text-xs text-[#7CA9D3] hover:underline flex items-center gap-1"
+            onClick={onOpenSource}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-colors flex-shrink-0"
+            style={{ backgroundColor: "#4A7BA8" }}
+            title="A szabvány-PDF megnyitása a keresett résznél, kiemelve"
           >
-            {open ? <><ChevronUp size={12} /> Összecsukás</> : <><ChevronDown size={12} /> Teljes bekezdés</>}
+            <Locate size={13} /> Ugrás a forráshoz
           </button>
-        )}
+          {long && (
+            <button
+              onClick={() => setOpen((v) => !v)}
+              className="text-xs text-[#7CA9D3] hover:underline flex items-center gap-1 flex-shrink-0"
+            >
+              {open ? <><ChevronUp size={12} /> Összecsukás</> : <><ChevronDown size={12} /> Teljes bekezdés</>}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -95,6 +106,7 @@ function HitCard({ hit }: { hit: any }) {
 export default function EvidenceSearchPage() {
   const [question, setQuestion] = useState("");
   const [hits, setHits] = useState<any[] | null>(null);
+  const [viewerHit, setViewerHit] = useState<any | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   const searchMut = trpc.standardsSearch.searchV2.useMutation({
@@ -200,12 +212,25 @@ export default function EvidenceSearchPage() {
                   <Info size={13} style={{ color: "#7CA9D3" }} />
                   {hits.length} találat — a legrelevánsabb szakaszok, teljes szöveggel és hivatkozással.
                 </div>
-                {hits.map((h) => <HitCard key={h.chunkId} hit={h} />)}
+                {hits.map((h) => (
+                  <HitCard key={h.chunkId} hit={h} onOpenSource={() => setViewerHit(h)} />
+                ))}
               </div>
             )
           )}
         </div>
       </main>
+
+      {viewerHit && (
+        <PdfViewerModal
+          chunkId={viewerHit.chunkId}
+          pdfPage={viewerHit.pdfPage ?? 1}
+          highlight={viewerHit.text ?? ""}
+          citation={viewerHit.citation ?? ""}
+          bbox={viewerHit.bbox ?? null}
+          onClose={() => setViewerHit(null)}
+        />
+      )}
     </div>
   );
 }

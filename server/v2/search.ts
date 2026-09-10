@@ -46,6 +46,10 @@ export interface EvidenceHit {
   editionYear: number | null;
   slug: string;
   citation: string;
+  /** A szakasz befoglaló téglalapja a PDF-oldalon: [x0,y0,x1,y1] pont-egységben,
+   * bal-felső origó (PyMuPDF, ingestion-kor tárolva). A viewer ebből rajzol
+   * kiemelést — a PDF.js szöveg-rétegtől függetlenül, mojibake-doksiknál is. */
+  bbox: number[] | null;
 }
 
 function expandQuery(query: string) {
@@ -134,7 +138,7 @@ async function hydrate(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, ids: 
   if (!ids.length) return [];
   const res = await db.execute(sql`
     SELECT ch.id, ch.breadcrumb, ch.clause_no AS clauseNo, ch.node_key AS nodeKey,
-           ch.printed_page AS printedPage, ch.pdf_page AS pdfPage, ch.text,
+           ch.printed_page AS printedPage, ch.pdf_page AS pdfPage, ch.text, ch.bbox_json AS bboxJson,
            d.official_id AS officialId, d.edition_year AS editionYear, d.slug
     FROM v2_chunks ch JOIN v2_documents d ON d.id = ch.doc_id
     WHERE ch.id IN (${sql.join(ids.map((i) => sql`${i}`), sql`,`)})`);
@@ -145,6 +149,16 @@ async function hydrate(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, ids: 
     const editionYear = r.editionYear != null ? Number(r.editionYear) : null;
     const clauseNo = (r.clauseNo as string) || null;
     const printedPage = r.printedPage != null ? Number(r.printedPage) : null;
+    let bbox: number[] | null = null;
+    const bboxRaw = r.bboxJson;
+    if (typeof bboxRaw === "string" && bboxRaw.trim()) {
+      try {
+        const parsed = JSON.parse(bboxRaw);
+        if (Array.isArray(parsed) && parsed.length === 4 && parsed.every((n) => typeof n === "number")) {
+          bbox = parsed as number[];
+        }
+      } catch { bbox = null; }
+    }
     const citation =
       `${officialId}${editionYear ? ":" + editionYear : ""}` +
       (nodeKey ? `, ${nodeKey}. szakasz` : "") +
@@ -162,6 +176,7 @@ async function hydrate(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, ids: 
       editionYear,
       slug: (r.slug as string) || "",
       citation,
+      bbox,
     });
   }
   return ids.map((id) => byId.get(id)).filter((x): x is EvidenceHit => Boolean(x));

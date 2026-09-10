@@ -212,6 +212,13 @@ def parse(pdf_path: str):
             # törzs: folytatás vagy önálló bekezdés
             if cur_chunk:
                 cur_chunk["text"] += " " + t
+                # A bbox a bekezdés SORAINAK UNIÓJA (a kezdő oldalon), hogy a
+                # kiemelés a teljes szakaszt fedje, ne csak az első sort/jelölőt.
+                # Lapváltásnál nem bővítünk (a koordináták a másik lap terében vannak).
+                if cur_chunk.get("pdf_page") == pno + 1:
+                    b, nb = cur_chunk["bbox"], l["bbox"]
+                    cur_chunk["bbox"] = [min(b[0], nb[0]), min(b[1], nb[1]),
+                                         max(b[2], nb[2]), max(b[3], nb[3])]
             else:
                 cur_chunk = {
                     "id": f"{doc_slug}__{cur_path[-1][0] if cur_path else '0'}__p{len(chunks)}",
