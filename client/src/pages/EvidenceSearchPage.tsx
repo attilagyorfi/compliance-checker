@@ -127,32 +127,42 @@ export default function EvidenceSearchPage() {
     if (!hits || hits.length === 0) return;
     const esc = (s: unknown) =>
       String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] as string));
+    // A PDF-ből átvett szöveg sortörés-kötőjeleit és többszörös szóközeit
+    // rendbe tesszük, hogy a riport ne "csússzon össze".
+    const clean = (s: unknown) =>
+      String(s ?? "")
+        .replace(/\r?\n/g, " ")
+        .replace(/([A-Za-z0-9áéíóöőúüűÁÉÍÓÖŐÚÜŰ])-\s+([a-záéíóöőúüű])/g, "$1$2")
+        .replace(/\s{2,}/g, " ")
+        .trim();
     const now = new Date().toLocaleString("hu-HU");
     const itemsHtml = hits.map((h: any, i: number) =>
       `<li>
-        <div class="cite"><span class="sn">[${i + 1}]</span> ${esc(h.citation)}</div>
-        ${h.breadcrumb ? `<div class="bc">${esc(h.breadcrumb)}</div>` : ""}
-        <div class="tx">${esc(String(h.text || "").trim())}</div>
+        <div class="cite"><span class="sn">${i + 1}.</span> ${esc(h.citation)}</div>
+        ${h.breadcrumb ? `<div class="bc">${esc(clean(h.breadcrumb))}</div>` : ""}
+        <div class="tx">${esc(clean(h.text))}</div>
       </li>`
     ).join("");
     const html = `<!doctype html><html lang="hu"><head><meta charset="utf-8">
 <title>Szabvány-keresési riport</title>
 <style>
   * { box-sizing: border-box; }
-  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #1a1a1a; max-width: 800px; margin: 32px auto; padding: 0 24px; line-height: 1.55; }
-  .brand { display:flex; align-items:baseline; justify-content:space-between; border-bottom: 3px solid #7CA9D3; padding-bottom: 10px; }
+  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #1a1a1a; max-width: 760px; margin: 40px auto; padding: 0 28px; line-height: 1.6; font-size: 14px; }
+  .brand { display:flex; align-items:baseline; justify-content:space-between; border-bottom: 3px solid #7CA9D3; padding-bottom: 12px; }
   .brand h1 { font-size: 18px; margin: 0; color:#161718; }
   .brand .sub { color:#7CA9D3; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
-  .meta { color:#666; font-size:12px; margin: 8px 0 20px; }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing:.04em; color:#7CA9D3; margin: 22px 0 6px; }
-  .q { font-size: 15px; font-weight: 600; }
-  ol { padding-left: 0; list-style: none; } li { margin-bottom: 16px; }
-  .cite { font-size: 13px; font-weight: 700; color:#161718; }
-  .sn { color:#7CA9D3; }
-  .bc { color:#888; font-size: 11px; margin: 2px 0; }
-  .tx { font-size: 13px; color:#333; background:#f6f8fa; border-left:2px solid #7CA9D3; padding:8px 12px; margin-top:4px; border-radius:3px; white-space: pre-wrap; }
-  footer { margin-top: 28px; padding-top: 12px; border-top: 1px solid #ddd; color:#888; font-size: 11px; }
-  @media print { body { margin: 0; } }
+  .meta { color:#666; font-size:12px; margin: 10px 0 28px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing:.05em; color:#7CA9D3; margin: 28px 0 10px; }
+  .q { font-size: 16px; font-weight: 600; margin: 0; }
+  ol { padding: 0; margin: 0; list-style: none; }
+  li { padding: 18px 0 22px; border-bottom: 1px solid #ececec; }
+  li:last-child { border-bottom: none; }
+  .cite { font-size: 14px; font-weight: 700; color:#161718; margin-bottom: 5px; }
+  .sn { color:#7CA9D3; margin-right: 4px; }
+  .bc { color:#8a8a8a; font-size: 11.5px; margin: 0 0 10px; }
+  .tx { font-size: 13.5px; line-height: 1.75; color:#2a2a2a; background:#f6f8fa; border-left:3px solid #7CA9D3; padding: 12px 16px; border-radius:4px; }
+  footer { margin-top: 36px; padding-top: 14px; border-top: 1px solid #ddd; color:#888; font-size: 11px; line-height: 1.6; }
+  @media print { body { margin: 0; max-width: none; } li { break-inside: avoid; } }
 </style></head><body>
   <div class="brand"><h1>M Mérnöki Iroda Kft.</h1><span class="sub">Szabvány-keresési riport</span></div>
   <div class="meta">Készült: ${now} &middot; Találatok száma: ${hits.length}</div>
@@ -160,8 +170,8 @@ export default function EvidenceSearchPage() {
   <h2>Talált szabvány-szakaszok (${hits.length})</h2>
   <ol>${itemsHtml}</ol>
   <footer>Ezt a riportot a Tervmegfelelőség-ellenőrző állította elő ${now}-kor a betöltött szabványok alapján.
-  Minden idézet szó szerint a hivatkozott szabvány-szakaszból származik — kérjük, a végleges felhasználás előtt ellenőrizze a forrás-PDF-eket.</footer>
-  <script>window.onload=function(){setTimeout(function(){window.print();},250);};</script>
+  Minden idézet a hivatkozott szabvány-szakaszból származik — kérjük, a végleges felhasználás előtt ellenőrizze a forrás-PDF-eket.</footer>
+  <script>window.onload=function(){setTimeout(function(){window.print();},300);};</script>
 </body></html>`;
     const w = window.open("", "_blank");
     if (!w) {

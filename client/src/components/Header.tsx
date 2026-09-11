@@ -4,8 +4,6 @@ import { useState, useRef, useEffect } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { trpc } from "@/lib/trpc";
 
-const LOGO_URL = "https://d2xsxph8kpxj0f.cloudfront.net/109169450/Lkoz8HcKNEz8RQmUhyV4qZ/mmernoki_logo_326d035b.webp";
-
 // V11.16: leegyszerűsített menü. A Dashboard, Projektek, Tudástár, Előzmények és
 // Audit menüpontok megszűntek (az Előzmények az Admin oldalra költözött).
 // V12: egyetlen kereső — a "Szabványkereső" mostantól a bizonyíték-alapú motorra
@@ -184,14 +182,9 @@ export default function Header() {
     >
       <div className="container">
         <div className="flex items-center justify-between h-16">
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-3 group">
-            <img
-              src={LOGO_URL}
-              alt="M Mérnöki Iroda Kft."
-              className="h-10 w-auto object-contain brightness-0 invert"
-            />
-            <div className="hidden sm:block">
+          {/* Cégnév (logó nélkül) — kezdőlap-link */}
+          <Link href="/" className="flex items-center group">
+            <div className="block">
               <div className="text-white font-semibold text-sm leading-tight">
                 M Mérnöki Iroda Kft.
               </div>
