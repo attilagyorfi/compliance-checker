@@ -938,12 +938,6 @@ export const standardsSearchRouter = router({
       return { query: input.question, hits, engine: "v2" as const };
     }),
 
-  /** A frontend így tudja, elérhető-e a v2 kereső (SEARCH_ENGINE=v2). */
-  engineInfo: publicProcedure.query(() => ({
-    searchEngine: (process.env.SEARCH_ENGINE ?? "legacy").toLowerCase(),
-    v2Available: true,
-  })),
-
   /**
    * Generate extended answer for an existing search result
    */

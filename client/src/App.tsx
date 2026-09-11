@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { Route, Switch, Redirect } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { ProjectProvider } from "./contexts/ProjectContext";
@@ -22,8 +22,12 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
-      <Route path="/search" component={StandardsSearchPage} />
-      <Route path="/v2" component={EvidenceSearchPage} />
+      {/* A fő kereső mostantól a bizonyíték-alapú motor (deeplink + kiemelés). */}
+      <Route path="/search" component={EvidenceSearchPage} />
+      {/* A régi motor él marad regresszióhoz, de nincs a főmenüben. */}
+      <Route path="/search-legacy" component={StandardsSearchPage} />
+      {/* Régi /v2 hivatkozások átirányítása az egységes keresőre. */}
+      <Route path="/v2"><Redirect to="/search" /></Route>
       <Route path="/reports" component={ReportsPage} />
       <Route path="/result/:id" component={ResultPage} />
       <Route path="/regulations" component={RegulationLibraryPage} />

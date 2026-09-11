@@ -4197,11 +4197,6 @@ var standardsSearchRouter = router({
     const hits = await hybridSearchV22(input.question, { topK: input.topK, rerank: input.rerank });
     return { query: input.question, hits, engine: "v2" };
   }),
-  /** A frontend így tudja, elérhető-e a v2 kereső (SEARCH_ENGINE=v2). */
-  engineInfo: publicProcedure.query(() => ({
-    searchEngine: (process.env.SEARCH_ENGINE ?? "legacy").toLowerCase(),
-    v2Available: true
-  })),
   /**
    * Generate extended answer for an existing search result
    */

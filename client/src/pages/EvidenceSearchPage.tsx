@@ -9,7 +9,7 @@
 
 import { useState, useRef } from "react";
 import {
-  Search, Loader2, Copy, Check, Send, ChevronDown, ChevronUp, FileText, BookOpen, Info, Locate,
+  Search, Loader2, Copy, Check, Send, ChevronDown, ChevronUp, FileText, BookOpen, Info, Locate, FileDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -121,6 +121,57 @@ export default function EvidenceSearchPage() {
   };
   const runPinned = (q: string) => { setQuestion(q); run(q); };
 
+  // Nyomtatható riport a találatokból — a böngésző nyomtató-dialógusán át PDF-be
+  // menthető. Kliens-oldali, nincs szerver-függőség (serverless-barát).
+  const handleDownloadReport = () => {
+    if (!hits || hits.length === 0) return;
+    const esc = (s: unknown) =>
+      String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] as string));
+    const now = new Date().toLocaleString("hu-HU");
+    const itemsHtml = hits.map((h: any, i: number) =>
+      `<li>
+        <div class="cite"><span class="sn">[${i + 1}]</span> ${esc(h.citation)}</div>
+        ${h.breadcrumb ? `<div class="bc">${esc(h.breadcrumb)}</div>` : ""}
+        <div class="tx">${esc(String(h.text || "").trim())}</div>
+      </li>`
+    ).join("");
+    const html = `<!doctype html><html lang="hu"><head><meta charset="utf-8">
+<title>Szabvány-keresési riport</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #1a1a1a; max-width: 800px; margin: 32px auto; padding: 0 24px; line-height: 1.55; }
+  .brand { display:flex; align-items:baseline; justify-content:space-between; border-bottom: 3px solid #7CA9D3; padding-bottom: 10px; }
+  .brand h1 { font-size: 18px; margin: 0; color:#161718; }
+  .brand .sub { color:#7CA9D3; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
+  .meta { color:#666; font-size:12px; margin: 8px 0 20px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing:.04em; color:#7CA9D3; margin: 22px 0 6px; }
+  .q { font-size: 15px; font-weight: 600; }
+  ol { padding-left: 0; list-style: none; } li { margin-bottom: 16px; }
+  .cite { font-size: 13px; font-weight: 700; color:#161718; }
+  .sn { color:#7CA9D3; }
+  .bc { color:#888; font-size: 11px; margin: 2px 0; }
+  .tx { font-size: 13px; color:#333; background:#f6f8fa; border-left:2px solid #7CA9D3; padding:8px 12px; margin-top:4px; border-radius:3px; white-space: pre-wrap; }
+  footer { margin-top: 28px; padding-top: 12px; border-top: 1px solid #ddd; color:#888; font-size: 11px; }
+  @media print { body { margin: 0; } }
+</style></head><body>
+  <div class="brand"><h1>M Mérnöki Iroda Kft.</h1><span class="sub">Szabvány-keresési riport</span></div>
+  <div class="meta">Készült: ${now} &middot; Találatok száma: ${hits.length}</div>
+  <h2>Keresés</h2><p class="q">${esc(question)}</p>
+  <h2>Talált szabvány-szakaszok (${hits.length})</h2>
+  <ol>${itemsHtml}</ol>
+  <footer>Ezt a riportot a Tervmegfelelőség-ellenőrző állította elő ${now}-kor a betöltött szabványok alapján.
+  Minden idézet szó szerint a hivatkozott szabvány-szakaszból származik — kérjük, a végleges felhasználás előtt ellenőrizze a forrás-PDF-eket.</footer>
+  <script>window.onload=function(){setTimeout(function(){window.print();},250);};</script>
+</body></html>`;
+    const w = window.open("", "_blank");
+    if (!w) {
+      toast.error("Engedélyezze a felugró ablakokat a riport letöltéséhez.");
+      return;
+    }
+    w.document.write(html);
+    w.document.close();
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-surface">
       <Header />
@@ -131,12 +182,11 @@ export default function EvidenceSearchPage() {
             <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#7CA9D3" }}>
               <Search size={16} className="text-white" />
             </div>
-            <h1 className="text-2xl font-bold" style={{ color: "var(--text-strong)" }}>Hivatkozás-kereső</h1>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-[#7CA9D3]/15 text-[#3E6FA8] font-semibold">v2</span>
+            <h1 className="text-2xl font-bold" style={{ color: "var(--text-strong)" }}>Szabványkereső</h1>
           </div>
           <p className="text-text-muted text-sm ml-11">
             Szabadszavas keresés — minden találat egy teljes szabvány-szakasz, pontos
-            oldalszámmal és másolható hivatkozással.
+            oldalszámmal, másolható hivatkozással és PDF-oda-ugrással.
           </p>
         </div>
       </div>
@@ -208,9 +258,18 @@ export default function EvidenceSearchPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="flex items-center gap-2 text-xs text-text-muted">
-                  <Info size={13} style={{ color: "#7CA9D3" }} />
-                  {hits.length} találat — a legrelevánsabb szakaszok, teljes szöveggel és hivatkozással.
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-xs text-text-muted">
+                    <Info size={13} style={{ color: "#7CA9D3" }} />
+                    {hits.length} találat — a legrelevánsabb szakaszok, teljes szöveggel és hivatkozással.
+                  </div>
+                  <button
+                    onClick={handleDownloadReport}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border border-line text-text-default hover:border-[#7CA9D3] hover:text-[#7CA9D3] transition-colors flex-shrink-0"
+                    title="A találatok letöltése nyomtatható riportként (PDF)"
+                  >
+                    <FileDown size={13} /> Riport letöltése
+                  </button>
                 </div>
                 {hits.map((h) => (
                   <HitCard key={h.chunkId} hit={h} onOpenSource={() => setViewerHit(h)} />

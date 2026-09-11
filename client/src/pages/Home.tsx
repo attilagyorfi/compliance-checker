@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { FileSearch, ClipboardList, Zap, Shield, FileText, ArrowRight, CheckCircle2 } from "lucide-react";
+import { FileSearch, ClipboardList, Zap, FileText, ArrowRight, CheckCircle2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/Header";
 
@@ -7,26 +7,26 @@ const HERO_IMG = "https://d2xsxph8kpxj0f.cloudfront.net/109169450/Lkoz8HcKNEz8RQ
 
 const features = [
   {
+    icon: Search,
+    title: "Szabadszavas keresés",
+    desc: "Írjon be egy kérdést vagy fogalmat — a rendszer a betöltött Eurocode-szabványokban keresi meg a vonatkozó szakaszt.",
+  },
+  {
     icon: FileText,
-    title: "PDF Dokumentum-elemzés",
-    desc: "Tervdokumentumok és jogszabályok automatikus szövegkinyerése és feldolgozása.",
+    title: "Pontos, idézhető hivatkozás",
+    desc: "Minden találat egy teljes szabvány-szakasz (sosem darabolva), másolható hivatkozással és oldalszámmal.",
   },
   {
-    icon: Zap,
-    title: "AI alapú összevetés",
-    desc: "Nagy nyelvi modell segítségével azonosítja a megfelelési pontokat és eltéréseket.",
-  },
-  {
-    icon: Shield,
-    title: "Strukturált riport",
-    desc: "Áttekinthető kártyás megjelenítés státuszjelöléssel, indoklással és szabályhivatkozással.",
+    icon: FileSearch,
+    title: "Ugrás a forráshoz",
+    desc: "Egy kattintás, és a forrás-PDF a pontos oldalon nyílik meg, a keresett szakaszt kiemelve.",
   },
 ];
 
 const steps = [
-  { n: "01", title: "Dokumentumok feltöltése", desc: "Töltse fel a tervdokumentumot és a vonatkozó jogszabályokat PDF formátumban." },
-  { n: "02", title: "AI elemzés", desc: "A rendszer automatikusan kinyeri a szöveget és elvégzi az AI alapú megfelelőség-ellenőrzést." },
-  { n: "03", title: "Riport letöltése", desc: "Tekintse meg a strukturált eredményeket és töltse le a PDF riportot." },
+  { n: "01", title: "Kérdés vagy fogalom", desc: "Írjon be egy szabadszavas kérdést vagy műszaki fogalmat — vagy válasszon a beégetett gyakori kérdésekből." },
+  { n: "02", title: "A rendszer megkeresi", desc: "A rendszer a betöltött szabványokban megkeresi a leginkább vonatkozó, teljes szakaszt." },
+  { n: "03", title: "Hivatkozás vagy forrás", desc: "Másolja a kész hivatkozást, vagy ugorjon egy kattintással a forrás-PDF pontos, kiemelt helyére." },
 ];
 
 export default function Home() {
@@ -55,7 +55,7 @@ export default function Home() {
               <span style={{ color: "#7CA9D3" }}>ellenőrző rendszer</span>
             </h1>
             <p className="text-gray-200 text-lg leading-relaxed mb-8 max-w-xl">
-              Töltse fel tervdokumentumát és a vonatkozó jogszabályokat — az AI elvégzi az összevetést, és strukturált megfelelőségi riportot generál.
+              Keressen szabadszavasan a betöltött Eurocode-szabványokban — a rendszer a pontos, teljes szakaszt adja vissza, másolható hivatkozással és egy kattintásos ugrással a forrás-PDF-hez.
             </p>
             <div className="flex flex-wrap gap-4">
               <Link href="/search">
@@ -65,7 +65,7 @@ export default function Home() {
                   style={{ backgroundColor: "#7CA9D3", borderColor: "#7CA9D3" }}
                 >
                   <FileSearch size={18} />
-                  Elemzés indítása
+                  Keresés indítása
                   <ArrowRight size={16} />
                 </Button>
               </Link>
@@ -93,7 +93,7 @@ export default function Home() {
             </h2>
             <div className="w-12 h-0.5 mx-auto mb-4" style={{ backgroundColor: "#7CA9D3" }} />
             <p className="text-text-muted max-w-xl mx-auto">
-              Az M Mérnöki Iroda Kft. számára fejlesztett pilot rendszer végponttól végpontig kezeli a tervmegfelelőség-ellenőrzés folyamatát.
+              Az M Mérnöki Iroda Kft. számára fejlesztett rendszer a betöltött szabványokban keres, és minden állítást egy konkrét, idézhető szabvány-szakaszra vezet vissza.
             </p>
           </div>
           <div className="grid md:grid-cols-3 gap-8">
@@ -151,10 +151,10 @@ export default function Home() {
       <section className="py-16" style={{ backgroundColor: "#161718" }}>
         <div className="container text-center">
           <h2 className="text-2xl font-bold text-white mb-3">
-            Kezdje el az elemzést most
+            Kezdje el a keresést most
           </h2>
           <p className="text-text-faint mb-8 max-w-md mx-auto">
-            Töltse fel dokumentumait és kapjon részletes megfelelőségi riportot percek alatt.
+            Írjon be egy kérdést vagy fogalmat, és másodpercek alatt megkapja a pontos szabvány-szakaszt, hivatkozással.
           </p>
           <Link href="/search">
             <Button
@@ -163,7 +163,7 @@ export default function Home() {
               style={{ backgroundColor: "#7CA9D3" }}
             >
               <FileSearch size={18} />
-              Elemzés indítása
+              Keresés indítása
               <ArrowRight size={16} />
             </Button>
           </Link>
