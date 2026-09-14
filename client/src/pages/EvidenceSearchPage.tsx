@@ -154,39 +154,38 @@ export default function EvidenceSearchPage() {
     };
 
     const SCALE = 2;   // élesebb kép a képletekhez
-    const PAD = 18;    // pont: térköz a szakasz körül a kivágásnál
-    // Egy találat szakaszának kivágása képként (data URL), vagy null hibánál.
+    // A TELJES oldalt rendereljük (mint a viewerben), a keresett szakaszt kiemelve —
+    // nincs kivágás, így a szövegből/képletből semmi nem vész el.
     const renderHit = async (hit: any): Promise<string | null> => {
       try {
         if (!hit.pdfPage) return null;
         const doc = await getDoc(hit);
         const page = await doc.getPage(hit.pdfPage);
         const vp = page.getViewport({ scale: SCALE });
-        const full = document.createElement("canvas");
-        full.width = Math.ceil(vp.width);
-        full.height = Math.ceil(vp.height);
-        const fctx = full.getContext("2d");
-        if (!fctx) return null;
-        fctx.fillStyle = "#ffffff";
-        fctx.fillRect(0, 0, full.width, full.height);
-        await page.render({ canvasContext: fctx, viewport: vp }).promise;
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.ceil(vp.width);
+        canvas.height = Math.ceil(vp.height);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return null;
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvasContext: ctx, viewport: vp }).promise;
 
-        // Kivágás: teljes lapszélesség, függőlegesen a szakasz (bbox) + térköz.
-        let sy = 0, sh = full.height;
+        // A szakasz kiemelése a bbox alapján (sárga, mint a viewerben).
         const bbox = hit.bbox;
         if (Array.isArray(bbox) && bbox.length === 4 && bbox.every((n: any) => typeof n === "number")) {
-          const [, y0, , y1] = bbox;
-          sy = Math.max(0, Math.round((y0 - PAD) * SCALE));
-          sh = Math.min(full.height - sy, Math.round((y1 - y0 + 2 * PAD) * SCALE));
+          const [x0, y0, x1, y1] = bbox;
+          const rx = x0 * SCALE, ry = y0 * SCALE, rw = (x1 - x0) * SCALE, rh = (y1 - y0) * SCALE;
+          ctx.save();
+          ctx.globalCompositeOperation = "multiply";
+          ctx.fillStyle = "rgba(255, 214, 0, 0.28)";
+          ctx.fillRect(rx, ry, rw, rh);
+          ctx.restore();
+          ctx.strokeStyle = "rgba(214, 168, 0, 0.9)";
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(rx, ry, rw, rh);
         }
-        if (sh <= 0) { sy = 0; sh = full.height; }
-        const crop = document.createElement("canvas");
-        crop.width = full.width;
-        crop.height = sh;
-        const cctx = crop.getContext("2d");
-        if (!cctx) return null;
-        cctx.drawImage(full, 0, sy, full.width, sh, 0, 0, full.width, sh);
-        return crop.toDataURL("image/jpeg", 0.92);
+        return canvas.toDataURL("image/jpeg", 0.85);
       } catch {
         return null;
       }
@@ -198,6 +197,12 @@ export default function EvidenceSearchPage() {
       docCache.forEach((d) => { try { d.destroy?.(); } catch { /* noop */ } });
 
       const now = new Date().toLocaleString("hu-HU");
+      // A nyomtatáskor a böngésző a <title>-t ajánlja fájlnévnek → keresőkifejezés + időbélyeg.
+      const p2 = (n: number) => String(n).padStart(2, "0");
+      const d = new Date();
+      const stamp = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}${p2(d.getMinutes())}`;
+      const qShort = question.trim().replace(/\s+/g, " ").slice(0, 80);
+      const fileTitle = `${qShort} — ${stamp}`;
       const itemsHtml = hits.map((h: any, i: number) => {
         const img = imgs[i];
         const body = img
@@ -211,7 +216,7 @@ export default function EvidenceSearchPage() {
       }).join("");
 
       const html = `<!doctype html><html lang="hu"><head><meta charset="utf-8">
-<title>Szabvány-keresési riport</title>
+<title>${esc(fileTitle)}</title>
 <style>
   * { box-sizing: border-box; }
   body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #1a1a1a; max-width: 820px; margin: 40px auto; padding: 0 28px; line-height: 1.6; font-size: 14px; }
