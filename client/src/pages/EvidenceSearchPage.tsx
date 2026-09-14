@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import Header from "@/components/Header";
 import PdfViewerModal from "@/components/PdfViewerModal";
+import { pdfjsLib } from "@/lib/pdf";
 import { trpc } from "@/lib/trpc";
 
 const PINNED = [
@@ -107,6 +108,7 @@ export default function EvidenceSearchPage() {
   const [question, setQuestion] = useState("");
   const [hits, setHits] = useState<any[] | null>(null);
   const [viewerHit, setViewerHit] = useState<any | null>(null);
+  const [reportBusy, setReportBusy] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   const searchMut = trpc.standardsSearch.searchV2.useMutation({
@@ -121,33 +123,98 @@ export default function EvidenceSearchPage() {
   };
   const runPinned = (q: string) => { setQuestion(q); run(q); };
 
-  // Nyomtatható riport a találatokból — a böngésző nyomtató-dialógusán át PDF-be
-  // menthető. Kliens-oldali, nincs szerver-függőség (serverless-barát).
-  const handleDownloadReport = () => {
-    if (!hits || hits.length === 0) return;
+  // Nyomtatható riport a találatokból. A szabvány-szakaszt NEM kinyert szövegként,
+  // hanem a PDF-oldalból KÉPKÉNT vágjuk ki (bbox alapján) — így a képletek/számítások
+  // egy az egyben, hibátlanul jelennek meg (a szöveg-kinyerés a képleteket torzítja).
+  // Kliens-oldali (pdf.js), a böngésző nyomtató-dialógusán át PDF-be menthető.
+  const handleDownloadReport = async () => {
+    if (!hits || hits.length === 0 || reportBusy) return;
+    setReportBusy(true);
+    const toastId = toast.loading("Riport készítése — a szabvány-oldalak renderelése…");
     const esc = (s: unknown) =>
       String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] as string));
-    // A PDF-ből átvett szöveg sortörés-kötőjeleit és többszörös szóközeit
-    // rendbe tesszük, hogy a riport ne "csússzon össze".
     const clean = (s: unknown) =>
       String(s ?? "")
         .replace(/\r?\n/g, " ")
         .replace(/([A-Za-z0-9áéíóöőúüűÁÉÍÓÖŐÚÜŰ])-\s+([a-záéíóöőúüű])/g, "$1$2")
         .replace(/\s{2,}/g, " ")
         .trim();
-    const now = new Date().toLocaleString("hu-HU");
-    const itemsHtml = hits.map((h: any, i: number) =>
-      `<li>
-        <div class="cite"><span class="sn">${i + 1}.</span> ${esc(h.citation)}</div>
-        ${h.breadcrumb ? `<div class="bc">${esc(clean(h.breadcrumb))}</div>` : ""}
-        <div class="tx">${esc(clean(h.text))}</div>
-      </li>`
-    ).join("");
-    const html = `<!doctype html><html lang="hu"><head><meta charset="utf-8">
+
+    // Dokumentumonkénti pdf.js cache (több találat lehet ugyanabból a szabványból).
+    const docCache = new Map<string, any>();
+    const getDoc = async (hit: any) => {
+      const key = hit.slug || `c${hit.chunkId}`;
+      if (docCache.has(key)) return docCache.get(key);
+      const doc = await pdfjsLib.getDocument({
+        url: `/api/v2/pdf/${hit.chunkId}`,
+        disableRange: true, disableStream: true, disableAutoFetch: true,
+      }).promise;
+      docCache.set(key, doc);
+      return doc;
+    };
+
+    const SCALE = 2;   // élesebb kép a képletekhez
+    const PAD = 18;    // pont: térköz a szakasz körül a kivágásnál
+    // Egy találat szakaszának kivágása képként (data URL), vagy null hibánál.
+    const renderHit = async (hit: any): Promise<string | null> => {
+      try {
+        if (!hit.pdfPage) return null;
+        const doc = await getDoc(hit);
+        const page = await doc.getPage(hit.pdfPage);
+        const vp = page.getViewport({ scale: SCALE });
+        const full = document.createElement("canvas");
+        full.width = Math.ceil(vp.width);
+        full.height = Math.ceil(vp.height);
+        const fctx = full.getContext("2d");
+        if (!fctx) return null;
+        fctx.fillStyle = "#ffffff";
+        fctx.fillRect(0, 0, full.width, full.height);
+        await page.render({ canvasContext: fctx, viewport: vp }).promise;
+
+        // Kivágás: teljes lapszélesség, függőlegesen a szakasz (bbox) + térköz.
+        let sy = 0, sh = full.height;
+        const bbox = hit.bbox;
+        if (Array.isArray(bbox) && bbox.length === 4 && bbox.every((n: any) => typeof n === "number")) {
+          const [, y0, , y1] = bbox;
+          sy = Math.max(0, Math.round((y0 - PAD) * SCALE));
+          sh = Math.min(full.height - sy, Math.round((y1 - y0 + 2 * PAD) * SCALE));
+        }
+        if (sh <= 0) { sy = 0; sh = full.height; }
+        const crop = document.createElement("canvas");
+        crop.width = full.width;
+        crop.height = sh;
+        const cctx = crop.getContext("2d");
+        if (!cctx) return null;
+        cctx.drawImage(full, 0, sy, full.width, sh, 0, 0, full.width, sh);
+        return crop.toDataURL("image/jpeg", 0.92);
+      } catch {
+        return null;
+      }
+    };
+
+    try {
+      const imgs: (string | null)[] = [];
+      for (const h of hits) imgs.push(await renderHit(h));
+      docCache.forEach((d) => { try { d.destroy?.(); } catch { /* noop */ } });
+
+      const now = new Date().toLocaleString("hu-HU");
+      const itemsHtml = hits.map((h: any, i: number) => {
+        const img = imgs[i];
+        const body = img
+          ? `<div class="pgwrap"><img class="pg" src="${img}" alt="Szabvány-szakasz a forrás-PDF-ből"></div>`
+          : `<div class="tx">${esc(clean(h.text))}</div>`;
+        return `<li>
+          <div class="cite"><span class="sn">${i + 1}.</span> ${esc(h.citation)}</div>
+          ${h.breadcrumb ? `<div class="bc">${esc(clean(h.breadcrumb))}</div>` : ""}
+          ${body}
+        </li>`;
+      }).join("");
+
+      const html = `<!doctype html><html lang="hu"><head><meta charset="utf-8">
 <title>Szabvány-keresési riport</title>
 <style>
   * { box-sizing: border-box; }
-  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #1a1a1a; max-width: 760px; margin: 40px auto; padding: 0 28px; line-height: 1.6; font-size: 14px; }
+  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #1a1a1a; max-width: 820px; margin: 40px auto; padding: 0 28px; line-height: 1.6; font-size: 14px; }
   .brand { display:flex; align-items:baseline; justify-content:space-between; border-bottom: 3px solid #7CA9D3; padding-bottom: 12px; }
   .brand h1 { font-size: 18px; margin: 0; color:#161718; }
   .brand .sub { color:#7CA9D3; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
@@ -155,11 +222,13 @@ export default function EvidenceSearchPage() {
   h2 { font-size: 12px; text-transform: uppercase; letter-spacing:.05em; color:#7CA9D3; margin: 28px 0 10px; }
   .q { font-size: 16px; font-weight: 600; margin: 0; }
   ol { padding: 0; margin: 0; list-style: none; }
-  li { padding: 18px 0 22px; border-bottom: 1px solid #ececec; }
+  li { padding: 20px 0 26px; border-bottom: 1px solid #ececec; }
   li:last-child { border-bottom: none; }
-  .cite { font-size: 14px; font-weight: 700; color:#161718; margin-bottom: 5px; }
+  .cite { font-size: 14px; font-weight: 700; color:#161718; margin-bottom: 4px; }
   .sn { color:#7CA9D3; margin-right: 4px; }
-  .bc { color:#8a8a8a; font-size: 11.5px; margin: 0 0 10px; }
+  .bc { color:#8a8a8a; font-size: 11.5px; margin: 0 0 12px; }
+  .pgwrap { border: 1px solid #e2e2e2; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .pg { display:block; width: 100%; height: auto; }
   .tx { font-size: 13.5px; line-height: 1.75; color:#2a2a2a; background:#f6f8fa; border-left:3px solid #7CA9D3; padding: 12px 16px; border-radius:4px; }
   footer { margin-top: 36px; padding-top: 14px; border-top: 1px solid #ddd; color:#888; font-size: 11px; line-height: 1.6; }
   @media print { body { margin: 0; max-width: none; } li { break-inside: avoid; } }
@@ -170,16 +239,23 @@ export default function EvidenceSearchPage() {
   <h2>Talált szabvány-szakaszok (${hits.length})</h2>
   <ol>${itemsHtml}</ol>
   <footer>Ezt a riportot a Tervmegfelelőség-ellenőrző állította elő ${now}-kor a betöltött szabványok alapján.
-  Minden idézet a hivatkozott szabvány-szakaszból származik — kérjük, a végleges felhasználás előtt ellenőrizze a forrás-PDF-eket.</footer>
-  <script>window.onload=function(){setTimeout(function(){window.print();},300);};</script>
+  Minden szakasz a forrás-PDF-ből, egy az egyben kivágva jelenik meg — kérjük, a végleges felhasználás előtt ellenőrizze a forrás-dokumentumokat.</footer>
+  <script>window.onload=function(){setTimeout(function(){window.print();},400);};</script>
 </body></html>`;
-    const w = window.open("", "_blank");
-    if (!w) {
-      toast.error("Engedélyezze a felugró ablakokat a riport letöltéséhez.");
-      return;
+
+      const w = window.open("", "_blank");
+      if (!w) {
+        toast.error("Engedélyezze a felugró ablakokat a riport letöltéséhez.");
+        return;
+      }
+      w.document.write(html);
+      w.document.close();
+    } catch (e) {
+      toast.error("A riport készítése nem sikerült.");
+    } finally {
+      toast.dismiss(toastId);
+      setReportBusy(false);
     }
-    w.document.write(html);
-    w.document.close();
   };
 
   return (
@@ -275,10 +351,13 @@ export default function EvidenceSearchPage() {
                   </div>
                   <button
                     onClick={handleDownloadReport}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border border-line text-text-default hover:border-[#7CA9D3] hover:text-[#7CA9D3] transition-colors flex-shrink-0"
-                    title="A találatok letöltése nyomtatható riportként (PDF)"
+                    disabled={reportBusy}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border border-line text-text-default hover:border-[#7CA9D3] hover:text-[#7CA9D3] transition-colors flex-shrink-0 disabled:opacity-60 disabled:cursor-wait"
+                    title="A találatok letöltése nyomtatható riportként — a szakaszok a PDF-ből, egy az egyben"
                   >
-                    <FileDown size={13} /> Riport letöltése
+                    {reportBusy
+                      ? <><Loader2 size={13} className="animate-spin" /> Riport készítése…</>
+                      : <><FileDown size={13} /> Riport letöltése</>}
                   </button>
                 </div>
                 {hits.map((h) => (
