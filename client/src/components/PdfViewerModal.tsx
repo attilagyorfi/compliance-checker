@@ -1,14 +1,15 @@
 /**
- * PDF-viewer modal (Fázis 4/c + „teljes PDF, kiemelésekkel").
+ * PDF-viewer modal — folyamatos görgetésű, több-oldalas nézet kiemelésekkel.
  *
- * Az azonos-origin proxyból (`/api/v2/pdf/:chunkId`) tölti a szabvány-PDF-et, és a
- * `highlights` lista alapján a megfelelő oldalakon SÁRGÁVAL kiemeli a releváns
- * szakaszokat (a PyMuPDF-bbox alapján, a szöveg-réteg kódolásától függetlenül).
+ * Az azonos-origin proxyból (`/api/v2/pdf/:chunkId`) tölti a szabvány-PDF-et, és
+ * a TELJES dokumentumot végiggörgethetően jeleníti meg. A `highlights` lista
+ * alapján a megfelelő oldalakon SÁRGÁVAL kiemeli a releváns szakaszokat (PyMuPDF-
+ * bbox alapján, a szöveg-réteg kódolásától függetlenül). Az oldalakat lustán
+ * rendereli (csak a látótér közelében), hogy nagy dokumentumnál is gyors legyen.
  *
- * Két használat:
- *  - Fókuszált („Ugrás a forráshoz"): egyetlen szakasz kiemelve, arra a lapra nyit.
- *  - Teljes dokumentum: a keresésre illeszkedő ÖSSZES szakasz kiemelve, oldalak
- *    közti ugrással (előző/következő kiemelés).
+ *  - Fókuszált („Ugrás a forráshoz"): 1 szakasz kiemelve, arra a lapra görget.
+ *  - Teljes dokumentum: a keresésre illeszkedő ÖSSZES szakasz kiemelve, a teljes
+ *    PDF végiggörgethető; a ⟪ ⟫ gombokkal ugrálhat a kiemelések között.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -28,22 +29,20 @@ interface Props {
   onClose: () => void;
 }
 
-interface Rect { x: number; y: number; w: number; h: number; }
-
 export default function PdfViewerModal({ chunkId, citation, highlights, initialPage, sectionCount, onClose }: Props) {
   const docRef = useRef<any>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const renderSeq = useRef(0);
+  const wrapRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const scaleRef = useRef<number>(1);
+  const visibleRef = useRef<Set<number>>(new Set());
+  const observerRef = useRef<IntersectionObserver | null>(null);
 
   const [numPages, setNumPages] = useState(0);
-  const [page, setPage] = useState(initialPage);
-  const [loading, setLoading] = useState(true);
+  const [pageDim, setPageDim] = useState<{ w: number; h: number } | null>(null); // skálázott alap-oldalméret (placeholder)
+  const [currentPage, setCurrentPage] = useState(initialPage);
   const [error, setError] = useState<string | null>(null);
-  const [rects, setRects] = useState<Rect[]>([]);
-  const [canvasSize, setCanvasSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  const [loading, setLoading] = useState(true);
 
-  // Kiemelések oldalak szerint csoportosítva + a kiemelt oldalak rendezett listája.
   const byPage = useMemo(() => {
     const m = new Map<number, number[][]>();
     for (const h of highlights) {
@@ -55,8 +54,65 @@ export default function PdfViewerModal({ chunkId, citation, highlights, initialP
   }, [highlights]);
   const hlPages = useMemo(() => Array.from(byPage.keys()).sort((a, b) => a - b), [byPage]);
   const totalSections = sectionCount ?? highlights.length;
+  const multi = totalSections > 1;
 
-  // Dokumentum betöltése
+  // Egy oldal renderelése a saját wrapperébe (canvas + kiemelés-overlay), lustán.
+  const renderPageInto = useCallback(async (pageNum: number) => {
+    const doc = docRef.current;
+    const wrap = wrapRefs.current[pageNum - 1];
+    if (!doc || !wrap) return;
+    if (wrap.dataset.rendered === "1" || wrap.dataset.rendering === "1") return;
+    wrap.dataset.rendering = "1";
+    try {
+      const page = await doc.getPage(pageNum);
+      const scale = scaleRef.current;
+      const viewport = page.getViewport({ scale });
+      const dpr = window.devicePixelRatio || 1;
+      const canvas = wrap.querySelector("canvas") as HTMLCanvasElement | null;
+      if (!canvas) return;
+      canvas.width = Math.floor(viewport.width * dpr);
+      canvas.height = Math.floor(viewport.height * dpr);
+      canvas.style.width = `${Math.floor(viewport.width)}px`;
+      canvas.style.height = `${Math.floor(viewport.height)}px`;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({
+        canvasContext: ctx,
+        viewport,
+        transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined,
+      }).promise;
+
+      const overlay = wrap.querySelector(".hl-overlay") as HTMLDivElement | null;
+      if (overlay) {
+        overlay.innerHTML = "";
+        for (const [x0, y0, x1, y1] of byPage.get(pageNum) || []) {
+          const d = document.createElement("div");
+          d.style.cssText =
+            `position:absolute;left:${x0 * scale}px;top:${y0 * scale}px;` +
+            `width:${(x1 - x0) * scale}px;height:${(y1 - y0) * scale}px;` +
+            `background:rgba(255,214,0,0.38);box-shadow:0 0 0 1px rgba(230,180,0,0.5);` +
+            `mix-blend-mode:multiply;pointer-events:none;border-radius:1px;`;
+          overlay.appendChild(d);
+        }
+      }
+      wrap.dataset.rendered = "1";
+    } catch { /* egy oldal hibája ne dőljön be az egész */ }
+    finally { wrap.dataset.rendering = "0"; }
+  }, [byPage]);
+
+  const clearPage = useCallback((pageNum: number) => {
+    const wrap = wrapRefs.current[pageNum - 1];
+    if (!wrap || wrap.dataset.rendered !== "1") return;
+    const canvas = wrap.querySelector("canvas") as HTMLCanvasElement | null;
+    if (canvas) { canvas.width = 0; canvas.height = 0; }
+    const overlay = wrap.querySelector(".hl-overlay") as HTMLDivElement | null;
+    if (overlay) overlay.innerHTML = "";
+    wrap.dataset.rendered = "0";
+  }, []);
+
+  // Dokumentum betöltése + alap-oldalméret/skála
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setError(null);
@@ -65,11 +121,20 @@ export default function PdfViewerModal({ chunkId, citation, highlights, initialP
       disableRange: true, disableStream: true, disableAutoFetch: true,
     });
     task.promise.then(
-      (doc: any) => {
+      async (doc: any) => {
         if (cancelled) { doc.destroy?.(); return; }
         docRef.current = doc;
+        const page1 = await doc.getPage(1);
+        const base = page1.getViewport({ scale: 1 });
+        const avail = Math.max(320, (scrollRef.current?.clientWidth || 800) - 32);
+        const scale = Math.min(2, Math.max(0.4, avail / base.width));
+        scaleRef.current = scale;
+        if (cancelled) return;
+        wrapRefs.current = new Array(doc.numPages).fill(null);
+        setPageDim({ w: Math.floor(base.width * scale), h: Math.floor(base.height * scale) });
         setNumPages(doc.numPages);
-        setPage(Math.min(Math.max(initialPage, 1), doc.numPages));
+        setCurrentPage(Math.min(Math.max(initialPage, 1), doc.numPages));
+        setLoading(false);
       },
       (e: unknown) => {
         if (cancelled) return;
@@ -82,93 +147,72 @@ export default function PdfViewerModal({ chunkId, citation, highlights, initialP
     );
     return () => {
       cancelled = true;
+      observerRef.current?.disconnect();
       try { docRef.current?.destroy?.(); } catch { /* noop */ }
       docRef.current = null;
     };
   }, [chunkId, initialPage]);
 
-  // Aktuális oldal renderelése + az oldalon lévő összes kiemelés
-  const renderPage = useCallback(async (pageNum: number) => {
-    const doc = docRef.current;
-    const canvas = canvasRef.current;
-    const container = scrollRef.current;
-    if (!doc || !canvas || !container) return;
-    const seq = ++renderSeq.current;
-    setLoading(true);
-    try {
-      const pdfPageObj = await doc.getPage(pageNum);
-      if (seq !== renderSeq.current) return;
-      const unscaled = pdfPageObj.getViewport({ scale: 1 });
-      const avail = Math.max(320, container.clientWidth - 32);
-      const scale = Math.min(2.5, Math.max(0.5, avail / unscaled.width));
-      const viewport = pdfPageObj.getViewport({ scale });
-      const dpr = window.devicePixelRatio || 1;
-
-      canvas.width = Math.floor(viewport.width * dpr);
-      canvas.height = Math.floor(viewport.height * dpr);
-      canvas.style.width = `${Math.floor(viewport.width)}px`;
-      canvas.style.height = `${Math.floor(viewport.height)}px`;
-      setCanvasSize({ w: Math.floor(viewport.width), h: Math.floor(viewport.height) });
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      await pdfPageObj.render({
-        canvasContext: ctx,
-        viewport,
-        transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined,
-      }).promise;
-      if (seq !== renderSeq.current) return;
-
-      const boxes = byPage.get(pageNum) || [];
-      const hl: Rect[] = boxes.map(([x0, y0, x1, y1]) => ({
-        x: x0 * scale, y: y0 * scale, w: (x1 - x0) * scale, h: (y1 - y0) * scale,
-      }));
-      setRects(hl);
-      if (hl.length) {
-        const top = Math.max(0, Math.min(...hl.map((r) => r.y)) - 80);
-        requestAnimationFrame(() => container.scrollTo({ top, behavior: "smooth" }));
-      }
-    } catch {
-      setError("Az oldal renderelése nem sikerült.");
-    } finally {
-      if (seq === renderSeq.current) setLoading(false);
-    }
-  }, [byPage]);
-
+  // IntersectionObserver: a látótér közelébe kerülő oldalakat rendereli, a
+  // távoliakat felszabadítja; a láthatóból számolja az aktuális oldalszámot.
   useEffect(() => {
-    if (docRef.current && page >= 1) renderPage(page);
-  }, [page, numPages, renderPage]);
+    if (!numPages || !pageDim) return;
+    const root = scrollRef.current;
+    if (!root) return;
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        const pn = Number((e.target as HTMLElement).dataset.page);
+        if (!pn) continue;
+        if (e.isIntersecting) { visibleRef.current.add(pn); renderPageInto(pn); }
+        else { visibleRef.current.delete(pn); clearPage(pn); }
+      }
+      if (visibleRef.current.size) setCurrentPage(Math.min(...Array.from(visibleRef.current)));
+    }, { root, rootMargin: "700px 0px" });
+    observerRef.current = io;
+    wrapRefs.current.forEach((w) => { if (w) io.observe(w); });
+    // Kezdő görgetés a cél-oldalra + a környező oldalak azonnali renderelése
+    // (nem várunk az observer első tüzelésére — így rögtön van tartalom).
+    const start = Math.min(Math.max(initialPage, 1), numPages);
+    const target = wrapRefs.current[start - 1];
+    if (target) requestAnimationFrame(() => { target.scrollIntoView({ block: "start" }); });
+    for (let p = Math.max(1, start - 1); p <= Math.min(numPages, start + 2); p++) {
+      visibleRef.current.add(p);
+      renderPageInto(p);
+    }
+    return () => io.disconnect();
+  }, [numPages, pageDim, initialPage, renderPageInto, clearPage]);
+
+  const scrollToPage = useCallback((pageNum: number) => {
+    const p = Math.min(Math.max(pageNum, 1), numPages || pageNum);
+    const w = wrapRefs.current[p - 1];
+    if (w) w.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, [numPages]);
 
   const gotoAdjacentHighlight = useCallback((dir: 1 | -1) => {
     if (!hlPages.length) return;
-    if (dir === 1) {
-      const nxt = hlPages.find((p) => p > page);
-      setPage(nxt ?? hlPages[0]);
-    } else {
-      const prevs = hlPages.filter((p) => p < page);
-      setPage(prevs.length ? prevs[prevs.length - 1] : hlPages[hlPages.length - 1]);
-    }
-  }, [hlPages, page]);
+    const cur = currentPage;
+    const target = dir === 1
+      ? (hlPages.find((p) => p > cur) ?? hlPages[0])
+      : ([...hlPages].reverse().find((p) => p < cur) ?? hlPages[hlPages.length - 1]);
+    scrollToPage(target);
+  }, [hlPages, currentPage, scrollToPage]);
 
-  // Billentyűk
+  // Billentyűk + háttér-scroll zár
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
-      if (e.key === "ArrowRight") setPage((p) => Math.min(p + 1, numPages || p));
-      if (e.key === "ArrowLeft") setPage((p) => Math.max(p - 1, 1));
+      if (e.key === "ArrowRight") scrollToPage(currentPage + 1);
+      if (e.key === "ArrowLeft") scrollToPage(currentPage - 1);
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [onClose, numPages]);
+  }, [onClose, currentPage, scrollToPage]);
 
-  // A háttér görgetésének zárolása, amíg a modal nyitva van
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = prev; };
   }, []);
-
-  const multi = totalSections > 1;
 
   return createPortal(
     <div
@@ -186,82 +230,56 @@ export default function PdfViewerModal({ chunkId, citation, highlights, initialP
           <div className="min-w-0">
             <div className="text-sm font-semibold text-text-strong truncate">{citation}</div>
             <div className="text-xs text-text-faint">
-              {multi ? "Teljes dokumentum — a sárga kiemelések a releváns szakaszok" : "Forrás-PDF — a kiemelt rész a keresett szakasz"}
+              {multi ? "Teljes dokumentum — görgethető, a sárga kiemelések a releváns szakaszok" : "Forrás-PDF — a kiemelt rész a keresett szakasz"}
             </div>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {multi && (
-              <button
-                onClick={() => gotoAdjacentHighlight(-1)}
-                className="p-1.5 rounded hover:bg-hover text-text-default"
-                title="Előző kiemelés"
-              ><ChevronsLeft size={16} /></button>
+              <button onClick={() => gotoAdjacentHighlight(-1)} className="p-1.5 rounded hover:bg-hover text-text-default" title="Előző kiemelés"><ChevronsLeft size={16} /></button>
             )}
-            <button
-              onClick={() => setPage((p) => Math.max(p - 1, 1))}
-              disabled={page <= 1}
-              className="p-1.5 rounded hover:bg-hover disabled:opacity-40 text-text-default"
-              title="Előző oldal"
-            ><ChevronLeft size={16} /></button>
-            <span className="text-xs text-text-muted tabular-nums min-w-[64px] text-center">
-              {page} / {numPages || "…"}
-            </span>
-            <button
-              onClick={() => setPage((p) => Math.min(p + 1, numPages || p))}
-              disabled={numPages > 0 && page >= numPages}
-              className="p-1.5 rounded hover:bg-hover disabled:opacity-40 text-text-default"
-              title="Következő oldal"
-            ><ChevronRight size={16} /></button>
+            <button onClick={() => scrollToPage(currentPage - 1)} disabled={currentPage <= 1} className="p-1.5 rounded hover:bg-hover disabled:opacity-40 text-text-default" title="Előző oldal"><ChevronLeft size={16} /></button>
+            <span className="text-xs text-text-muted tabular-nums min-w-[64px] text-center">{currentPage} / {numPages || "…"}</span>
+            <button onClick={() => scrollToPage(currentPage + 1)} disabled={numPages > 0 && currentPage >= numPages} className="p-1.5 rounded hover:bg-hover disabled:opacity-40 text-text-default" title="Következő oldal"><ChevronRight size={16} /></button>
             {multi && (
-              <button
-                onClick={() => gotoAdjacentHighlight(1)}
-                className="p-1.5 rounded hover:bg-hover text-text-default"
-                title="Következő kiemelés"
-              ><ChevronsRight size={16} /></button>
+              <button onClick={() => gotoAdjacentHighlight(1)} className="p-1.5 rounded hover:bg-hover text-text-default" title="Következő kiemelés"><ChevronsRight size={16} /></button>
             )}
             <a
-              href={`/api/v2/pdf/${chunkId}#page=${page}`}
+              href={`/api/v2/pdf/${chunkId}#page=${currentPage}`}
               target="_blank"
               rel="noopener noreferrer"
               className="p-1.5 rounded hover:bg-hover text-text-default ml-1"
-              title="Megnyitás új lapon"
+              title="Eredeti PDF megnyitása új lapon (kiemelés nélkül)"
             ><ExternalLink size={15} /></a>
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded hover:bg-hover text-text-default ml-0.5"
-              title="Bezárás (Esc)"
-            ><X size={17} /></button>
+            <button onClick={onClose} className="p-1.5 rounded hover:bg-hover text-text-default ml-0.5" title="Bezárás (Esc)"><X size={17} /></button>
           </div>
         </div>
 
-        {/* Törzs */}
-        <div ref={scrollRef} className="relative flex-1 overflow-auto bg-page-bg-subtle flex justify-center p-4">
+        {/* Törzs — folyamatos görgetésű oldallista */}
+        <div ref={scrollRef} className="relative flex-1 overflow-auto bg-page-bg-subtle">
           {error ? (
-            <div className="flex flex-col items-center justify-center text-center gap-2 m-auto">
+            <div className="flex flex-col items-center justify-center text-center gap-2 h-full">
               <AlertTriangle size={28} className="text-amber-500" />
               <p className="text-sm text-text-default font-medium">{error}</p>
               <button onClick={onClose} className="text-xs text-[#7CA9D3] hover:underline mt-1">Bezárás</button>
             </div>
+          ) : loading || !pageDim ? (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 size={26} className="animate-spin" style={{ color: "#7CA9D3" }} />
+            </div>
           ) : (
-            <div className="relative" style={{ width: canvasSize.w || undefined, height: canvasSize.h || undefined }}>
-              <canvas ref={canvasRef} className="block shadow-sm rounded-sm bg-white" />
-              {rects.map((r, i) => (
+            <div className="py-4 flex flex-col items-center gap-4">
+              {Array.from({ length: numPages }).map((_, i) => (
                 <div
                   key={i}
-                  className="absolute pointer-events-none rounded-[1px]"
-                  style={{
-                    left: r.x, top: r.y, width: r.w, height: r.h,
-                    backgroundColor: "rgba(255, 214, 0, 0.38)",
-                    boxShadow: "0 0 0 1px rgba(230,180,0,0.5)",
-                    mixBlendMode: "multiply",
-                  }}
-                />
-              ))}
-              {loading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-white/60">
-                  <Loader2 size={26} className="animate-spin" style={{ color: "#7CA9D3" }} />
+                  data-page={i + 1}
+                  ref={(el) => { wrapRefs.current[i] = el; }}
+                  className="relative bg-white shadow-sm rounded-sm"
+                  style={{ width: pageDim.w, height: pageDim.h }}
+                >
+                  <canvas className="block" />
+                  <div className="hl-overlay absolute inset-0" style={{ pointerEvents: "none" }} />
                 </div>
-              )}
+              ))}
             </div>
           )}
         </div>
@@ -271,7 +289,7 @@ export default function PdfViewerModal({ chunkId, citation, highlights, initialP
           <div className="px-4 py-1.5 border-t text-xs text-text-faint flex items-center gap-2" style={{ borderColor: "var(--line)" }}>
             <span className="inline-block w-3 h-3 rounded-[2px] flex-shrink-0" style={{ backgroundColor: "rgba(255,214,0,0.6)", boxShadow: "0 0 0 1px rgba(230,180,0,0.6)" }} />
             {multi
-              ? <>{totalSections} releváns szakasz kiemelve ebben a dokumentumban{rects.length ? ` — ${rects.length} ezen az oldalon` : ""}. A ⟪ ⟫ gombokkal ugorhat a kiemelések között.</>
+              ? <>{totalSections} releváns szakasz kiemelve — görgessen a teljes dokumentumban, vagy a ⟪ ⟫ gombokkal ugorjon a kiemelések között.</>
               : <>A sárga kiemelés a keresett szakasz.</>}
           </div>
         )}
