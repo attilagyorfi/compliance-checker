@@ -58,7 +58,15 @@ export default function PdfViewerModal({ chunkId, citation, highlights, initialP
     }
     return m;
   }, [highlights]);
-  const hlPages = useMemo(() => Array.from(byPage.keys()).sort((a, b) => a - b), [byPage]);
+  // A kiemelések LAPOSÍTOTT, rendezett listája (oldal, majd függőleges pozíció) —
+  // a ⟪ ⟫ ezen ugrál végig, a tényleges kiemelés-pozícióra görgetve.
+  const sortedHls = useMemo(
+    () => highlights
+      .filter((h) => h && h.pdfPage && Array.isArray(h.bbox) && h.bbox.length === 4)
+      .slice()
+      .sort((a, b) => a.pdfPage - b.pdfPage || a.bbox[1] - b.bbox[1]),
+    [highlights]
+  );
   const totalSections = sectionCount ?? highlights.length;
   const multi = totalSections > 1;
 
@@ -176,17 +184,25 @@ export default function PdfViewerModal({ chunkId, citation, highlights, initialP
     }, { root, rootMargin: "700px 0px" });
     observerRef.current = io;
     wrapRefs.current.forEach((w) => { if (w) io.observe(w); });
-    // Kezdő görgetés a cél-oldalra + a környező oldalak azonnali renderelése
-    // (nem várunk az observer első tüzelésére — így rögtön van tartalom).
+    // Kezdő görgetés az ELSŐ kiemelés pozíciójára (nem csak az oldal tetejére),
+    // + a környező oldalak azonnali renderelése (nem várunk az observerre).
     const start = Math.min(Math.max(initialPage, 1), numPages);
-    const target = wrapRefs.current[start - 1];
-    if (target) requestAnimationFrame(() => { target.scrollIntoView({ block: "start" }); });
+    requestAnimationFrame(() => {
+      const cont = scrollRef.current;
+      const first = sortedHls.find((h) => h.pdfPage === start) || sortedHls[0];
+      if (cont && first) {
+        const w = wrapRefs.current[first.pdfPage - 1];
+        if (w) cont.scrollTo({ top: Math.max(0, w.offsetTop + (first.bbox[1] || 0) * scaleRef.current - 70) });
+      } else {
+        wrapRefs.current[start - 1]?.scrollIntoView({ block: "start" });
+      }
+    });
     for (let p = Math.max(1, start - 1); p <= Math.min(numPages, start + 2); p++) {
       visibleRef.current.add(p);
       renderPageInto(p);
     }
     return () => io.disconnect();
-  }, [numPages, pageDim, initialPage, renderPageInto, clearPage]);
+  }, [numPages, pageDim, initialPage, renderPageInto, clearPage, sortedHls]);
 
   const scrollToPage = useCallback((pageNum: number) => {
     const p = Math.min(Math.max(pageNum, 1), numPages || pageNum);
@@ -194,14 +210,33 @@ export default function PdfViewerModal({ chunkId, citation, highlights, initialP
     if (w) w.scrollIntoView({ block: "start", behavior: "smooth" });
   }, [numPages]);
 
+  // A kiemelés abszolút függőleges pozíciója a görgető-konténerben:
+  // a lap-wrapper offsetTop-ja + a bbox teteje × az aktuális skála.
+  const highlightTop = useCallback((h: ViewerHighlight) => {
+    const w = wrapRefs.current[h.pdfPage - 1];
+    if (!w) return Infinity;
+    return w.offsetTop + (h.bbox[1] || 0) * scaleRef.current;
+  }, []);
+
   const gotoAdjacentHighlight = useCallback((dir: 1 | -1) => {
-    if (!hlPages.length) return;
-    const cur = currentPage;
-    const target = dir === 1
-      ? (hlPages.find((p) => p > cur) ?? hlPages[0])
-      : ([...hlPages].reverse().find((p) => p < cur) ?? hlPages[hlPages.length - 1]);
-    scrollToPage(target);
-  }, [hlPages, currentPage, scrollToPage]);
+    const cont = scrollRef.current;
+    if (!cont || !sortedHls.length) return;
+    // A kiemelést a viewport tetejétől ~70px-re jelenítjük meg, ezért a "jelenlegi"
+    // kiemelés a scrollTop+70 körül van. A ±15 tolerancia kihagyja a jelenlegit,
+    // így a "következő/előző" a valóban szomszédos kiemelésre ugrik (akkor is, ha
+    // épp nem kiemelt oldalon áll a felhasználó).
+    const cur = cont.scrollTop + 70;
+    let target: ViewerHighlight | undefined;
+    if (dir === 1) {
+      target = sortedHls.find((h) => highlightTop(h) > cur + 15) ?? sortedHls[0];
+    } else {
+      const prevs = sortedHls.filter((h) => highlightTop(h) < cur - 15);
+      target = prevs.length ? prevs[prevs.length - 1] : sortedHls[sortedHls.length - 1];
+    }
+    if (!target) return;
+    renderPageInto(target.pdfPage); // előrenderelés, hogy a kiemelés látszódjon
+    cont.scrollTo({ top: Math.max(0, highlightTop(target) - 70), behavior: "smooth" });
+  }, [sortedHls, highlightTop, renderPageInto]);
 
   // Kiemelésekkel teli PDF mentése: az eredeti PDF-be vektoros sárga téglalapokat
   // égetünk a bbox-ok alapján (kicsi fájl, a szöveg kereshető marad). A pdf-lib-et
