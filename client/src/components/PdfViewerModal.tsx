@@ -27,9 +27,13 @@ interface Props {
   /** Hány releváns szakasz (a lábléchez); alapból a highlights hossza. */
   sectionCount?: number;
   onClose: () => void;
+  /** Ha igaz, teljes képernyős oldalként renderel (nem lebegő modalként). */
+  asPage?: boolean;
+  /** "Megnyitás új lapon" cél — a kiemeléses viewer-oldal URL-je. */
+  newTabUrl?: string;
 }
 
-export default function PdfViewerModal({ chunkId, citation, highlights, initialPage, sectionCount, onClose }: Props) {
+export default function PdfViewerModal({ chunkId, citation, highlights, initialPage, sectionCount, onClose, asPage = false, newTabUrl }: Props) {
   const docRef = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const wrapRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -216,14 +220,14 @@ export default function PdfViewerModal({ chunkId, citation, highlights, initialP
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-6"
-      style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
-      onClick={onClose}
+      className={asPage ? "fixed inset-0 z-[100] flex flex-col" : "fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-6"}
+      style={asPage ? { backgroundColor: "var(--surface)" } : { backgroundColor: "rgba(0,0,0,0.6)" }}
+      onClick={asPage ? undefined : onClose}
     >
       <div
-        className="bg-surface rounded-xl shadow-2xl flex flex-col w-full max-w-4xl overflow-hidden"
-        style={{ height: "92vh", borderColor: "var(--line)" }}
-        onClick={(e) => e.stopPropagation()}
+        className={asPage ? "bg-surface flex flex-col w-full flex-1 overflow-hidden" : "bg-surface rounded-xl shadow-2xl flex flex-col w-full max-w-4xl overflow-hidden"}
+        style={asPage ? { borderColor: "var(--line)" } : { height: "92vh", borderColor: "var(--line)" }}
+        onClick={asPage ? undefined : (e) => e.stopPropagation()}
       >
         {/* Fejléc */}
         <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b" style={{ borderColor: "var(--line)" }}>
@@ -243,14 +247,18 @@ export default function PdfViewerModal({ chunkId, citation, highlights, initialP
             {multi && (
               <button onClick={() => gotoAdjacentHighlight(1)} className="p-1.5 rounded hover:bg-hover text-text-default" title="Következő kiemelés"><ChevronsRight size={16} /></button>
             )}
-            <a
-              href={`/api/v2/pdf/${chunkId}#page=${currentPage}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-1.5 rounded hover:bg-hover text-text-default ml-1"
-              title="Eredeti PDF megnyitása új lapon (kiemelés nélkül)"
-            ><ExternalLink size={15} /></a>
-            <button onClick={onClose} className="p-1.5 rounded hover:bg-hover text-text-default ml-0.5" title="Bezárás (Esc)"><X size={17} /></button>
+            {!asPage && newTabUrl && (
+              <a
+                href={newTabUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-1.5 rounded hover:bg-hover text-text-default ml-1"
+                title="Megnyitás új lapon (a kiemelésekkel)"
+              ><ExternalLink size={15} /></a>
+            )}
+            {!asPage && (
+              <button onClick={onClose} className="p-1.5 rounded hover:bg-hover text-text-default ml-0.5" title="Bezárás (Esc)"><X size={17} /></button>
+            )}
           </div>
         </div>
 

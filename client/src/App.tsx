@@ -11,6 +11,7 @@ import ResultPage from "./pages/ResultPage";
 import RegulationLibraryPage from "./pages/RegulationLibraryPage";
 import StandardsSearchPage from "./pages/StandardsSearchPage";
 import EvidenceSearchPage from "./pages/EvidenceSearchPage";
+import PdfViewerPage from "./pages/PdfViewerPage";
 import PlatformConnectionsPage from "./pages/PlatformConnectionsPage";
 import SettingsPage from "./pages/SettingsPage";
 import AdminPage from "./pages/AdminPage";
@@ -28,6 +29,8 @@ function Router() {
       <Route path="/search-legacy" component={StandardsSearchPage} />
       {/* Régi /v2 hivatkozások átirányítása az egységes keresőre. */}
       <Route path="/v2"><Redirect to="/search" /></Route>
+      {/* Önálló, teljes-képernyős PDF-nézegető (kiemelésekkel) — "új lapon". */}
+      <Route path="/viewer" component={PdfViewerPage} />
       <Route path="/reports" component={ReportsPage} />
       <Route path="/result/:id" component={ResultPage} />
       <Route path="/regulations" component={RegulationLibraryPage} />

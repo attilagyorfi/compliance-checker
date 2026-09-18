@@ -123,9 +123,13 @@ export default function EvidenceSearchPage() {
   const [lastQuery, setLastQuery] = useState("");
   const [hits, setHits] = useState<any[] | null>(null);
   const [viewer, setViewer] = useState<
-    | { chunkId: number; citation: string; highlights: { pdfPage: number; bbox: number[] }[]; initialPage: number; sectionCount: number }
+    | { chunkId: number; citation: string; highlights: { pdfPage: number; bbox: number[] }[]; initialPage: number; sectionCount: number; newTabUrl: string }
     | null
   >(null);
+
+  // "Megnyitás új lapon" cél: a kiemeléses, teljes-képernyős viewer-oldal.
+  const buildViewerUrl = (hit: any) =>
+    `/viewer?chunk=${hit.chunkId}&slug=${encodeURIComponent(hit.slug || "")}&q=${encodeURIComponent(lastQuery || question)}`;
   const [openingDoc, setOpeningDoc] = useState<number | null>(null);
   const [reportBusy, setReportBusy] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -141,7 +145,7 @@ export default function EvidenceSearchPage() {
     const hl = Array.isArray(hit.bbox) && hit.bbox.length === 4
       ? [{ pdfPage: hit.pdfPage, bbox: hit.bbox }]
       : [];
-    setViewer({ chunkId: hit.chunkId, citation: hit.citation, highlights: hl, initialPage: hit.pdfPage ?? 1, sectionCount: 1 });
+    setViewer({ chunkId: hit.chunkId, citation: hit.citation, highlights: hl, initialPage: hit.pdfPage ?? 1, sectionCount: 1, newTabUrl: buildViewerUrl(hit) });
   };
 
   // Teljes dokumentum: a keresésre illeszkedő ÖSSZES szakasz kiemelve.
@@ -163,6 +167,7 @@ export default function EvidenceSearchPage() {
         highlights: hl,
         initialPage,
         sectionCount: hl.length,
+        newTabUrl: buildViewerUrl(hit),
       });
     } catch {
       toast.error("Nem sikerült betölteni a dokumentum kiemeléseit.");
@@ -443,6 +448,7 @@ export default function EvidenceSearchPage() {
           highlights={viewer.highlights}
           initialPage={viewer.initialPage}
           sectionCount={viewer.sectionCount}
+          newTabUrl={viewer.newTabUrl}
           onClose={() => setViewer(null)}
         />
       )}
