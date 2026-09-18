@@ -134,6 +134,69 @@ export async function hybridSearchV2(
   return hits.slice(0, topK);
 }
 
+export interface DocHighlight {
+  chunkId: number;
+  pdfPage: number;
+  printedPage: number | null;
+  sectionNumber: string | null;
+  clauseNo: string | null;
+  bbox: number[];
+}
+
+/**
+ * Egy adott dokumentum ÖSSZES, a keresésre illeszkedő szakasza (oldal + bbox),
+ * hogy a viewer az egész PDF-ben végig kiemelhesse a releváns részeket. A keresés
+ * bővített (szinonimás) lexikai tagjaira illeszt — determinisztikus és teljes körű.
+ */
+export async function documentHighlightsV2(
+  query: string,
+  slug: string
+): Promise<{ officialId: string; editionYear: number | null; highlights: DocHighlight[] }> {
+  const db = await getDb();
+  if (!db) return { officialId: "", editionYear: null, highlights: [] };
+  // A doksi-kiemeléshez a TÉNYLEGESEN beírt szavakra illesztünk (nem a teljes
+  // szinonima-bővítésre) — így a kiemelés fókuszált és kiszámítható marad, nem
+  // világítja ki a fél dokumentumot.
+  const terms = tokenize(query).filter((t) => t.length >= 4);
+  if (!terms.length) return { officialId: "", editionYear: null, highlights: [] };
+
+  const likeParts = terms.map((t) => sql`LOWER(ch.text) LIKE ${"%" + t + "%"}`);
+  const res = await db.execute(sql`
+    SELECT ch.id, ch.pdf_page AS pdfPage, ch.printed_page AS printedPage, ch.node_key AS nodeKey,
+           ch.clause_no AS clauseNo, ch.bbox_json AS bboxJson,
+           d.official_id AS officialId, d.edition_year AS editionYear
+    FROM v2_chunks ch JOIN v2_documents d ON d.id = ch.doc_id
+    WHERE d.slug = ${slug} AND (${sql.join(likeParts, sql` OR `)})
+    ORDER BY ch.order_index LIMIT 500`);
+
+  let officialId = "";
+  let editionYear: number | null = null;
+  const highlights: DocHighlight[] = [];
+  for (const r of rows<Record<string, unknown>>(res)) {
+    officialId = (r.officialId as string) || officialId;
+    editionYear = r.editionYear != null ? Number(r.editionYear) : editionYear;
+    const pdfPage = r.pdfPage != null ? Number(r.pdfPage) : null;
+    let bbox: number[] | null = null;
+    const raw = r.bboxJson;
+    if (typeof raw === "string" && raw.trim()) {
+      try {
+        const p = JSON.parse(raw);
+        if (Array.isArray(p) && p.length === 4 && p.every((n) => typeof n === "number")) bbox = p as number[];
+      } catch { bbox = null; }
+    }
+    if (!bbox || !pdfPage) continue;
+    highlights.push({
+      chunkId: Number(r.id),
+      pdfPage,
+      printedPage: r.printedPage != null ? Number(r.printedPage) : null,
+      sectionNumber: (r.nodeKey as string) || null,
+      clauseNo: (r.clauseNo as string) || null,
+      bbox,
+    });
+  }
+  return { officialId, editionYear, highlights };
+}
+
 async function hydrate(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, ids: number[]): Promise<EvidenceHit[]> {
   if (!ids.length) return [];
   const res = await db.execute(sql`

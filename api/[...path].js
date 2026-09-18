@@ -1993,6 +1993,7 @@ var init_config_generated = __esm({
 // server/v2/search.ts
 var search_exports = {};
 __export(search_exports, {
+  documentHighlightsV2: () => documentHighlightsV2,
   hybridSearchV2: () => hybridSearchV2
 });
 import { sql as sql2 } from "drizzle-orm";
@@ -2062,6 +2063,48 @@ async function hybridSearchV2(query, opts = {}) {
   let hits = await hydrate(db, ranked.slice(0, take));
   if (rerank) hits = await rerankLLM(query, hits);
   return hits.slice(0, topK);
+}
+async function documentHighlightsV2(query, slug) {
+  const db = await getDb();
+  if (!db) return { officialId: "", editionYear: null, highlights: [] };
+  const terms = tokenize(query).filter((t2) => t2.length >= 4);
+  if (!terms.length) return { officialId: "", editionYear: null, highlights: [] };
+  const likeParts = terms.map((t2) => sql2`LOWER(ch.text) LIKE ${"%" + t2 + "%"}`);
+  const res = await db.execute(sql2`
+    SELECT ch.id, ch.pdf_page AS pdfPage, ch.printed_page AS printedPage, ch.node_key AS nodeKey,
+           ch.clause_no AS clauseNo, ch.bbox_json AS bboxJson,
+           d.official_id AS officialId, d.edition_year AS editionYear
+    FROM v2_chunks ch JOIN v2_documents d ON d.id = ch.doc_id
+    WHERE d.slug = ${slug} AND (${sql2.join(likeParts, sql2` OR `)})
+    ORDER BY ch.order_index LIMIT 500`);
+  let officialId = "";
+  let editionYear = null;
+  const highlights = [];
+  for (const r of rows(res)) {
+    officialId = r.officialId || officialId;
+    editionYear = r.editionYear != null ? Number(r.editionYear) : editionYear;
+    const pdfPage = r.pdfPage != null ? Number(r.pdfPage) : null;
+    let bbox = null;
+    const raw = r.bboxJson;
+    if (typeof raw === "string" && raw.trim()) {
+      try {
+        const p = JSON.parse(raw);
+        if (Array.isArray(p) && p.length === 4 && p.every((n) => typeof n === "number")) bbox = p;
+      } catch {
+        bbox = null;
+      }
+    }
+    if (!bbox || !pdfPage) continue;
+    highlights.push({
+      chunkId: Number(r.id),
+      pdfPage,
+      printedPage: r.printedPage != null ? Number(r.printedPage) : null,
+      sectionNumber: r.nodeKey || null,
+      clauseNo: r.clauseNo || null,
+      bbox
+    });
+  }
+  return { officialId, editionYear, highlights };
 }
 async function hydrate(db, ids) {
   if (!ids.length) return [];
@@ -4196,6 +4239,14 @@ var standardsSearchRouter = router({
     const { hybridSearchV2: hybridSearchV22 } = await Promise.resolve().then(() => (init_search(), search_exports));
     const hits = await hybridSearchV22(input.question, { topK: input.topK, rerank: input.rerank });
     return { query: input.question, hits, engine: "v2" };
+  }),
+  /**
+   * Egy dokumentum ÖSSZES, a keresésre illeszkedő szakasza (oldal + bbox) — a
+   * viewer "teljes PDF, kiemelésekkel" nézetéhez.
+   */
+  documentHighlights: publicProcedure.input(z5.object({ query: z5.string().min(1).max(1e3), slug: z5.string().min(1).max(128) })).mutation(async ({ input }) => {
+    const { documentHighlightsV2: documentHighlightsV22 } = await Promise.resolve().then(() => (init_search(), search_exports));
+    return await documentHighlightsV22(input.query, input.slug);
   }),
   /**
    * Generate extended answer for an existing search result

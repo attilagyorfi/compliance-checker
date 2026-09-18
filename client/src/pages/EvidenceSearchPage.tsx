@@ -29,7 +29,9 @@ const PINNED = [
   "Tartószerkezet tervezési alapelvei",
 ];
 
-function HitCard({ hit, onOpenSource }: { hit: any; onOpenSource: () => void }) {
+function HitCard({ hit, onOpenSource, onOpenFullDoc, fullDocBusy }: {
+  hit: any; onOpenSource: () => void; onOpenFullDoc: () => void; fullDocBusy: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const long = (hit.text || "").length > 420;
@@ -81,15 +83,27 @@ function HitCard({ hit, onOpenSource }: { hit: any; onOpenSource: () => void }) 
         >
           {long && !open ? (hit.text.slice(0, 420) + "…") : hit.text}
         </blockquote>
-        <div className="flex items-center justify-between gap-2 mt-2">
-          <button
-            onClick={onOpenSource}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-colors flex-shrink-0"
-            style={{ backgroundColor: "#4A7BA8" }}
-            title="A szabvány-PDF megnyitása a keresett résznél, kiemelve"
-          >
-            <Locate size={13} /> Ugrás a forráshoz
-          </button>
+        <div className="flex items-center justify-between gap-2 mt-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={onOpenSource}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-colors flex-shrink-0"
+              style={{ backgroundColor: "#4A7BA8" }}
+              title="A szabvány-PDF megnyitása a keresett résznél, kiemelve"
+            >
+              <Locate size={13} /> Ugrás a forráshoz
+            </button>
+            <button
+              onClick={onOpenFullDoc}
+              disabled={fullDocBusy}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-line text-text-default hover:border-[#7CA9D3] hover:text-[#7CA9D3] transition-colors flex-shrink-0 disabled:opacity-60 disabled:cursor-wait"
+              title="A teljes szabvány-PDF megnyitása, benne az összes releváns szakasz kiemelve"
+            >
+              {fullDocBusy
+                ? <><Loader2 size={13} className="animate-spin" /> Megnyitás…</>
+                : <><BookOpen size={13} /> Teljes PDF (kiemelésekkel)</>}
+            </button>
+          </div>
           {long && (
             <button
               onClick={() => setOpen((v) => !v)}
@@ -106,15 +120,57 @@ function HitCard({ hit, onOpenSource }: { hit: any; onOpenSource: () => void }) 
 
 export default function EvidenceSearchPage() {
   const [question, setQuestion] = useState("");
+  const [lastQuery, setLastQuery] = useState("");
   const [hits, setHits] = useState<any[] | null>(null);
-  const [viewerHit, setViewerHit] = useState<any | null>(null);
+  const [viewer, setViewer] = useState<
+    | { chunkId: number; citation: string; highlights: { pdfPage: number; bbox: number[] }[]; initialPage: number; sectionCount: number }
+    | null
+  >(null);
+  const [openingDoc, setOpeningDoc] = useState<number | null>(null);
   const [reportBusy, setReportBusy] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   const searchMut = trpc.standardsSearch.searchV2.useMutation({
-    onSuccess: (d) => setHits(d.hits),
+    onSuccess: (d) => { setHits(d.hits); setLastQuery(d.query); },
     onError: (e) => toast.error(`Keresési hiba: ${e.message}`),
   });
+  const docHlMut = trpc.standardsSearch.documentHighlights.useMutation();
+
+  // Fókuszált nézet: csak az adott szakasz kiemelve, arra a lapra nyit.
+  const openSource = (hit: any) => {
+    const hl = Array.isArray(hit.bbox) && hit.bbox.length === 4
+      ? [{ pdfPage: hit.pdfPage, bbox: hit.bbox }]
+      : [];
+    setViewer({ chunkId: hit.chunkId, citation: hit.citation, highlights: hl, initialPage: hit.pdfPage ?? 1, sectionCount: 1 });
+  };
+
+  // Teljes dokumentum: a keresésre illeszkedő ÖSSZES szakasz kiemelve.
+  const openFullDoc = async (hit: any) => {
+    if (openingDoc) return;
+    setOpeningDoc(hit.chunkId);
+    const tid = toast.loading("Releváns szakaszok keresése a dokumentumban…");
+    try {
+      const res = await docHlMut.mutateAsync({ query: lastQuery || question, slug: hit.slug });
+      const hl = (res.highlights || [])
+        .filter((h) => h.pdfPage && Array.isArray(h.bbox))
+        .map((h) => ({ pdfPage: h.pdfPage as number, bbox: h.bbox as number[] }));
+      if (!hl.length) { toast.error("Nem található kiemelhető szakasz ebben a dokumentumban."); return; }
+      const initialPage = Math.min(...hl.map((h) => h.pdfPage));
+      const yr = res.editionYear ? ":" + res.editionYear : "";
+      setViewer({
+        chunkId: hit.chunkId,
+        citation: `${res.officialId}${yr} — teljes dokumentum`,
+        highlights: hl,
+        initialPage,
+        sectionCount: hl.length,
+      });
+    } catch {
+      toast.error("Nem sikerült betölteni a dokumentum kiemeléseit.");
+    } finally {
+      toast.dismiss(tid);
+      setOpeningDoc(null);
+    }
+  };
 
   const run = (q: string) => {
     if (!q.trim()) return;
@@ -366,7 +422,13 @@ export default function EvidenceSearchPage() {
                   </button>
                 </div>
                 {hits.map((h) => (
-                  <HitCard key={h.chunkId} hit={h} onOpenSource={() => setViewerHit(h)} />
+                  <HitCard
+                    key={h.chunkId}
+                    hit={h}
+                    onOpenSource={() => openSource(h)}
+                    onOpenFullDoc={() => openFullDoc(h)}
+                    fullDocBusy={openingDoc === h.chunkId}
+                  />
                 ))}
               </div>
             )
@@ -374,14 +436,14 @@ export default function EvidenceSearchPage() {
         </div>
       </main>
 
-      {viewerHit && (
+      {viewer && (
         <PdfViewerModal
-          chunkId={viewerHit.chunkId}
-          pdfPage={viewerHit.pdfPage ?? 1}
-          highlight={viewerHit.text ?? ""}
-          citation={viewerHit.citation ?? ""}
-          bbox={viewerHit.bbox ?? null}
-          onClose={() => setViewerHit(null)}
+          chunkId={viewer.chunkId}
+          citation={viewer.citation}
+          highlights={viewer.highlights}
+          initialPage={viewer.initialPage}
+          sectionCount={viewer.sectionCount}
+          onClose={() => setViewer(null)}
         />
       )}
     </div>

@@ -939,6 +939,17 @@ export const standardsSearchRouter = router({
     }),
 
   /**
+   * Egy dokumentum ÖSSZES, a keresésre illeszkedő szakasza (oldal + bbox) — a
+   * viewer "teljes PDF, kiemelésekkel" nézetéhez.
+   */
+  documentHighlights: publicProcedure
+    .input(z.object({ query: z.string().min(1).max(1000), slug: z.string().min(1).max(128) }))
+    .mutation(async ({ input }) => {
+      const { documentHighlightsV2 } = await import("../v2/search");
+      return await documentHighlightsV2(input.query, input.slug);
+    }),
+
+  /**
    * Generate extended answer for an existing search result
    */
   extendAnswer: publicProcedure

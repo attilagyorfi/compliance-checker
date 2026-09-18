@@ -1,96 +1,60 @@
 /**
- * PDF-viewer modal „Ugrás a forráshoz" (Fázis 4/c).
+ * PDF-viewer modal (Fázis 4/c + „teljes PDF, kiemelésekkel").
  *
- * A találatból kapott `chunkId` alapján az azonos-origin proxyból (`/api/v2/pdf/:id`)
- * tölti a szabvány-PDF-et, a `pdfPage` oldalra ugrik, és a `highlight` (a teljes
- * bekezdés szövege) alapján a szöveg-rétegen KIEMELI a keresett részt. A megrendelői
- * kérés: „adjon egy linket, és ha rákattintok, oda ugrik a keresett helyre."
+ * Az azonos-origin proxyból (`/api/v2/pdf/:chunkId`) tölti a szabvány-PDF-et, és a
+ * `highlights` lista alapján a megfelelő oldalakon SÁRGÁVAL kiemeli a releváns
+ * szakaszokat (a PyMuPDF-bbox alapján, a szöveg-réteg kódolásától függetlenül).
  *
- * A kiemelés a PDF saját szöveg-rétegéből számol téglalapokat (nincs OCR): a
- * bekezdés eleji karaktereket illeszti a lap szöveg-elemeire. Ha nem talál (pl.
- * elcsúszó tördelés), az oldal kiemelés nélkül, de a helyes lapon jelenik meg.
+ * Két használat:
+ *  - Fókuszált („Ugrás a forráshoz"): egyetlen szakasz kiemelve, arra a lapra nyit.
+ *  - Teljes dokumentum: a keresésre illeszkedő ÖSSZES szakasz kiemelve, oldalak
+ *    közti ugrással (előző/következő kiemelés).
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, ChevronLeft, ChevronRight, Loader2, ExternalLink, AlertTriangle } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Loader2, ExternalLink, AlertTriangle } from "lucide-react";
 import { pdfjsLib } from "@/lib/pdf";
+
+export interface ViewerHighlight { pdfPage: number; bbox: number[]; }
 
 interface Props {
   chunkId: number;
-  pdfPage: number;
-  highlight: string;
   citation: string;
-  /** A szakasz befoglaló téglalapja [x0,y0,x1,y1] pont-egységben, bal-felső origó
-   * (PyMuPDF). Ha megvan, ebből rajzolunk kiemelést (mojibake-független). */
-  bbox?: number[] | null;
+  highlights: ViewerHighlight[];
+  initialPage: number;
+  /** Hány releváns szakasz (a lábléchez); alapból a highlights hossza. */
+  sectionCount?: number;
   onClose: () => void;
 }
 
 interface Rect { x: number; y: number; w: number; h: number; }
 
-const norm = (s: string) =>
-  s.toLowerCase().replace(/­/g, "").replace(/\s+/g, " ").trim();
-
-/** A keresett bekezdés kiemelendő téglalapjai a lap szöveg-rétegéből. */
-function computeHighlights(
-  textContent: { items: Array<{ str?: string; transform?: number[]; width?: number }> },
-  viewport: { transform: number[]; scale: number },
-  needleRaw: string
-): Rect[] {
-  const items = textContent.items.filter((it) => typeof it.str === "string" && it.transform);
-  let pageStr = "";
-  const ranges: Array<{ start: number; end: number; it: { transform?: number[]; width?: number } } | null> = [];
-  for (const it of items) {
-    const s = norm(it.str as string);
-    if (!s) { ranges.push(null); continue; }
-    const start = pageStr.length;
-    pageStr += s + " ";
-    ranges.push({ start, end: start + s.length, it });
-  }
-
-  // A gyakori fejléc-vízjelet levágjuk az elejéről, hogy ne azt emelje ki.
-  let needle = norm(needleRaw).replace(/^m mérnöki iroda kft\.?\s*/, "");
-  if (needle.length < 8) return [];
-
-  // A lehető leghosszabb bekezdés-prefixet keressük a lapon (a bekezdés a
-  // következő lapra átfuthat, ezért nem várjuk el a teljes egyezést).
-  let idx = -1, matched = needle;
-  const maxLen = Math.min(needle.length, 600);
-  for (let len = maxLen; len >= 24; len -= 24) {
-    const sub = needle.slice(0, len);
-    idx = pageStr.indexOf(sub);
-    if (idx >= 0) { matched = sub; break; }
-  }
-  if (idx < 0) return [];
-
-  const mStart = idx, mEnd = idx + matched.length;
-  const rects: Rect[] = [];
-  for (const r of ranges) {
-    if (!r || r.end <= mStart || r.start >= mEnd) continue;
-    const t = r.it.transform as number[];
-    const tx = pdfjsLib.Util.transform(viewport.transform, t);
-    const h = Math.hypot(tx[2], tx[3]) || 10;
-    const w = (r.it.width ?? 0) * viewport.scale;
-    rects.push({ x: tx[4], y: tx[5] - h, w, h });
-  }
-  return rects;
-}
-
-export default function PdfViewerModal({ chunkId, pdfPage, highlight, citation, bbox, onClose }: Props) {
+export default function PdfViewerModal({ chunkId, citation, highlights, initialPage, sectionCount, onClose }: Props) {
   const docRef = useRef<any>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const renderSeq = useRef(0);
 
   const [numPages, setNumPages] = useState(0);
-  const [page, setPage] = useState(pdfPage);
+  const [page, setPage] = useState(initialPage);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rects, setRects] = useState<Rect[]>([]);
   const [canvasSize, setCanvasSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
-  // null = még nincs / nem a cél-oldal; true = kiemelve; false = nem sikerült kiemelni
-  const [matched, setMatched] = useState<boolean | null>(null);
+
+  // Kiemelések oldalak szerint csoportosítva + a kiemelt oldalak rendezett listája.
+  const byPage = useMemo(() => {
+    const m = new Map<number, number[][]>();
+    for (const h of highlights) {
+      if (!h || !h.pdfPage || !Array.isArray(h.bbox)) continue;
+      if (!m.has(h.pdfPage)) m.set(h.pdfPage, []);
+      m.get(h.pdfPage)!.push(h.bbox);
+    }
+    return m;
+  }, [highlights]);
+  const hlPages = useMemo(() => Array.from(byPage.keys()).sort((a, b) => a - b), [byPage]);
+  const totalSections = sectionCount ?? highlights.length;
 
   // Dokumentum betöltése
   useEffect(() => {
@@ -98,16 +62,14 @@ export default function PdfViewerModal({ chunkId, pdfPage, highlight, citation, 
     setLoading(true); setError(null);
     const task = pdfjsLib.getDocument({
       url: `/api/v2/pdf/${chunkId}`,
-      disableRange: true,
-      disableStream: true,
-      disableAutoFetch: true,
+      disableRange: true, disableStream: true, disableAutoFetch: true,
     });
     task.promise.then(
       (doc: any) => {
         if (cancelled) { doc.destroy?.(); return; }
         docRef.current = doc;
         setNumPages(doc.numPages);
-        setPage(Math.min(Math.max(pdfPage, 1), doc.numPages));
+        setPage(Math.min(Math.max(initialPage, 1), doc.numPages));
       },
       (e: unknown) => {
         if (cancelled) return;
@@ -123,9 +85,9 @@ export default function PdfViewerModal({ chunkId, pdfPage, highlight, citation, 
       try { docRef.current?.destroy?.(); } catch { /* noop */ }
       docRef.current = null;
     };
-  }, [chunkId, pdfPage]);
+  }, [chunkId, initialPage]);
 
-  // Aktuális oldal renderelése
+  // Aktuális oldal renderelése + az oldalon lévő összes kiemelés
   const renderPage = useCallback(async (pageNum: number) => {
     const doc = docRef.current;
     const canvas = canvasRef.current;
@@ -157,44 +119,38 @@ export default function PdfViewerModal({ chunkId, pdfPage, highlight, citation, 
       }).promise;
       if (seq !== renderSeq.current) return;
 
-      // Kiemelés csak a cél-oldalon
-      const targetPage = Math.min(Math.max(pdfPage, 1), doc.numPages);
-      if (pageNum === targetPage) {
-        let hl: Rect[] = [];
-        if (bbox && bbox.length === 4 && bbox.every((n) => typeof n === "number")) {
-          // Elsődleges: az ingestion-kor tárolt PyMuPDF-bbox (pont-egység, bal-felső
-          // origó) → eszköz-pixel = pont × scale (0° elforgatásnál pontos).
-          const [x0, y0, x1, y1] = bbox;
-          hl = [{ x: x0 * scale, y: y0 * scale, w: (x1 - x0) * scale, h: (y1 - y0) * scale }];
-        } else {
-          // Tartalék: szöveg-réteg illesztés (tiszta kódolású PDF-eknél).
-          const tc = await pdfPageObj.getTextContent();
-          if (seq !== renderSeq.current) return;
-          hl = computeHighlights(tc, viewport, highlight);
-        }
-        setRects(hl);
-        setMatched(hl.length > 0);
-        // Görgetés az első kiemeléshez
-        if (hl.length) {
-          const top = Math.max(0, Math.min(...hl.map((r) => r.y)) - 80);
-          requestAnimationFrame(() => container.scrollTo({ top, behavior: "smooth" }));
-        }
-      } else {
-        setRects([]);
-        setMatched(null);
+      const boxes = byPage.get(pageNum) || [];
+      const hl: Rect[] = boxes.map(([x0, y0, x1, y1]) => ({
+        x: x0 * scale, y: y0 * scale, w: (x1 - x0) * scale, h: (y1 - y0) * scale,
+      }));
+      setRects(hl);
+      if (hl.length) {
+        const top = Math.max(0, Math.min(...hl.map((r) => r.y)) - 80);
+        requestAnimationFrame(() => container.scrollTo({ top, behavior: "smooth" }));
       }
     } catch {
       setError("Az oldal renderelése nem sikerült.");
     } finally {
       if (seq === renderSeq.current) setLoading(false);
     }
-  }, [pdfPage, highlight, bbox]);
+  }, [byPage]);
 
   useEffect(() => {
     if (docRef.current && page >= 1) renderPage(page);
   }, [page, numPages, renderPage]);
 
-  // ESC bezár
+  const gotoAdjacentHighlight = useCallback((dir: 1 | -1) => {
+    if (!hlPages.length) return;
+    if (dir === 1) {
+      const nxt = hlPages.find((p) => p > page);
+      setPage(nxt ?? hlPages[0]);
+    } else {
+      const prevs = hlPages.filter((p) => p < page);
+      setPage(prevs.length ? prevs[prevs.length - 1] : hlPages[hlPages.length - 1]);
+    }
+  }, [hlPages, page]);
+
+  // Billentyűk
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -212,6 +168,8 @@ export default function PdfViewerModal({ chunkId, pdfPage, highlight, citation, 
     return () => { document.body.style.overflow = prev; };
   }, []);
 
+  const multi = totalSections > 1;
+
   return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-6"
@@ -227,9 +185,18 @@ export default function PdfViewerModal({ chunkId, pdfPage, highlight, citation, 
         <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b" style={{ borderColor: "var(--line)" }}>
           <div className="min-w-0">
             <div className="text-sm font-semibold text-text-strong truncate">{citation}</div>
-            <div className="text-xs text-text-faint">Forrás-PDF — a kiemelt rész a keresett szakasz</div>
+            <div className="text-xs text-text-faint">
+              {multi ? "Teljes dokumentum — a sárga kiemelések a releváns szakaszok" : "Forrás-PDF — a kiemelt rész a keresett szakasz"}
+            </div>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            {multi && (
+              <button
+                onClick={() => gotoAdjacentHighlight(-1)}
+                className="p-1.5 rounded hover:bg-hover text-text-default"
+                title="Előző kiemelés"
+              ><ChevronsLeft size={16} /></button>
+            )}
             <button
               onClick={() => setPage((p) => Math.max(p - 1, 1))}
               disabled={page <= 1}
@@ -245,8 +212,15 @@ export default function PdfViewerModal({ chunkId, pdfPage, highlight, citation, 
               className="p-1.5 rounded hover:bg-hover disabled:opacity-40 text-text-default"
               title="Következő oldal"
             ><ChevronRight size={16} /></button>
+            {multi && (
+              <button
+                onClick={() => gotoAdjacentHighlight(1)}
+                className="p-1.5 rounded hover:bg-hover text-text-default"
+                title="Következő kiemelés"
+              ><ChevronsRight size={16} /></button>
+            )}
             <a
-              href={`/api/v2/pdf/${chunkId}#page=${pdfPage}`}
+              href={`/api/v2/pdf/${chunkId}#page=${page}`}
               target="_blank"
               rel="noopener noreferrer"
               className="p-1.5 rounded hover:bg-hover text-text-default ml-1"
@@ -271,7 +245,6 @@ export default function PdfViewerModal({ chunkId, pdfPage, highlight, citation, 
           ) : (
             <div className="relative" style={{ width: canvasSize.w || undefined, height: canvasSize.h || undefined }}>
               <canvas ref={canvasRef} className="block shadow-sm rounded-sm bg-white" />
-              {/* Kiemelés-réteg */}
               {rects.map((r, i) => (
                 <div
                   key={i}
@@ -293,12 +266,13 @@ export default function PdfViewerModal({ chunkId, pdfPage, highlight, citation, 
           )}
         </div>
 
-        {/* Lábléc — highlight-státusz */}
-        {!error && matched !== null && (
+        {/* Lábléc */}
+        {!error && (
           <div className="px-4 py-1.5 border-t text-xs text-text-faint flex items-center gap-2" style={{ borderColor: "var(--line)" }}>
-            {matched
-              ? <><span className="inline-block w-3 h-3 rounded-[2px]" style={{ backgroundColor: "rgba(255,214,0,0.6)", boxShadow: "0 0 0 1px rgba(230,180,0,0.6)" }} /> A sárga kiemelés a keresett szakasz.</>
-              : <><AlertTriangle size={12} className="text-amber-500" /> A pontos kiemelés nem sikerült, de ez a keresett oldal.</>}
+            <span className="inline-block w-3 h-3 rounded-[2px] flex-shrink-0" style={{ backgroundColor: "rgba(255,214,0,0.6)", boxShadow: "0 0 0 1px rgba(230,180,0,0.6)" }} />
+            {multi
+              ? <>{totalSections} releváns szakasz kiemelve ebben a dokumentumban{rects.length ? ` — ${rects.length} ezen az oldalon` : ""}. A ⟪ ⟫ gombokkal ugorhat a kiemelések között.</>
+              : <>A sárga kiemelés a keresett szakasz.</>}
           </div>
         )}
       </div>
