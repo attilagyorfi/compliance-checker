@@ -14,7 +14,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Loader2, ExternalLink, AlertTriangle } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Loader2, ExternalLink, AlertTriangle, Download } from "lucide-react";
+import { toast } from "sonner";
 import { pdfjsLib } from "@/lib/pdf";
 
 export interface ViewerHighlight { pdfPage: number; bbox: number[]; }
@@ -46,6 +47,7 @@ export default function PdfViewerModal({ chunkId, citation, highlights, initialP
   const [currentPage, setCurrentPage] = useState(initialPage);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const byPage = useMemo(() => {
     const m = new Map<number, number[][]>();
@@ -201,6 +203,47 @@ export default function PdfViewerModal({ chunkId, citation, highlights, initialP
     scrollToPage(target);
   }, [hlPages, currentPage, scrollToPage]);
 
+  // Kiemelésekkel teli PDF mentése: az eredeti PDF-be vektoros sárga téglalapokat
+  // égetünk a bbox-ok alapján (kicsi fájl, a szöveg kereshető marad). A pdf-lib-et
+  // dinamikusan töltjük, hogy ne hízlalja a fő bundle-t.
+  const savePdf = useCallback(async () => {
+    if (saving) return;
+    setSaving(true);
+    const tid = toast.loading("Kiemeléses PDF készítése…");
+    try {
+      const resp = await fetch(`/api/v2/pdf/${chunkId}`);
+      if (!resp.ok) throw new Error(String(resp.status));
+      const bytes = await resp.arrayBuffer();
+      const { PDFDocument, rgb } = await import("pdf-lib");
+      const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
+      const n = pdf.getPageCount();
+      for (const h of highlights) {
+        const idx = (h.pdfPage || 0) - 1;
+        if (idx < 0 || idx >= n || !Array.isArray(h.bbox) || h.bbox.length !== 4) continue;
+        const [x0, y0, x1, y1] = h.bbox;
+        const page = pdf.getPage(idx);
+        const H = page.getHeight();
+        page.drawRectangle({ x: x0, y: H - y1, width: x1 - x0, height: y1 - y0, color: rgb(1, 0.84, 0), opacity: 0.35 });
+      }
+      const out = await pdf.save();
+      const blob = new Blob([out.slice().buffer], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const name = (citation || "szabvany").replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+—\s+teljes dokumentum/, "").trim();
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${name} — kiemelt.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 8000);
+    } catch {
+      toast.error("A kiemeléses PDF mentése nem sikerült.");
+    } finally {
+      toast.dismiss(tid);
+      setSaving(false);
+    }
+  }, [saving, chunkId, highlights, citation]);
+
   // Billentyűk + háttér-scroll zár
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -247,6 +290,14 @@ export default function PdfViewerModal({ chunkId, citation, highlights, initialP
             {multi && (
               <button onClick={() => gotoAdjacentHighlight(1)} className="p-1.5 rounded hover:bg-hover text-text-default" title="Következő kiemelés"><ChevronsRight size={16} /></button>
             )}
+            <button
+              onClick={savePdf}
+              disabled={saving}
+              className="p-1.5 rounded hover:bg-hover disabled:opacity-50 text-text-default ml-1"
+              title="Kiemeléses PDF mentése (letöltés)"
+            >
+              {saving ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+            </button>
             {!asPage && newTabUrl && (
               <a
                 href={newTabUrl}

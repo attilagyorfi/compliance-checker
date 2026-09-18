@@ -191,7 +191,7 @@ export default function EvidenceSearchPage() {
   const handleDownloadReport = async () => {
     if (!hits || hits.length === 0 || reportBusy) return;
     setReportBusy(true);
-    const toastId = toast.loading("Riport készítése — a szabvány-oldalak renderelése…");
+    const toastId = toast.loading("Riport készítése — a releváns szakaszok kivágása…");
     const esc = (s: unknown) =>
       String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] as string));
     const clean = (s: unknown) =>
@@ -215,8 +215,9 @@ export default function EvidenceSearchPage() {
     };
 
     const SCALE = 2;   // élesebb kép a képletekhez
-    // A TELJES oldalt rendereljük (mint a viewerben), a keresett szakaszt kiemelve —
-    // nincs kivágás, így a szövegből/képletből semmi nem vész el.
+    // Csak a KIEMELT szakaszt vágjuk ki a PDF-oldalból (bbox + kis kontextus),
+    // sárgával kiemelve — így a riport tömör, és minden tétel a hozzá tartozó
+    // hivatkozással (dokumentum · szakasz · oldal) egyértelműen azonosítható.
     const renderHit = async (hit: any): Promise<string | null> => {
       try {
         if (!hit.pdfPage) return null;
@@ -232,20 +233,35 @@ export default function EvidenceSearchPage() {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         await page.render({ canvasContext: ctx, viewport: vp }).promise;
 
-        // A szakasz kiemelése a bbox alapján (sárga, mint a viewerben).
         const bbox = hit.bbox;
         if (Array.isArray(bbox) && bbox.length === 4 && bbox.every((n: any) => typeof n === "number")) {
           const [x0, y0, x1, y1] = bbox;
           const rx = x0 * SCALE, ry = y0 * SCALE, rw = (x1 - x0) * SCALE, rh = (y1 - y0) * SCALE;
+          // sárga kiemelés a szakaszra
           ctx.save();
           ctx.globalCompositeOperation = "multiply";
-          ctx.fillStyle = "rgba(255, 214, 0, 0.28)";
+          ctx.fillStyle = "rgba(255, 214, 0, 0.30)";
           ctx.fillRect(rx, ry, rw, rh);
           ctx.restore();
           ctx.strokeStyle = "rgba(214, 168, 0, 0.9)";
           ctx.lineWidth = 1.5;
           ctx.strokeRect(rx, ry, rw, rh);
+          // kivágás a szakaszra (teljes szélesség, függőlegesen bbox + kontextus)
+          const PAD = 26 * SCALE;
+          const sy = Math.max(0, Math.round(ry - PAD));
+          const sh = Math.min(canvas.height - sy, Math.round(rh + 2 * PAD));
+          if (sh > 0) {
+            const crop = document.createElement("canvas");
+            crop.width = canvas.width;
+            crop.height = sh;
+            const cctx = crop.getContext("2d");
+            if (cctx) {
+              cctx.drawImage(canvas, 0, sy, canvas.width, sh, 0, 0, canvas.width, sh);
+              return crop.toDataURL("image/jpeg", 0.9);
+            }
+          }
         }
+        // bbox nélkül: a teljes oldal (tartalék)
         return canvas.toDataURL("image/jpeg", 0.85);
       } catch {
         return null;
@@ -267,11 +283,12 @@ export default function EvidenceSearchPage() {
       const itemsHtml = hits.map((h: any, i: number) => {
         const img = imgs[i];
         const body = img
-          ? `<div class="pgwrap"><img class="pg" src="${img}" alt="Szabvány-szakasz a forrás-PDF-ből"></div>`
+          ? `<div class="pgwrap"><img class="pg" src="${img}" alt="Kiemelt szabvány-szakasz"></div>`
           : `<div class="tx">${esc(clean(h.text))}</div>`;
+        const loc = `${h.breadcrumb ? esc(clean(h.breadcrumb)) + " &middot; " : ""}PDF-oldal ${esc(h.pdfPage)}`;
         return `<li>
           <div class="cite"><span class="sn">${i + 1}.</span> ${esc(h.citation)}</div>
-          ${h.breadcrumb ? `<div class="bc">${esc(clean(h.breadcrumb))}</div>` : ""}
+          <div class="bc">${loc}</div>
           ${body}
         </li>`;
       }).join("");
@@ -305,7 +322,7 @@ export default function EvidenceSearchPage() {
   <h2>Talált szabvány-szakaszok (${hits.length})</h2>
   <ol>${itemsHtml}</ol>
   <footer>Ezt a riportot a Tervmegfelelőség-ellenőrző állította elő ${now}-kor a betöltött szabványok alapján.
-  Minden szakasz a forrás-PDF-ből, egy az egyben kivágva jelenik meg — kérjük, a végleges felhasználás előtt ellenőrizze a forrás-dokumentumokat.</footer>
+  Minden tétel a keresett, sárgával kiemelt szakaszt mutatja a forrás-PDF-ből, a pontos hivatkozással (dokumentum · szakasz · oldal) — kérjük, a végleges felhasználás előtt ellenőrizze a forrás-dokumentumokat.</footer>
   <script>window.onload=function(){setTimeout(function(){window.print();},400);};</script>
 </body></html>`;
 
