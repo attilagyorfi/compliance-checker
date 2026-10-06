@@ -80,27 +80,34 @@ export async function hybridSearchV2(
   const db = await getDb();
   if (!db) return [];
   const { lexTerms, wantedMatches } = expandQuery(query);
+  // Lexikai tagok: a bővített (szinonima) tagok, vagy — ha nincs — fallback a nyers
+  // query-szavakra, hogy embedding nélkül is legyen mire illeszteni.
+  const terms = lexTerms.length ? lexTerms : tokenize(query).filter((t) => t.length >= 3);
 
-  // 1) szemantikus: vektor-keresés az ablakokon → egységenként legjobb táv
+  // 1) szemantikus (OPCIONÁLIS): csak ha van embedding-szolgáltató (OpenAI). Ha nincs
+  //    (pl. eltávolítva), kihagyjuk — a lexikai ág + Claude-rerank viszi a keresést.
+  //    Így a rendszer embedding nélkül is működik (egyetlen szolgáltató: Claude).
+  let semRanked: number[] = [];
   const qv = await getEmbedding(query);
-  if (!qv) return [];
-  const lit = JSON.stringify(qv);
-  const semRes = await db.execute(sql`
-    SELECT chunk_id AS chunkId, MIN(VEC_COSINE_DISTANCE(embedding_vec, ${lit})) dist
-    FROM v2_embeddings GROUP BY chunk_id ORDER BY dist LIMIT 40`);
-  const semRanked = rows<{ chunkId: number }>(semRes).map((r) => Number(r.chunkId));
+  if (qv) {
+    const lit = JSON.stringify(qv);
+    const semRes = await db.execute(sql`
+      SELECT chunk_id AS chunkId, MIN(VEC_COSINE_DISTANCE(embedding_vec, ${lit})) dist
+      FROM v2_embeddings GROUP BY chunk_id ORDER BY dist LIMIT 40`);
+    semRanked = rows<{ chunkId: number }>(semRes).map((r) => Number(r.chunkId));
+  }
 
-  // 2) lexikai: a bővített tagokra illeszkedő egységek, találat-szám szerint
+  // 2) lexikai: a tagokra illeszkedő egységek, találat-szám szerint
   let lexRanked: number[] = [];
-  if (lexTerms.length) {
-    const likeParts = lexTerms.map((t) => sql`LOWER(text) LIKE ${"%" + t + "%"}`);
+  if (terms.length) {
+    const likeParts = terms.map((t) => sql`LOWER(text) LIKE ${"%" + t + "%"}`);
     const lexRes = await db.execute(sql`
       SELECT id, breadcrumb, text FROM v2_chunks WHERE ${sql.join(likeParts, sql` OR `)} LIMIT 400`);
     const scored = rows<{ id: number; breadcrumb: string; text: string }>(lexRes).map((r) => {
       const hay = (r.text + " " + (r.breadcrumb || "")).toLowerCase();
       const bc = (r.breadcrumb || "").toLowerCase();
       let hits = 0, head = 0;
-      for (const t of lexTerms) { if (hay.includes(t)) hits++; if (bc.includes(t)) head++; }
+      for (const t of terms) { if (hay.includes(t)) hits++; if (bc.includes(t)) head++; }
       return { id: Number(r.id), score: hits + head * 0.5 };
     }).sort((a, b) => b.score - a.score);
     lexRanked = scored.map((s) => s.id);
@@ -128,7 +135,8 @@ export async function hybridSearchV2(
   }
 
   const ranked = Array.from(fused.entries()).sort((a, b) => b[1] - a[1]).map(([id]) => id);
-  const take = rerank ? Math.max(topK, 12) : topK;
+  // Embedding nélkül a rerank hordozza a relevanciát → több jelöltet adunk neki.
+  const take = rerank ? Math.max(topK, semRanked.length ? 12 : 16) : topK;
   let hits = await hydrate(db, ranked.slice(0, take));
   if (rerank) hits = await rerankLLM(query, hits);
   return hits.slice(0, topK);

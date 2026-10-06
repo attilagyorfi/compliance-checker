@@ -2145,23 +2145,26 @@ async function hybridSearchV2(query, opts = {}) {
   const db = await getDb();
   if (!db) return [];
   const { lexTerms, wantedMatches } = expandQuery(query);
+  const terms = lexTerms.length ? lexTerms : tokenize(query).filter((t2) => t2.length >= 3);
+  let semRanked = [];
   const qv = await getEmbedding(query);
-  if (!qv) return [];
-  const lit = JSON.stringify(qv);
-  const semRes = await db.execute(sql2`
-    SELECT chunk_id AS chunkId, MIN(VEC_COSINE_DISTANCE(embedding_vec, ${lit})) dist
-    FROM v2_embeddings GROUP BY chunk_id ORDER BY dist LIMIT 40`);
-  const semRanked = rows(semRes).map((r) => Number(r.chunkId));
+  if (qv) {
+    const lit = JSON.stringify(qv);
+    const semRes = await db.execute(sql2`
+      SELECT chunk_id AS chunkId, MIN(VEC_COSINE_DISTANCE(embedding_vec, ${lit})) dist
+      FROM v2_embeddings GROUP BY chunk_id ORDER BY dist LIMIT 40`);
+    semRanked = rows(semRes).map((r) => Number(r.chunkId));
+  }
   let lexRanked = [];
-  if (lexTerms.length) {
-    const likeParts = lexTerms.map((t2) => sql2`LOWER(text) LIKE ${"%" + t2 + "%"}`);
+  if (terms.length) {
+    const likeParts = terms.map((t2) => sql2`LOWER(text) LIKE ${"%" + t2 + "%"}`);
     const lexRes = await db.execute(sql2`
       SELECT id, breadcrumb, text FROM v2_chunks WHERE ${sql2.join(likeParts, sql2` OR `)} LIMIT 400`);
     const scored = rows(lexRes).map((r) => {
       const hay = (r.text + " " + (r.breadcrumb || "")).toLowerCase();
       const bc = (r.breadcrumb || "").toLowerCase();
       let hits2 = 0, head = 0;
-      for (const t2 of lexTerms) {
+      for (const t2 of terms) {
         if (hay.includes(t2)) hits2++;
         if (bc.includes(t2)) head++;
       }
@@ -2186,7 +2189,7 @@ async function hybridSearchV2(query, opts = {}) {
     }
   }
   const ranked = Array.from(fused.entries()).sort((a, b) => b[1] - a[1]).map(([id]) => id);
-  const take = rerank ? Math.max(topK, 12) : topK;
+  const take = rerank ? Math.max(topK, semRanked.length ? 12 : 16) : topK;
   let hits = await hydrate(db, ranked.slice(0, take));
   if (rerank) hits = await rerankLLM(query, hits);
   return hits.slice(0, topK);
