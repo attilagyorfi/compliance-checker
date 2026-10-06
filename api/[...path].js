@@ -20,6 +20,20 @@ function getLlmProvider() {
   if (ENV.forgeApiKey && ENV.forgeApiUrl) return "forge";
   return null;
 }
+function getChatProvider() {
+  const forced = (process.env.LLM_PROVIDER ?? "").trim().toLowerCase();
+  if (forced === "anthropic") return ENV.anthropicApiKey ? "anthropic" : null;
+  if (forced === "openai") return ENV.openaiApiKey ? "openai" : null;
+  if (forced === "forge") return ENV.forgeApiKey && ENV.forgeApiUrl ? "forge" : null;
+  if (ENV.anthropicApiKey) return "anthropic";
+  if (ENV.openaiApiKey) return "openai";
+  if (ENV.forgeApiKey && ENV.forgeApiUrl) return "forge";
+  return null;
+}
+function getAnthropicChatConfig() {
+  if (!ENV.anthropicApiKey) return null;
+  return { apiKey: ENV.anthropicApiKey, model: ENV.anthropicModel };
+}
 function getLlmChatConfig() {
   const provider = getLlmProvider();
   if (provider === "openai") {
@@ -58,11 +72,17 @@ var init_env = __esm({
       oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
       ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
       // ── LLM provider ────────────────────────────────────────────────────────────
-      // Új primary: OpenAI direkt API-kulcs.
+      // CHAT: Anthropic (Claude) VAGY OpenAI. EMBEDDING: mindig OpenAI (az Anthropic
+      // nem kínál embedding-API-t; a v2_embeddings VECTOR(1536) a text-embedding-3-small-hoz
+      // kötött). A chat-provider a getChatProvider() alapján dől el.
       openaiApiKey: process.env.OPENAI_API_KEY ?? "",
       openaiBaseUrl: process.env.OPENAI_BASE_URL ?? "https://api.openai.com",
       llmModel: process.env.LLM_MODEL ?? "gpt-4o-mini",
       embeddingModel: process.env.EMBEDDING_MODEL ?? "text-embedding-3-small",
+      // Anthropic (Claude) — a chat-hívásokhoz (átfogalmazás, strukturált válasz,
+      // rerank, compliance). Az embeddinghez NEM használható.
+      anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
+      anthropicModel: process.env.ANTHROPIC_MODEL ?? "claude-opus-5-5",
       // Legacy Manus forge (még támogatott deploy-okra). Ha ez be van állítva ÉS az
       // openaiApiKey üres, a kód a forge-ot használja.
       forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
@@ -71,12 +91,106 @@ var init_env = __esm({
   }
 });
 
+// server/_core/llmAnthropic.ts
+var llmAnthropic_exports = {};
+__export(llmAnthropic_exports, {
+  invokeAnthropic: () => invokeAnthropic
+});
+import Anthropic from "@anthropic-ai/sdk";
+function getClient(apiKey) {
+  if (!_client) _client = new Anthropic({ apiKey });
+  return _client;
+}
+function toText(content) {
+  const parts = Array.isArray(content) ? content : [content];
+  return parts.map((p) => {
+    if (typeof p === "string") return p;
+    if (p.type === "text") return p.text;
+    return "";
+  }).join("\n").trim();
+}
+function stripJsonFences(s) {
+  const t2 = s.trim();
+  const m = t2.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return (m ? m[1] : t2).trim();
+}
+async function invokeAnthropic(params) {
+  const cfg = getAnthropicChatConfig();
+  if (!cfg) {
+    throw new Error(
+      "Nincs ANTHROPIC_API_KEY konfigur\xE1lva a Claude chat-hez. \xC1ll\xEDtsd be az ANTHROPIC_API_KEY env-v\xE1ltoz\xF3t."
+    );
+  }
+  const client = getClient(cfg.apiKey);
+  const systemParts = [];
+  const msgs = [];
+  for (const m of params.messages) {
+    const text3 = toText(m.content);
+    if (m.role === "system") {
+      if (text3) systemParts.push(text3);
+      continue;
+    }
+    if (m.role === "assistant") {
+      msgs.push({ role: "assistant", content: text3 });
+      continue;
+    }
+    msgs.push({ role: "user", content: text3 });
+  }
+  if (msgs.length === 0) msgs.push({ role: "user", content: "" });
+  const rf = params.responseFormat || params.response_format;
+  const wantsJson = Boolean(rf && (rf.type === "json_object" || rf.type === "json_schema"));
+  if (wantsJson) {
+    systemParts.push(
+      "Kiz\xE1r\xF3lag egyetlen \xE9rv\xE9nyes JSON-objektummal v\xE1laszolj \u2014 minden egy\xE9b sz\xF6veg, magyar\xE1zat \xE9s markdown k\xF3dkeret n\xE9lk\xFCl."
+    );
+  }
+  const maxTokensEnv = Number(process.env.LLM_MAX_TOKENS);
+  const max_tokens = Number.isFinite(maxTokensEnv) && maxTokensEnv > 0 ? maxTokensEnv : 8192;
+  const resp = await client.messages.create({
+    model: cfg.model,
+    max_tokens,
+    ...systemParts.length ? { system: systemParts.join("\n\n") } : {},
+    messages: msgs
+  });
+  let text2 = resp.content.filter((b) => b.type === "text").map((b) => b.text).join("");
+  if (wantsJson) text2 = stripJsonFences(text2);
+  return {
+    id: resp.id,
+    created: Math.floor(Date.now() / 1e3),
+    model: resp.model,
+    choices: [
+      {
+        index: 0,
+        message: { role: "assistant", content: text2 },
+        finish_reason: resp.stop_reason ?? null
+      }
+    ],
+    usage: {
+      prompt_tokens: resp.usage.input_tokens ?? 0,
+      completion_tokens: resp.usage.output_tokens ?? 0,
+      total_tokens: (resp.usage.input_tokens ?? 0) + (resp.usage.output_tokens ?? 0)
+    }
+  };
+}
+var _client;
+var init_llmAnthropic = __esm({
+  "server/_core/llmAnthropic.ts"() {
+    "use strict";
+    init_env();
+    _client = null;
+  }
+});
+
 // server/_core/llm.ts
 async function invokeLLM(params) {
+  if (getChatProvider() === "anthropic") {
+    const { invokeAnthropic: invokeAnthropic2 } = await Promise.resolve().then(() => (init_llmAnthropic(), llmAnthropic_exports));
+    return invokeAnthropic2(params);
+  }
   const cfg = getLlmChatConfig();
   if (!cfg) {
     throw new Error(
-      "Nincs LLM-provider konfigur\xE1lva. \xC1ll\xEDtsd be az OPENAI_API_KEY env-v\xE1ltoz\xF3t (vagy legacy: BUILT_IN_FORGE_API_KEY + BUILT_IN_FORGE_API_URL)."
+      "Nincs LLM-provider konfigur\xE1lva. \xC1ll\xEDtsd be az ANTHROPIC_API_KEY (chat) \xE9s/vagy OPENAI_API_KEY (chat + embedding) env-v\xE1ltoz\xF3t (vagy legacy: BUILT_IN_FORGE_API_KEY + BUILT_IN_FORGE_API_URL)."
     );
   }
   const {

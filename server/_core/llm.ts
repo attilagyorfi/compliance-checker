@@ -1,4 +1,4 @@
-import { getLlmChatConfig } from "./env";
+import { getLlmChatConfig, getChatProvider } from "./env";
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
 
@@ -258,10 +258,18 @@ const normalizeResponseFormat = ({
 };
 
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
+  // CHAT-provider dispatch: ha a Claude (Anthropic) aktív, azt használjuk — az
+  // adapter ugyanazt az InvokeResult alakot adja vissza, így a hívók nem változnak.
+  // (Az embedding ettől függetlenül OpenAI marad — lásd server/embeddings.ts.)
+  if (getChatProvider() === "anthropic") {
+    const { invokeAnthropic } = await import("./llmAnthropic");
+    return invokeAnthropic(params);
+  }
+
   const cfg = getLlmChatConfig();
   if (!cfg) {
     throw new Error(
-      "Nincs LLM-provider konfigurálva. Állítsd be az OPENAI_API_KEY env-változót (vagy legacy: BUILT_IN_FORGE_API_KEY + BUILT_IN_FORGE_API_URL)."
+      "Nincs LLM-provider konfigurálva. Állítsd be az ANTHROPIC_API_KEY (chat) és/vagy OPENAI_API_KEY (chat + embedding) env-változót (vagy legacy: BUILT_IN_FORGE_API_KEY + BUILT_IN_FORGE_API_URL)."
     );
   }
 
