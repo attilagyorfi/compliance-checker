@@ -182,6 +182,10 @@ var init_llmAnthropic = __esm({
 });
 
 // server/_core/llm.ts
+var llm_exports = {};
+__export(llm_exports, {
+  invokeLLM: () => invokeLLM
+});
 async function invokeLLM(params) {
   if (getChatProvider() === "anthropic") {
     const { invokeAnthropic: invokeAnthropic2 } = await Promise.resolve().then(() => (init_llmAnthropic(), llmAnthropic_exports));
@@ -5942,11 +5946,12 @@ async function createContext(opts) {
 }
 
 // server/_core/app.ts
+init_env();
 async function createApp() {
   const app = express();
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
-  app.get("/api/health", async (_req, res) => {
+  app.get("/api/health", async (req, res) => {
     const out = {
       ok: true,
       nodeEnv: process.env.NODE_ENV ?? null,
@@ -5957,9 +5962,35 @@ async function createApp() {
       commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? "").slice(0, 7) || null,
       region: process.env.VERCEL_REGION ?? null,
       hasOpenAiKey: Boolean(process.env.OPENAI_API_KEY),
+      // embedding + (opc.) chat
+      hasAnthropicKey: Boolean(process.env.ANTHROPIC_API_KEY),
+      // Claude chat
+      chatProvider: getChatProvider(),
+      // melyik provider viszi a chatet
       hasAuthSecret: Boolean(process.env.BETTER_AUTH_SECRET),
       demoLoginEnabled: isDemoLoginEnabled()
     };
+    if (req.query.llm) {
+      try {
+        const { invokeLLM: invokeLLM2 } = await Promise.resolve().then(() => (init_llm(), llm_exports));
+        const r = await invokeLLM2({
+          messages: [{ role: "user", content: "V\xE1laszolj egyetlen sz\xF3val: pong" }],
+          max_tokens: 16
+        });
+        out.llm = {
+          ok: true,
+          provider: getChatProvider(),
+          model: r.model,
+          reply: String(r.choices?.[0]?.message?.content ?? "").trim().slice(0, 40)
+        };
+      } catch (err) {
+        out.llm = {
+          ok: false,
+          provider: getChatProvider(),
+          error: String(err instanceof Error ? err.message : err).slice(0, 220)
+        };
+      }
+    }
     const raw = process.env.DATABASE_URL;
     out.hasDatabaseUrl = Boolean(raw);
     if (raw) {

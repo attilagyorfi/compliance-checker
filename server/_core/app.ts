@@ -13,6 +13,7 @@ import express, { type Express } from "express";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
 import { createContext, resolveUserFromReq } from "./context";
+import { getChatProvider } from "./env";
 import { handleAuthRequest } from "./auth";
 import {
   DEMO_COOKIE_NAME,
@@ -32,7 +33,7 @@ export async function createApp(): Promise<Express> {
   // Deploy után ezzel derül ki gyorsan, hogy az adatbázis és a kulcsok
   // rendben vannak-e. SOHA nem ad vissza titkot (jelszót, kulcsot) — csak a
   // hosztnevet és darabszámokat.
-  app.get("/api/health", async (_req, res) => {
+  app.get("/api/health", async (req, res) => {
     const out: Record<string, unknown> = {
       ok: true,
       nodeEnv: process.env.NODE_ENV ?? null,
@@ -42,10 +43,36 @@ export async function createApp(): Promise<Express> {
       vercelEnv: process.env.VERCEL_ENV ?? "(nem Vercel)",
       commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? "").slice(0, 7) || null,
       region: process.env.VERCEL_REGION ?? null,
-      hasOpenAiKey: Boolean(process.env.OPENAI_API_KEY),
+      hasOpenAiKey: Boolean(process.env.OPENAI_API_KEY),      // embedding + (opc.) chat
+      hasAnthropicKey: Boolean(process.env.ANTHROPIC_API_KEY), // Claude chat
+      chatProvider: getChatProvider(),                        // melyik provider viszi a chatet
       hasAuthSecret: Boolean(process.env.BETTER_AUTH_SECRET),
       demoLoginEnabled: isDemoLoginEnabled(),
     };
+
+    // Opcionális élő LLM-ping (?llm=1): egy apró chat-hívás, hogy kiderüljön,
+    // a chat-provider kulcsa/modellje tényleg válaszol-e. Csak kérésre fut (token!).
+    if (req.query.llm) {
+      try {
+        const { invokeLLM } = await import("./llm");
+        const r = await invokeLLM({
+          messages: [{ role: "user", content: "Válaszolj egyetlen szóval: pong" }],
+          max_tokens: 16,
+        });
+        out.llm = {
+          ok: true,
+          provider: getChatProvider(),
+          model: r.model,
+          reply: String(r.choices?.[0]?.message?.content ?? "").trim().slice(0, 40),
+        };
+      } catch (err) {
+        out.llm = {
+          ok: false,
+          provider: getChatProvider(),
+          error: String(err instanceof Error ? err.message : err).slice(0, 220),
+        };
+      }
+    }
     const raw = process.env.DATABASE_URL;
     out.hasDatabaseUrl = Boolean(raw);
     if (raw) {
