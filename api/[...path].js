@@ -15,15 +15,6 @@ var __export = (target, all) => {
 };
 
 // server/_core/env.ts
-var env_exports = {};
-__export(env_exports, {
-  ENV: () => ENV,
-  getAnthropicChatConfig: () => getAnthropicChatConfig,
-  getChatProvider: () => getChatProvider,
-  getLlmChatConfig: () => getLlmChatConfig,
-  getLlmEmbeddingsConfig: () => getLlmEmbeddingsConfig,
-  getLlmProvider: () => getLlmProvider
-});
 function getLlmProvider() {
   if (ENV.openaiApiKey) return "openai";
   if (ENV.forgeApiKey && ENV.forgeApiUrl) return "forge";
@@ -191,10 +182,6 @@ var init_llmAnthropic = __esm({
 });
 
 // server/_core/llm.ts
-var llm_exports = {};
-__export(llm_exports, {
-  invokeLLM: () => invokeLLM
-});
 async function invokeLLM(params) {
   if (getChatProvider() === "anthropic") {
     const { invokeAnthropic: invokeAnthropic2 } = await Promise.resolve().then(() => (init_llmAnthropic(), llmAnthropic_exports));
@@ -5963,7 +5950,7 @@ async function createApp() {
   const app = express();
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
-  app.get("/api/health", async (req, res) => {
+  app.get("/api/health", async (_req, res) => {
     const out = {
       ok: true,
       nodeEnv: process.env.NODE_ENV ?? null,
@@ -5982,50 +5969,6 @@ async function createApp() {
       hasAuthSecret: Boolean(process.env.BETTER_AUTH_SECRET),
       demoLoginEnabled: isDemoLoginEnabled()
     };
-    if (req.query.llm) {
-      try {
-        const { invokeLLM: invokeLLM2 } = await Promise.resolve().then(() => (init_llm(), llm_exports));
-        const r = await invokeLLM2({
-          messages: [{ role: "user", content: "V\xE1laszolj egyetlen sz\xF3val: pong" }],
-          max_tokens: 16
-        });
-        out.llm = {
-          ok: true,
-          provider: getChatProvider(),
-          model: r.model,
-          reply: String(r.choices?.[0]?.message?.content ?? "").trim().slice(0, 40)
-        };
-      } catch (err) {
-        out.llm = {
-          ok: false,
-          provider: getChatProvider(),
-          error: String(err instanceof Error ? err.message : err).slice(0, 220)
-        };
-      }
-    }
-    if (req.query.embed) {
-      try {
-        const { getLlmEmbeddingsConfig: getLlmEmbeddingsConfig2 } = await Promise.resolve().then(() => (init_env(), env_exports));
-        const cfg = getLlmEmbeddingsConfig2();
-        if (!cfg) {
-          out.embed = { ok: false, error: "nincs embedding-config (OPENAI_API_KEY hi\xE1nyzik?)" };
-        } else {
-          const r = await fetch(cfg.url, {
-            method: "POST",
-            headers: { "content-type": "application/json", authorization: `Bearer ${cfg.apiKey}` },
-            body: JSON.stringify({ model: cfg.model, input: "beton" })
-          });
-          if (r.ok) {
-            const j = await r.json();
-            out.embed = { ok: true, model: cfg.model, dim: j?.data?.[0]?.embedding?.length ?? null };
-          } else {
-            out.embed = { ok: false, status: r.status, model: cfg.model, error: (await r.text()).slice(0, 220) };
-          }
-        }
-      } catch (err) {
-        out.embed = { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 220) };
-      }
-    }
     const raw = process.env.DATABASE_URL;
     out.hasDatabaseUrl = Boolean(raw);
     if (raw) {

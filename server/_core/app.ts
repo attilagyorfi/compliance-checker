@@ -33,7 +33,7 @@ export async function createApp(): Promise<Express> {
   // Deploy után ezzel derül ki gyorsan, hogy az adatbázis és a kulcsok
   // rendben vannak-e. SOHA nem ad vissza titkot (jelszót, kulcsot) — csak a
   // hosztnevet és darabszámokat.
-  app.get("/api/health", async (req, res) => {
+  app.get("/api/health", async (_req, res) => {
     const out: Record<string, unknown> = {
       ok: true,
       nodeEnv: process.env.NODE_ENV ?? null,
@@ -50,55 +50,6 @@ export async function createApp(): Promise<Express> {
       demoLoginEnabled: isDemoLoginEnabled(),
     };
 
-    // Opcionális élő LLM-ping (?llm=1): egy apró chat-hívás, hogy kiderüljön,
-    // a chat-provider kulcsa/modellje tényleg válaszol-e. Csak kérésre fut (token!).
-    if (req.query.llm) {
-      try {
-        const { invokeLLM } = await import("./llm");
-        const r = await invokeLLM({
-          messages: [{ role: "user", content: "Válaszolj egyetlen szóval: pong" }],
-          max_tokens: 16,
-        });
-        out.llm = {
-          ok: true,
-          provider: getChatProvider(),
-          model: r.model,
-          reply: String(r.choices?.[0]?.message?.content ?? "").trim().slice(0, 40),
-        };
-      } catch (err) {
-        out.llm = {
-          ok: false,
-          provider: getChatProvider(),
-          error: String(err instanceof Error ? err.message : err).slice(0, 220),
-        };
-      }
-    }
-
-    // Opcionális embedding-ping (?embed=1): közvetlen OpenAI embeddings-hívás,
-    // a getEmbedding cache-ét megkerülve → a PONTOS hibát mutatja (401 / kvóta / stb.).
-    if (req.query.embed) {
-      try {
-        const { getLlmEmbeddingsConfig } = await import("./env");
-        const cfg = getLlmEmbeddingsConfig();
-        if (!cfg) {
-          out.embed = { ok: false, error: "nincs embedding-config (OPENAI_API_KEY hiányzik?)" };
-        } else {
-          const r = await fetch(cfg.url, {
-            method: "POST",
-            headers: { "content-type": "application/json", authorization: `Bearer ${cfg.apiKey}` },
-            body: JSON.stringify({ model: cfg.model, input: "beton" }),
-          });
-          if (r.ok) {
-            const j: any = await r.json();
-            out.embed = { ok: true, model: cfg.model, dim: j?.data?.[0]?.embedding?.length ?? null };
-          } else {
-            out.embed = { ok: false, status: r.status, model: cfg.model, error: (await r.text()).slice(0, 220) };
-          }
-        }
-      } catch (err) {
-        out.embed = { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 220) };
-      }
-    }
     const raw = process.env.DATABASE_URL;
     out.hasDatabaseUrl = Boolean(raw);
     if (raw) {
