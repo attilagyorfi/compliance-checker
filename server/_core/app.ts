@@ -73,6 +73,32 @@ export async function createApp(): Promise<Express> {
         };
       }
     }
+
+    // Opcionális embedding-ping (?embed=1): közvetlen OpenAI embeddings-hívás,
+    // a getEmbedding cache-ét megkerülve → a PONTOS hibát mutatja (401 / kvóta / stb.).
+    if (req.query.embed) {
+      try {
+        const { getLlmEmbeddingsConfig } = await import("./env");
+        const cfg = getLlmEmbeddingsConfig();
+        if (!cfg) {
+          out.embed = { ok: false, error: "nincs embedding-config (OPENAI_API_KEY hiányzik?)" };
+        } else {
+          const r = await fetch(cfg.url, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: `Bearer ${cfg.apiKey}` },
+            body: JSON.stringify({ model: cfg.model, input: "beton" }),
+          });
+          if (r.ok) {
+            const j: any = await r.json();
+            out.embed = { ok: true, model: cfg.model, dim: j?.data?.[0]?.embedding?.length ?? null };
+          } else {
+            out.embed = { ok: false, status: r.status, model: cfg.model, error: (await r.text()).slice(0, 220) };
+          }
+        }
+      } catch (err) {
+        out.embed = { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 220) };
+      }
+    }
     const raw = process.env.DATABASE_URL;
     out.hasDatabaseUrl = Boolean(raw);
     if (raw) {

@@ -15,6 +15,15 @@ var __export = (target, all) => {
 };
 
 // server/_core/env.ts
+var env_exports = {};
+__export(env_exports, {
+  ENV: () => ENV,
+  getAnthropicChatConfig: () => getAnthropicChatConfig,
+  getChatProvider: () => getChatProvider,
+  getLlmChatConfig: () => getLlmChatConfig,
+  getLlmEmbeddingsConfig: () => getLlmEmbeddingsConfig,
+  getLlmProvider: () => getLlmProvider
+});
 function getLlmProvider() {
   if (ENV.openaiApiKey) return "openai";
   if (ENV.forgeApiKey && ENV.forgeApiUrl) return "forge";
@@ -5989,6 +5998,29 @@ async function createApp() {
           provider: getChatProvider(),
           error: String(err instanceof Error ? err.message : err).slice(0, 220)
         };
+      }
+    }
+    if (req.query.embed) {
+      try {
+        const { getLlmEmbeddingsConfig: getLlmEmbeddingsConfig2 } = await Promise.resolve().then(() => (init_env(), env_exports));
+        const cfg = getLlmEmbeddingsConfig2();
+        if (!cfg) {
+          out.embed = { ok: false, error: "nincs embedding-config (OPENAI_API_KEY hi\xE1nyzik?)" };
+        } else {
+          const r = await fetch(cfg.url, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: `Bearer ${cfg.apiKey}` },
+            body: JSON.stringify({ model: cfg.model, input: "beton" })
+          });
+          if (r.ok) {
+            const j = await r.json();
+            out.embed = { ok: true, model: cfg.model, dim: j?.data?.[0]?.embedding?.length ?? null };
+          } else {
+            out.embed = { ok: false, status: r.status, model: cfg.model, error: (await r.text()).slice(0, 220) };
+          }
+        }
+      } catch (err) {
+        out.embed = { ok: false, error: String(err instanceof Error ? err.message : err).slice(0, 220) };
       }
     }
     const raw = process.env.DATABASE_URL;
