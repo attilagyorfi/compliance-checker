@@ -11,7 +11,9 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import Header from "@/components/Header";
+import { QueryErrorState } from "@/components/QueryErrorState";
 import { trpc } from "@/lib/trpc";
+import { hasQueryLoadFailed } from "@shared/analysisRoute";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -322,7 +324,8 @@ function PlatformCard({ info }: { info: PlatformInfo }) {
 // ── Main page ──────────────────────────────────────────────────────────────────
 
 export default function PlatformConnectionsPage() {
-  const { data: platforms, isLoading } = trpc.platformCredentials.listPlatforms.useQuery();
+  const platformsQuery = trpc.platformCredentials.listPlatforms.useQuery();
+  const { data: platforms, isLoading, refetch } = platformsQuery;
 
   const connectedCount = platforms?.filter((p) => p.status === "connected").length ?? 0;
   const configuredCount = platforms?.filter((p) => p.isConfigured).length ?? 0;
@@ -379,6 +382,12 @@ export default function PlatformConnectionsPage() {
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 size={28} className="animate-spin text-gray-300" />
+          </div>
+        ) : hasQueryLoadFailed(platformsQuery) ? (
+          <QueryErrorState onRetry={refetch} />
+        ) : !platforms || platforms.length === 0 ? (
+          <div className="text-center py-16 text-text-faint text-sm">
+            Jelenleg nincs megjeleníthető platform.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

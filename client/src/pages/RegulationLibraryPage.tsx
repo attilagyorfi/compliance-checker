@@ -27,8 +27,10 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import Header from "@/components/Header";
+import { QueryErrorState } from "@/components/QueryErrorState";
 import { trpc } from "@/lib/trpc";
 import { formatDate, daysAgo } from "@/lib/format";
+import { hasQueryLoadFailed } from "@shared/analysisRoute";
 
 const DISCIPLINE_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   altalanos:    { label: "Általános",     color: "#6b7280", bg: "#f3f4f6" },
@@ -557,6 +559,7 @@ export default function RegulationLibraryPage() {
   });
 
   const sources = (listQuery.data ?? []) as SourceRow[];
+  const listLoadFailed = hasQueryLoadFailed(listQuery);
   const countMap = new Map((countsQuery.data ?? []).map((c) => [c.sourceId, c.chunkCount]));
 
   // Selection helpers (V11.8)
@@ -644,12 +647,14 @@ export default function RegulationLibraryPage() {
                 </div>
                 <h1 className="text-2xl font-bold" style={{ color: "var(--text-strong)" }}>Jogszabályi könyvtár</h1>
               </div>
-              <p className="text-text-muted text-sm ml-11">
-                {sources.length} forrás &middot; {totalChunks > 0 ? `${totalChunks} chunk embedding` : "nincs még embedding"}
-                {staleCount > 0 && (
-                  <span className="text-amber-700 ml-2">&middot; {staleCount} elavult</span>
-                )}
-              </p>
+              {!listLoadFailed && (
+                <p className="text-text-muted text-sm ml-11">
+                  {sources.length} forrás &middot; {totalChunks > 0 ? `${totalChunks} chunk embedding` : "nincs még embedding"}
+                  {staleCount > 0 && (
+                    <span className="text-amber-700 ml-2">&middot; {staleCount} elavult</span>
+                  )}
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               <PdfUploadButton onUploaded={onChanged} />
@@ -695,31 +700,35 @@ export default function RegulationLibraryPage() {
         </div>
 
         {/* Discipline filter */}
-        <div className="flex flex-wrap gap-2">
-          {ALL_DISCIPLINES.map((d) => {
-            const count = counts[d] ?? 0;
-            const isActive = activeDiscipline === d;
-            const config = DISCIPLINE_CONFIG[d];
-            return (
-              <button
-                key={d}
-                onClick={() => setActiveDiscipline(d)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
-                  isActive ? "text-white border-transparent" : "text-text-default border-line bg-surface hover:border-gray-300"
-                }`}
-                style={isActive ? { backgroundColor: config?.color ?? "#7CA9D3", borderColor: config?.color ?? "#7CA9D3" } : {}}
-              >
-                {DISCIPLINE_LABELS[d]} <span className="ml-1 opacity-70">({count})</span>
-              </button>
-            );
-          })}
-        </div>
+        {!listLoadFailed && (
+          <div className="flex flex-wrap gap-2">
+            {ALL_DISCIPLINES.map((d) => {
+              const count = counts[d] ?? 0;
+              const isActive = activeDiscipline === d;
+              const config = DISCIPLINE_CONFIG[d];
+              return (
+                <button
+                  key={d}
+                  onClick={() => setActiveDiscipline(d)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
+                    isActive ? "text-white border-transparent" : "text-text-default border-line bg-surface hover:border-gray-300"
+                  }`}
+                  style={isActive ? { backgroundColor: config?.color ?? "#7CA9D3", borderColor: config?.color ?? "#7CA9D3" } : {}}
+                >
+                  {DISCIPLINE_LABELS[d]} <span className="ml-1 opacity-70">({count})</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* List */}
         {listQuery.isLoading ? (
           <div className="flex items-center justify-center py-16 text-text-faint">
             <Loader2 size={20} className="animate-spin mr-2" /> Betöltés…
           </div>
+        ) : listLoadFailed ? (
+          <QueryErrorState onRetry={listQuery.refetch} />
         ) : filtered.length === 0 ? (
           <div className="rounded-xl border bg-surface p-12 flex flex-col items-center gap-3" style={{ borderColor: "var(--line)" }}>
             <Database size={26} className="text-gray-300" />

@@ -8,6 +8,8 @@ import Header from "@/components/Header";
 import { trpc } from "@/lib/trpc";
 import { useActiveProject } from "@/contexts/ProjectContext";
 import { ProjectScopeBanner } from "@/components/ProjectScopeBanner";
+import { QueryErrorState } from "@/components/QueryErrorState";
+import { hasQueryLoadFailed } from "@shared/analysisRoute";
 import type { Analysis, ComplianceResult, ComplianceStatus } from "../../../drizzle/schema";
 
 const statusLabels: Record<string, { label: string; color: string; bg: string; icon: typeof CheckCircle2 }> = {
@@ -99,9 +101,10 @@ function AnalysisCard({ analysis }: { analysis: Analysis }) {
 
 export default function ReportsPage() {
   const { activeProjectId } = useActiveProject();
-  const { data: analyses, isLoading } = trpc.compliance.listAnalyses.useQuery(
+  const analysesQuery = trpc.compliance.listAnalyses.useQuery(
     activeProjectId ? { projectId: activeProjectId } : undefined,
   );
+  const { data: analyses, isLoading, refetch } = analysesQuery;
 
   return (
     <div className="min-h-screen flex flex-col bg-surface">
@@ -144,6 +147,8 @@ export default function ReportsPage() {
           <div className="flex items-center justify-center py-20">
             <Loader2 size={28} className="animate-spin" style={{ color: "#7CA9D3" }} />
           </div>
+        ) : hasQueryLoadFailed(analysesQuery) ? (
+          <QueryErrorState onRetry={refetch} />
         ) : !analyses || analyses.length === 0 ? (
           <div className="text-center py-20">
             <div

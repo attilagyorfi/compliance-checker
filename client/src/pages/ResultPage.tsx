@@ -3,7 +3,7 @@ import { useParams, Link } from "wouter";
 import {
   CheckCircle2, AlertTriangle, XCircle, Loader2,
   FileText, Download, ArrowLeft, ChevronDown, ChevronUp,
-  BarChart3, ClipboardList, ClipboardCheck,
+  BarChart3, ClipboardList, ClipboardCheck, FileSearch,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +15,11 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import Header from "@/components/Header";
+import { QueryErrorState } from "@/components/QueryErrorState";
 import { trpc } from "@/lib/trpc";
+import {
+  hasQueryLoadFailed, isNotFoundError, parseAnalysisId, shouldRetryQuery,
+} from "@shared/analysisRoute";
 import type { ComplianceResult, ComplianceStatus, FindingWorkflowStatus } from "../../../drizzle/schema";
 
 const FINDING_WORKFLOW_LABELS: Record<FindingWorkflowStatus, { label: string; color: string; bg: string }> = {
@@ -380,11 +384,59 @@ function SummaryStats({ results }: { results: ComplianceResult[] }) {
   );
 }
 
+// ── Summary text ──────────────────────────────────────────────────────────────
+
+function AnalysisSummary({ summary }: { summary: string }) {
+  return (
+    <div
+      className="rounded-lg p-5 mb-8 border"
+      style={{ backgroundColor: "var(--page-bg-subtle)", borderColor: "var(--line)" }}
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <ClipboardList size={15} style={{ color: "#7CA9D3" }} />
+        <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+          Összefoglaló értékelés
+        </span>
+      </div>
+      <p className="text-sm text-text-default leading-relaxed">{summary}</p>
+    </div>
+  );
+}
+
+// ── Not found ─────────────────────────────────────────────────────────────────
+
+function AnalysisNotFound() {
+  return (
+    <div className="min-h-screen flex flex-col bg-surface">
+      <Header />
+      <main className="flex-1 container py-8">
+        <div className="max-w-lg mx-auto text-center py-16">
+          <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6" style={{ backgroundColor: "#EBF3FA" }}>
+            <FileSearch size={28} style={{ color: "#7CA9D3" }} />
+          </div>
+          <h2 className="text-xl font-semibold mb-3" style={{ color: "var(--text-strong)" }}>
+            Az elemzés nem található
+          </h2>
+          <p className="text-text-muted text-sm mb-6">
+            Lehet, hogy a hivatkozás hibás, vagy az elemzést már törölték.
+          </p>
+          <Link href="/reports">
+            <Button style={{ backgroundColor: "#7CA9D3" }} className="text-white gap-2">
+              <ArrowLeft size={14} />
+              Vissza a riportokhoz
+            </Button>
+          </Link>
+        </div>
+      </main>
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function ResultPage() {
   const params = useParams<{ id: string }>();
-  const analysisId = parseInt(params.id || "0", 10);
+  const analysisId = parseAnalysisId(params.id);
   const [filter, setFilter] = useState<ComplianceStatus | "all">("all");
 
   const exportPdf = trpc.pdf.exportPdf.useMutation({
@@ -396,13 +448,14 @@ export default function ResultPage() {
     },
   });
 
-  const { data: analysis, refetch } = trpc.compliance.getAnalysis.useQuery(
-    { id: analysisId },
-    { enabled: !!analysisId, refetchInterval: (query) => {
+  const analysisQuery = trpc.compliance.getAnalysis.useQuery(
+    { id: analysisId ?? 0 },
+    { enabled: analysisId !== null, retry: shouldRetryQuery, refetchInterval: (query) => {
       const status = (query.state.data as any)?.status;
       return status === "processing" || status === "pending" ? 3000 : false;
     }}
   );
+  const { data: analysis, refetch } = analysisQuery;
 
   const results: ComplianceResult[] = (analysis?.results as ComplianceResult[]) || [];
   const filtered = filter === "all" ? results : results.filter((r) => r.status === filter);
@@ -414,13 +467,24 @@ export default function ResultPage() {
     { key: "nem_felel_meg", label: `Nem felel meg (${results.filter(r => r.status === "nem_felel_meg").length})` },
   ];
 
-  if (!analysis) {
+  // A hibaágak csak adat nélkül élnek: egy sikertelen háttérfrissítés (processing
+  // állapotban 3 másodpercenként) nem válthatja le a már betöltött elemzést.
+  if (analysisId === null || !analysis) {
+    if (analysisId === null || isNotFoundError(analysisQuery.error)) {
+      return <AnalysisNotFound />;
+    }
     return (
       <div className="min-h-screen flex flex-col bg-surface">
         <Header />
-        <div className="flex-1 flex items-center justify-center">
-          <Loader2 size={32} className="animate-spin" style={{ color: "#7CA9D3" }} />
-        </div>
+        {hasQueryLoadFailed(analysisQuery) ? (
+          <main className="flex-1 container py-8">
+            <QueryErrorState onRetry={refetch} />
+          </main>
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <Loader2 size={32} className="animate-spin" style={{ color: "#7CA9D3" }} />
+          </div>
+        )}
       </div>
     );
   }
@@ -517,6 +581,24 @@ export default function ResultPage() {
           </div>
         )}
 
+        {/* Completed without findings — must not read as "the plan complies" */}
+        {analysis.status === "completed" && results.length === 0 && (
+          <div className="max-w-2xl mx-auto">
+            <div className="max-w-lg mx-auto text-center py-16">
+              <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6" style={{ backgroundColor: "#EBF3FA" }}>
+                <FileSearch size={28} style={{ color: "#7CA9D3" }} />
+              </div>
+              <h2 className="text-xl font-semibold mb-3" style={{ color: "var(--text-strong)" }}>
+                Az elemzés nem adott értékelhető eredményt
+              </h2>
+              <p className="text-text-muted text-sm">
+                Ebből nem következik, hogy a terv megfelel az előírásoknak. Kérjük, ellenőrizze a feltöltött dokumentumokat.
+              </p>
+            </div>
+            {analysis.summary && <AnalysisSummary summary={analysis.summary} />}
+          </div>
+        )}
+
         {/* Completed state */}
         {analysis.status === "completed" && results.length > 0 && (
           <>
@@ -524,20 +606,7 @@ export default function ResultPage() {
             <SummaryStats results={results} />
 
             {/* Summary text */}
-            {analysis.summary && (
-              <div
-                className="rounded-lg p-5 mb-8 border"
-                style={{ backgroundColor: "var(--page-bg-subtle)", borderColor: "var(--line)" }}
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <ClipboardList size={15} style={{ color: "#7CA9D3" }} />
-                  <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                    Összefoglaló értékelés
-                  </span>
-                </div>
-                <p className="text-sm text-text-default leading-relaxed">{analysis.summary}</p>
-              </div>
-            )}
+            {analysis.summary && <AnalysisSummary summary={analysis.summary} />}
 
             {/* Filter tabs */}
             <div className="flex flex-wrap gap-2 mb-6">
