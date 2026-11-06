@@ -21,7 +21,7 @@ export function QueryErrorState({ onRetry }: Props) {
         Nem sikerült betölteni az adatokat
       </h2>
       <p className="text-text-faint text-sm mb-6">
-        Kérjük, ellenőrizze az internetkapcsolatát, majd próbálja újra.
+        Kérjük, próbálja újra néhány perc múlva.
       </p>
       <Button onClick={() => onRetry()} className="gap-2 text-white" style={{ backgroundColor: "#7CA9D3" }}>
         <RotateCcw size={15} />
