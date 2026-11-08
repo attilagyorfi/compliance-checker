@@ -20,7 +20,9 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import Header from "@/components/Header";
+import { QueryErrorState } from "@/components/QueryErrorState";
 import { trpc } from "@/lib/trpc";
+import { hasQueryLoadFailed } from "@shared/analysisRoute";
 
 type AnswerLength = "short" | "standard" | "detailed";
 type OperationMode = "fast" | "accurate";
@@ -120,6 +122,8 @@ export default function SettingsPage() {
           <div className="flex items-center justify-center py-16 text-text-faint">
             <Loader2 className="animate-spin mr-2" size={20} /> Betöltés…
           </div>
+        ) : hasQueryLoadFailed(settingsQuery) ? (
+          <QueryErrorState onRetry={settingsQuery.refetch} />
         ) : (
           <div className="space-y-6">
             {/* Status */}
