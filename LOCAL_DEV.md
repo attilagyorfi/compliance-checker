@@ -31,7 +31,7 @@ Két út a belépéshez:
 - Hagyd üresen a `LOCAL_DEV_USER_ID`-t a .env-ben.
 - Indítsd újra a `pnpm dev`-et.
 - Menj a `http://localhost:3000/login` oldalra.
-- Írj be egy e-mail címet (bármilyen).
+- Írd be egy már felvett felhasználó e-mail címét (regisztráció nincs; ismeretlen címre nem készül link). Az első felhasználót MySQL-ben vedd fel, kisbetűs címmel: `INSERT INTO users (email, name, role, emailVerified) VALUES ('te@pelda.hu', 'Saját Neved', 'admin', true);`
 - A magic-link a **szerver console-jára** logolódik valami ilyenért:
   ```
   [auth] Magic link to te@pelda.hu:
@@ -39,7 +39,7 @@ Két út a belépéshez:
   ```
 - A linkre kattintva (vagy URL-be másolva) bejelentkezel.
 
-Ha az új userhez admin szerepkört akarsz: futtasd a seed-et úgy hogy a `DEV_USER` openId-jét cseréld a betartott e-mailre, vagy közvetlenül MySQL-ben: `UPDATE users SET role='admin' WHERE email='te@pelda.hu';`
+A további felhasználókat az Admin oldalon lehet felvenni. Ha egy meglévő usernek admin szerepkört akarsz, MySQL-ben: `UPDATE users SET role='admin' WHERE email='te@pelda.hu';`
 
 ---
 

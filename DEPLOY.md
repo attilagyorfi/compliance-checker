@@ -232,6 +232,18 @@ INSERT INTO users (email, name, role, emailVerified) VALUES
 
 Ezután a `/login` oldalon a `te@pelda.hu` e-mailre kérsz magic-link-et, Resend kiküldi, kattintasz, belépsz adminként.
 
+**Regisztráció nincs:** belépni csak az tud, akinek van sora a `users` táblában. Az első admint ezért a fenti SQL-lel kell felvenni (enélkül senki sem tud belépni), a többi felhasználót már az **Admin** oldalon, a „Felhasználó hozzáadása” űrlappal. Az e-mail-cím **csupa kisbetűvel** szerepeljen, mert a belépés így keresi. Ha a felhasználó már létezik, csak admin kellene legyen:
+
+```sql
+UPDATE users SET role = 'admin' WHERE email = 'te@pelda.hu';
+```
+
+Ellenőrzés (legalább egy olyan adminnak kell lennie, akinek a postafiókját eléred):
+
+```sql
+SELECT id, email, role FROM users WHERE role = 'admin' OR BINARY email <> LOWER(email);
+```
+
 ---
 
 ## 6. Custom domain (opcionális)

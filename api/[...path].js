@@ -5458,6 +5458,38 @@ var adminRouter = router({
     return rows2;
   }),
   /**
+   * Új felhasználó felvétele. Regisztráció nincs: belépni csak az tud, akit admin
+   * felvett. Az e-mail kisbetűsen tárolódik, mert a belépés is így keresi.
+   */
+  createUser: adminProcedure.input(z11.object({
+    email: z11.string().trim().toLowerCase().max(320, "Az e-mail-c\xEDm t\xFAl hossz\xFA.").email("\xC9rv\xE9nytelen e-mail-c\xEDm."),
+    name: z11.string().trim().min(1, "A n\xE9v k\xF6telez\u0151.").max(255, "A n\xE9v t\xFAl hossz\xFA."),
+    role: userRoleEnum.default("user")
+  })).mutation(async ({ ctx, input }) => {
+    const db = await getDb();
+    if (!db) throw new TRPCError11({ code: "INTERNAL_SERVER_ERROR", message: "Adatb\xE1zis nem el\xE9rhet\u0151." });
+    const existing = await db.select({ id: users.id }).from(users).where(eq10(sql6`LOWER(${users.email})`, input.email)).limit(1);
+    if (existing.length > 0) {
+      throw new TRPCError11({ code: "CONFLICT", message: "Ezzel az e-mail-c\xEDmmel m\xE1r van felhaszn\xE1l\xF3." });
+    }
+    const [inserted] = await db.insert(users).values({
+      email: input.email,
+      name: input.name,
+      role: input.role,
+      loginMethod: "magic-link"
+    });
+    await auditLog({
+      userId: ctx.user.id,
+      userEmail: ctx.user.email ?? void 0,
+      eventType: "user_create",
+      resourceType: "user",
+      resourceId: inserted.insertId,
+      description: `Felhaszn\xE1l\xF3 felv\xE9ve: ${input.email}`,
+      metadata: { email: input.email, role: input.role }
+    });
+    return { id: inserted.insertId };
+  }),
+  /**
    * Change a user's role. Admin-only. Cannot demote yourself if you'd be
    * the last admin remaining (protects against accidental lock-out).
    */
@@ -5661,6 +5693,105 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { magicLink } from "better-auth/plugins";
 import { drizzle as drizzle2 } from "drizzle-orm/mysql2";
+async function sendMagicLinkEmail(email, url) {
+  const resendKey = process.env.RESEND_API_KEY;
+  const fromAddr = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+  if (!resendKey) {
+    console.info(`[auth] Magic link to ${email} (RESEND_API_KEY not set):
+  ${url}
+`);
+    return;
+  }
+  try {
+    const { Resend } = await import("resend");
+    const resend = new Resend(resendKey);
+    const { error } = await resend.emails.send({
+      from: fromAddr,
+      to: email,
+      subject: "Bel\xE9p\xE9si link \u2013 Compliance Checker",
+      html: `
+<!doctype html>
+<html lang="hu">
+  <body style="font-family: system-ui, -apple-system, sans-serif; max-width: 480px; margin: 32px auto; padding: 0 16px; color: #161718;">
+    <h2 style="color: #7CA9D3; font-weight: 700;">M M\xE9rn\xF6ki Iroda \u2014 Compliance Checker</h2>
+    <p>Kattints az al\xE1bbi gombra a bel\xE9p\xE9shez. A link <strong>egyszer haszn\xE1lhat\xF3</strong> \xE9s <strong>5 perc</strong> m\xFAlva lej\xE1r.</p>
+    <p style="text-align: center; margin: 32px 0;">
+      <a href="${url}" style="display: inline-block; padding: 12px 24px; background: #7CA9D3; color: white; text-decoration: none; border-radius: 8px; font-weight: 600;">Bel\xE9p\xE9s</a>
+    </p>
+    <p style="font-size: 12px; color: #6b7280;">Ha nem te k\xE9rted ezt a bel\xE9p\xE9st, hagyd figyelmen k\xEDv\xFCl ezt az e-mailt.</p>
+    <p style="font-size: 12px; color: #6b7280; word-break: break-all;">Vagy m\xE1sold a b\xF6ng\xE9sz\u0151d c\xEDmsor\xE1ba: ${url}</p>
+  </body>
+</html>`
+    });
+    if (error) {
+      console.error(`[auth] Resend hiba (${email}):`, error);
+    }
+  } catch (err) {
+    console.error(`[auth] Resend kiv\xE9tel (${email}):`, err);
+  }
+}
+var MIN_MAGIC_LINK_MS = 1500;
+function createAuthOptions({
+  database,
+  secret,
+  baseURL,
+  minMagicLinkMs = MIN_MAGIC_LINK_MS
+}) {
+  return {
+    database,
+    secret,
+    baseURL,
+    basePath: "/api/auth",
+    // Az ID-k INT autoincrement, nem UUID — a meglévő FK-k (analyses.userId
+    // stb.) miatt fontos. better-auth `generateId: false` esetén nem
+    // generál ID-t a kliens-oldalon, hagyja a DB-nek (auto-increment).
+    advanced: {
+      database: {
+        generateId: false
+      }
+    },
+    // Default user-fields a mi users-schema-nkat tükrözi. emailVerified +
+    // image alapból ott vannak. A többi mező (openId, role, loginMethod,
+    // lastSignedIn) marad app-specifikus és nem hat az auth-flow-ra.
+    emailAndPassword: {
+      enabled: false
+      // Magic-link only — egyszerűbb UX, nincs jelszó-felejtés.
+    },
+    databaseHooks: {
+      user: {
+        create: {
+          // Útvonaltól független tiltás: később bekapcsolt bejelentkezési mód
+          // se hozhasson létre fiókot.
+          before: async () => false
+        }
+      }
+    },
+    plugins: [
+      magicLink({
+        disableSignUp: true,
+        /**
+         * Magic-link e-mail küldés — csak meglévő felhasználónak, a nála tárolt
+         * címre. A hívó válasza mindkét esetben azonos.
+         *  - Ha RESEND_API_KEY env be van állítva → Resend.send.
+         *  - Egyébként console.log (dev / Resend nélküli prod), hogy a
+         *    link a szerver-log-ból kimásolható legyen.
+         */
+        sendMagicLink: async ({ email, url }, ctx) => {
+          const minDuration = new Promise((resolve) => setTimeout(resolve, minMagicLinkMs));
+          const found = await ctx?.context.internalAdapter.findUserByEmail(email);
+          if (found) await sendMagicLinkEmail(found.user.email, url);
+          await minDuration;
+        }
+      })
+    ],
+    session: {
+      expiresIn: 60 * 60 * 24 * 30,
+      // 30 nap
+      updateAge: 60 * 60 * 24
+      // 1 napos session-token refresh
+    }
+  };
+}
 var _authInstance = null;
 var _authInitTried = false;
 function getAuth() {
@@ -5678,7 +5809,7 @@ function getAuth() {
   try {
     const db = drizzle2(ENV.databaseUrl);
     const baseUrl = process.env.BETTER_AUTH_URL || `http://localhost:3000`;
-    const options = {
+    const options = createAuthOptions({
       database: drizzleAdapter(db, {
         provider: "mysql",
         schema: {
@@ -5690,77 +5821,8 @@ function getAuth() {
         usePlural: false
       }),
       secret,
-      baseURL: baseUrl,
-      basePath: "/api/auth",
-      // Az ID-k INT autoincrement, nem UUID — a meglévő FK-k (analyses.userId
-      // stb.) miatt fontos. better-auth `generateId: false` esetén nem
-      // generál ID-t a kliens-oldalon, hagyja a DB-nek (auto-increment).
-      advanced: {
-        database: {
-          generateId: false
-        }
-      },
-      // Default user-fields a mi users-schema-nkat tükrözi. emailVerified +
-      // image alapból ott vannak. A többi mező (openId, role, loginMethod,
-      // lastSignedIn) marad app-specifikus és nem hat az auth-flow-ra.
-      emailAndPassword: {
-        enabled: false
-        // Magic-link only — egyszerűbb UX, nincs jelszó-felejtés.
-      },
-      plugins: [
-        magicLink({
-          /**
-           * Magic-link e-mail küldés.
-           *  - Ha RESEND_API_KEY env be van állítva → Resend.send.
-           *  - Egyébként console.log (dev / Resend nélküli prod), hogy a
-           *    link a szerver-log-ból kimásolható legyen.
-           */
-          sendMagicLink: async ({ email, url }) => {
-            const resendKey = process.env.RESEND_API_KEY;
-            const fromAddr = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
-            if (!resendKey) {
-              console.info(`[auth] Magic link to ${email} (RESEND_API_KEY not set):
-  ${url}
-`);
-              return;
-            }
-            try {
-              const { Resend } = await import("resend");
-              const resend = new Resend(resendKey);
-              const { error } = await resend.emails.send({
-                from: fromAddr,
-                to: email,
-                subject: "Bel\xE9p\xE9si link \u2013 Compliance Checker",
-                html: `
-<!doctype html>
-<html lang="hu">
-  <body style="font-family: system-ui, -apple-system, sans-serif; max-width: 480px; margin: 32px auto; padding: 0 16px; color: #161718;">
-    <h2 style="color: #7CA9D3; font-weight: 700;">M M\xE9rn\xF6ki Iroda \u2014 Compliance Checker</h2>
-    <p>Kattints az al\xE1bbi gombra a bel\xE9p\xE9shez. A link <strong>egyszer haszn\xE1lhat\xF3</strong> \xE9s <strong>5 perc</strong> m\xFAlva lej\xE1r.</p>
-    <p style="text-align: center; margin: 32px 0;">
-      <a href="${url}" style="display: inline-block; padding: 12px 24px; background: #7CA9D3; color: white; text-decoration: none; border-radius: 8px; font-weight: 600;">Bel\xE9p\xE9s</a>
-    </p>
-    <p style="font-size: 12px; color: #6b7280;">Ha nem te k\xE9rted ezt a bel\xE9p\xE9st, hagyd figyelmen k\xEDv\xFCl ezt az e-mailt.</p>
-    <p style="font-size: 12px; color: #6b7280; word-break: break-all;">Vagy m\xE1sold a b\xF6ng\xE9sz\u0151d c\xEDmsor\xE1ba: ${url}</p>
-  </body>
-</html>`
-              });
-              if (error) {
-                console.error(`[auth] Resend hiba (${email}):`, error);
-              }
-            } catch (err) {
-              console.error(`[auth] Resend kiv\xE9tel (${email}):`, err);
-            }
-          }
-        })
-      ],
-      session: {
-        expiresIn: 60 * 60 * 24 * 30,
-        // 30 nap
-        updateAge: 60 * 60 * 24
-        // 1 napos session-token refresh
-      }
-    };
+      baseURL: baseUrl
+    });
     _authInstance = betterAuth(options);
     return _authInstance;
   } catch (err) {
