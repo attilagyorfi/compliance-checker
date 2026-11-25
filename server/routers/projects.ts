@@ -10,7 +10,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, ne } from "drizzle-orm";
-import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
+import { protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import {
   projects, projectMembers, users,
@@ -36,7 +36,7 @@ export const projectsRouter = router({
   /**
    * List all non-deleted projects, newest first.
    */
-  list: publicProcedure
+  list: protectedProcedure
     .input(
       z.object({
         includeDeleted: z.boolean().default(false),
@@ -56,7 +56,7 @@ export const projectsRouter = router({
   /**
    * Get a single project by id.
    */
-  getById: publicProcedure
+  getById: protectedProcedure
     .input(z.object({ id: z.number().int().positive() }))
     .query(async ({ input }) => {
       const db = await getDb();

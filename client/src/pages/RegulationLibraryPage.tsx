@@ -26,6 +26,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { useIsAdmin } from "@/_core/hooks/useIsAdmin";
 import Header from "@/components/Header";
 import { QueryErrorState } from "@/components/QueryErrorState";
 import { trpc } from "@/lib/trpc";
@@ -197,13 +198,15 @@ interface SourceRow {
 }
 
 function SourceCard({
-  source, embeddingCount, onChanged, selected, onToggleSelect,
+  source, embeddingCount, onChanged, selected, onToggleSelect, canManage,
 }: {
   source: SourceRow;
   embeddingCount: number;
   onChanged: () => void;
   selected: boolean;
   onToggleSelect: (id: number) => void;
+  /** Módosítani csak admin tud; nélküle a kártya csak olvasható. */
+  canManage: boolean;
 }) {
   const dCfg = DISCIPLINE_CONFIG[source.discipline] ?? DISCIPLINE_CONFIG.altalanos;
   const stale = isStale(source);
@@ -261,14 +264,14 @@ function SourceCard({
     >
       <div className="p-4">
         <div className="flex items-start gap-3">
-          <button
+          {canManage && <button
             onClick={() => onToggleSelect(source.id)}
             className={`flex-shrink-0 mt-1 transition-colors ${selected ? "text-[#7CA9D3]" : "text-gray-300 hover:text-text-muted"}`}
             aria-label={selected ? "Kijelölés megszüntetése" : "Kijelölés"}
             title={selected ? "Kijelölés megszüntetése" : "Kijelölés"}
           >
             {selected ? <CheckSquare size={18} /> : <Square size={18} />}
-          </button>
+          </button>}
           <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-page-bg-subtle border border-line-subtle flex items-center justify-center">
             <FileText size={20} style={{ color: "#7CA9D3" }} />
           </div>
@@ -342,7 +345,7 @@ function SourceCard({
               </a>
             )}
 
-            <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t" style={{ borderColor: "var(--line-subtle)" }}>
+            {canManage && <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t" style={{ borderColor: "var(--line-subtle)" }}>
               {isDeleted ? (
                 <>
                   <span className="text-xs text-amber-700 flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 mr-1">
@@ -413,7 +416,7 @@ function SourceCard({
               </Button>
                 </>
               )}
-            </div>
+            </div>}
           </div>
         </div>
       </div>
@@ -507,6 +510,7 @@ function PdfUploadButton({ onUploaded }: { onUploaded: () => void }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function RegulationLibraryPage() {
+  const isAdmin = useIsAdmin();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeDiscipline, setActiveDiscipline] = useState("osszes");
   const [showDeleted, setShowDeleted] = useState(false);
@@ -656,10 +660,12 @@ export default function RegulationLibraryPage() {
                 </p>
               )}
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <PdfUploadButton onUploaded={onChanged} />
-              <CreateRegulationDialog onCreated={onChanged} />
-            </div>
+            {isAdmin && (
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <PdfUploadButton onUploaded={onChanged} />
+                <CreateRegulationDialog onCreated={onChanged} />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -676,7 +682,7 @@ export default function RegulationLibraryPage() {
               className="pl-8 h-9 text-sm border-line"
             />
           </div>
-          {staleCount > 0 && (
+          {isAdmin && staleCount > 0 && (
             <Button
               variant="outline"
               className="gap-2 text-sm border-amber-300 text-amber-800 h-9"
@@ -687,7 +693,7 @@ export default function RegulationLibraryPage() {
               Mind frissítése (30+ nap)
             </Button>
           )}
-          <Button
+          {isAdmin && <Button
             variant={showDeleted ? "default" : "outline"}
             className="gap-2 text-sm h-9"
             style={showDeleted ? { backgroundColor: "#7CA9D3" } : {}}
@@ -696,7 +702,7 @@ export default function RegulationLibraryPage() {
           >
             <Archive size={14} />
             {showDeleted ? "Aktívak + törölt" : "Csak aktívak"}
-          </Button>
+          </Button>}
         </div>
 
         {/* Discipline filter */}
@@ -737,7 +743,9 @@ export default function RegulationLibraryPage() {
             </p>
             <p className="text-sm text-text-muted text-center max-w-md">
               {sources.length === 0
-                ? "Az 'Új jogszabály' gombbal vehetsz fel URL alapú forrásokat (NJT, net.jogtar, MSZT stb.)."
+                ? !isAdmin
+                  ? "Új jogszabály-forrást admin jogosultságú felhasználó vehet fel."
+                  : "Az 'Új jogszabály' gombbal vehetsz fel URL alapú forrásokat (NJT, net.jogtar, MSZT stb.)."
                 : "Próbáld ki más szakterületre kapcsolva, vagy törölj a kereső szövegéből."}
             </p>
           </div>
@@ -850,6 +858,7 @@ export default function RegulationLibraryPage() {
                   onChanged={onChanged}
                   selected={selectedIds.has(s.id)}
                   onToggleSelect={toggleSelect}
+                  canManage={isAdmin}
                 />
               ))}
             </div>
@@ -857,7 +866,7 @@ export default function RegulationLibraryPage() {
         )}
 
         {/* Footer hint about embeddings + semantic search */}
-        {sources.length > 0 && totalChunks === 0 && (
+        {isAdmin && sources.length > 0 && totalChunks === 0 && (
           <div className="rounded-xl border-2 border-dashed border-purple-200 bg-purple-50/40 p-4 flex items-start gap-3">
             <Cpu size={18} className="text-purple-700 mt-0.5" />
             <div className="text-sm text-purple-900">

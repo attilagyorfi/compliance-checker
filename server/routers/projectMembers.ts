@@ -14,7 +14,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
-import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
+import { protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { projectMembers, projects, users } from "../../drizzle/schema";
 import { createNotification } from "../notifications";
@@ -85,7 +85,7 @@ export const projectMembersRouter = router({
   /**
    * List members of a project (with user info joined).
    */
-  list: publicProcedure
+  list: protectedProcedure
     .input(z.object({ projectId: z.number().int().positive() }))
     .query(async ({ input }) => {
       const db = await getDb();

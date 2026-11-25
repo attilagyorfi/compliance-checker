@@ -17,9 +17,22 @@ export function isNotFoundError(error: unknown): boolean {
   return (error as { data?: { code?: unknown } } | null | undefined)?.data?.code === "NOT_FOUND";
 }
 
-/** NOT_FOUND-ra felesleges újra próbálkozni, más hibára korlátozott számban érdemes. */
+/** Nincs érvényes belépés (401). */
+export function isUnauthorizedError(error: unknown): boolean {
+  return (error as { data?: { code?: unknown } } | null | undefined)?.data?.code === "UNAUTHORIZED";
+}
+
+/** Belépett, de nincs hozzá jogosultsága (403). */
+export function isForbiddenError(error: unknown): boolean {
+  return (error as { data?: { code?: unknown } } | null | undefined)?.data?.code === "FORBIDDEN";
+}
+
+/**
+ * Hiányzó elemre és jogosultsági hibára felesleges újra próbálkozni, más hibára
+ * korlátozott számban érdemes.
+ */
 export function shouldRetryQuery(failureCount: number, error: unknown): boolean {
-  if (isNotFoundError(error)) return false;
+  if (isNotFoundError(error) || isUnauthorizedError(error) || isForbiddenError(error)) return false;
   return failureCount < MAX_QUERY_RETRIES;
 }
 

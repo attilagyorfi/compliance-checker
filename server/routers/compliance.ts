@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
+import { protectedProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { invokeLLM } from "../_core/llm";
 import { storagePut } from "../storage";
@@ -206,7 +206,7 @@ export const complianceRouter = router({
   /**
    * Upload a document to S3 and return its key and URL.
    */
-  uploadDocument: publicProcedure
+  uploadDocument: protectedProcedure
     .input(
       z.object({
         filename: z.string(),
@@ -233,7 +233,7 @@ export const complianceRouter = router({
   /**
    * Start a new compliance analysis with queue + retry support.
    */
-  startAnalysis: publicProcedure
+  startAnalysis: protectedProcedure
     .input(
       z.object({
         title: z.string().min(1).max(255),
@@ -342,7 +342,7 @@ export const complianceRouter = router({
   /**
    * Get the status and results of an analysis.
    */
-  getAnalysis: publicProcedure
+  getAnalysis: protectedProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
       const analysis = await getAnalysisById(input.id);
@@ -355,7 +355,7 @@ export const complianceRouter = router({
   /**
    * List analyses (most recent first). Optionally filtered by project.
    */
-  listAnalyses: publicProcedure
+  listAnalyses: protectedProcedure
     .input(z.object({ projectId: z.number().int().positive().optional() }).optional())
     .query(async ({ input }) => {
       return listAnalyses(input?.projectId ? { projectId: input.projectId } : undefined);
@@ -364,7 +364,7 @@ export const complianceRouter = router({
   /**
    * Update the workflow status of an analysis.
    */
-  updateWorkflowStatus: publicProcedure
+  updateWorkflowStatus: protectedProcedure
     .input(z.object({
       id: z.number(),
       workflowStatus: z.enum(["uj", "elemzes_alatt", "ai_eloelenorizve", "ember_felulvizsgalva", "javitasra_visszakuldve", "lezart"]),
@@ -390,7 +390,7 @@ export const complianceRouter = router({
   /**
    * Update the workflow status of a single finding within an analysis.
    */
-  updateFindingStatus: publicProcedure
+  updateFindingStatus: protectedProcedure
     .input(z.object({
       analysisId: z.number(),
       findingId: z.string(),
