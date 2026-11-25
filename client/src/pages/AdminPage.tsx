@@ -1,14 +1,15 @@
 /**
  * Admin oldal — V11.16
  *
- * Csak role: "admin" user-ek érik el. A korábbi statisztikák, kuka-kezelés,
- * felhasználó- és projekt-listák megszűntek — az oldal a keresési előzményeket
- * mutatja (az egyetlen admin-only nézet, amire szükség van).
+ * Csak role: "admin" user-ek érik el. A korábbi statisztikák, kuka-kezelés és
+ * projekt-lista megszűnt. Az oldal a felhasználókat (új felvétele, lista) és a
+ * keresési előzményeket mutatja.
  */
 
 import { Shield, Loader2 } from "lucide-react";
 import { AccessDenied } from "@/components/AccessDenied";
 import Header from "@/components/Header";
+import AdminUsersSection from "@/components/AdminUsersSection";
 import SearchHistorySection from "@/components/SearchHistorySection";
 import { trpc } from "@/lib/trpc";
 
@@ -42,12 +43,13 @@ export default function AdminPage() {
             <h1 className="text-2xl font-bold" style={{ color: "var(--text-strong)" }}>Admin</h1>
           </div>
           <p className="text-text-muted text-sm ml-11">
-            Keresési előzmények áttekintése.
+            Felhasználók és keresési előzmények.
           </p>
         </div>
       </div>
 
-      <main className="flex-1 container py-8">
+      <main className="flex-1 container py-8 space-y-6">
+        <AdminUsersSection />
         <SearchHistorySection />
       </main>
     </div>

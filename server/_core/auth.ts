@@ -17,6 +17,121 @@ import { drizzle } from "drizzle-orm/mysql2";
 import { ENV } from "./env";
 import * as schema from "../../drizzle/schema";
 
+async function sendMagicLinkEmail(email: string, url: string): Promise<void> {
+  const resendKey = process.env.RESEND_API_KEY;
+  const fromAddr = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+
+  if (!resendKey) {
+    console.info(`[auth] Magic link to ${email} (RESEND_API_KEY not set):\n  ${url}\n`);
+    return;
+  }
+
+  try {
+    const { Resend } = await import("resend");
+    const resend = new Resend(resendKey);
+    const { error } = await resend.emails.send({
+      from: fromAddr,
+      to: email,
+      subject: "Belépési link – Compliance Checker",
+      html: `
+<!doctype html>
+<html lang="hu">
+  <body style="font-family: system-ui, -apple-system, sans-serif; max-width: 480px; margin: 32px auto; padding: 0 16px; color: #161718;">
+    <h2 style="color: #7CA9D3; font-weight: 700;">M Mérnöki Iroda — Compliance Checker</h2>
+    <p>Kattints az alábbi gombra a belépéshez. A link <strong>egyszer használható</strong> és <strong>5 perc</strong> múlva lejár.</p>
+    <p style="text-align: center; margin: 32px 0;">
+      <a href="${url}" style="display: inline-block; padding: 12px 24px; background: #7CA9D3; color: white; text-decoration: none; border-radius: 8px; font-weight: 600;">Belépés</a>
+    </p>
+    <p style="font-size: 12px; color: #6b7280;">Ha nem te kérted ezt a belépést, hagyd figyelmen kívül ezt az e-mailt.</p>
+    <p style="font-size: 12px; color: #6b7280; word-break: break-all;">Vagy másold a böngésződ címsorába: ${url}</p>
+  </body>
+</html>`,
+    });
+    if (error) {
+      console.error(`[auth] Resend hiba (${email}):`, error);
+    }
+  } catch (err) {
+    console.error(`[auth] Resend kivétel (${email}):`, err);
+  }
+}
+
+/**
+ * Ennyi ideig tart legalább egy belépési link kérése. A levélküldés ideje így nem
+ * különbözteti meg a létező címet az ismeretlentől.
+ */
+const MIN_MAGIC_LINK_MS = 1500;
+
+/**
+ * A better-auth beállításai. Külön függvény, hogy a tesztek memória-adapterrel,
+ * adatbázis nélkül is a valódi beállítást ellenőrizzék.
+ *
+ * Fiókot a better-auth egyetlen útvonala sem hozhat létre: új felhasználót admin
+ * vesz fel (`admin.createUser`).
+ */
+export function createAuthOptions({
+  database,
+  secret,
+  baseURL,
+  minMagicLinkMs = MIN_MAGIC_LINK_MS,
+}: {
+  database: BetterAuthOptions["database"];
+  secret: string;
+  baseURL: string;
+  minMagicLinkMs?: number;
+}) {
+  return {
+    database,
+    secret,
+    baseURL,
+    basePath: "/api/auth",
+    // Az ID-k INT autoincrement, nem UUID — a meglévő FK-k (analyses.userId
+    // stb.) miatt fontos. better-auth `generateId: false` esetén nem
+    // generál ID-t a kliens-oldalon, hagyja a DB-nek (auto-increment).
+    advanced: {
+      database: {
+        generateId: false,
+      },
+    },
+    // Default user-fields a mi users-schema-nkat tükrözi. emailVerified +
+    // image alapból ott vannak. A többi mező (openId, role, loginMethod,
+    // lastSignedIn) marad app-specifikus és nem hat az auth-flow-ra.
+    emailAndPassword: {
+      enabled: false, // Magic-link only — egyszerűbb UX, nincs jelszó-felejtés.
+    },
+    databaseHooks: {
+      user: {
+        create: {
+          // Útvonaltól független tiltás: később bekapcsolt bejelentkezési mód
+          // se hozhasson létre fiókot.
+          before: async () => false,
+        },
+      },
+    },
+    plugins: [
+      magicLink({
+        disableSignUp: true,
+        /**
+         * Magic-link e-mail küldés — csak meglévő felhasználónak, a nála tárolt
+         * címre. A hívó válasza mindkét esetben azonos.
+         *  - Ha RESEND_API_KEY env be van állítva → Resend.send.
+         *  - Egyébként console.log (dev / Resend nélküli prod), hogy a
+         *    link a szerver-log-ból kimásolható legyen.
+         */
+        sendMagicLink: async ({ email, url }, ctx) => {
+          const minDuration = new Promise((resolve) => setTimeout(resolve, minMagicLinkMs));
+          const found = await ctx?.context.internalAdapter.findUserByEmail(email);
+          if (found) await sendMagicLinkEmail(found.user.email, url);
+          await minDuration;
+        },
+      }),
+    ],
+    session: {
+      expiresIn: 60 * 60 * 24 * 30, // 30 nap
+      updateAge: 60 * 60 * 24, // 1 napos session-token refresh
+    },
+  } satisfies BetterAuthOptions;
+}
+
 // ── Provider helper ──────────────────────────────────────────────────────────
 
 /**
@@ -44,7 +159,7 @@ export function getAuth(): ReturnType<typeof betterAuth> | null {
     const db = drizzle(ENV.databaseUrl);
     const baseUrl = process.env.BETTER_AUTH_URL || `http://localhost:3000`;
 
-    const options: BetterAuthOptions = {
+    const options: BetterAuthOptions = createAuthOptions({
       database: drizzleAdapter(db, {
         provider: "mysql",
         schema: {
@@ -57,73 +172,7 @@ export function getAuth(): ReturnType<typeof betterAuth> | null {
       }),
       secret,
       baseURL: baseUrl,
-      basePath: "/api/auth",
-      // Az ID-k INT autoincrement, nem UUID — a meglévő FK-k (analyses.userId
-      // stb.) miatt fontos. better-auth `generateId: false` esetén nem
-      // generál ID-t a kliens-oldalon, hagyja a DB-nek (auto-increment).
-      advanced: {
-        database: {
-          generateId: false,
-        },
-      },
-      // Default user-fields a mi users-schema-nkat tükrözi. emailVerified +
-      // image alapból ott vannak. A többi mező (openId, role, loginMethod,
-      // lastSignedIn) marad app-specifikus és nem hat az auth-flow-ra.
-      emailAndPassword: {
-        enabled: false, // Magic-link only — egyszerűbb UX, nincs jelszó-felejtés.
-      },
-      plugins: [
-        magicLink({
-          /**
-           * Magic-link e-mail küldés.
-           *  - Ha RESEND_API_KEY env be van állítva → Resend.send.
-           *  - Egyébként console.log (dev / Resend nélküli prod), hogy a
-           *    link a szerver-log-ból kimásolható legyen.
-           */
-          sendMagicLink: async ({ email, url }) => {
-            const resendKey = process.env.RESEND_API_KEY;
-            const fromAddr = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
-
-            if (!resendKey) {
-              console.info(`[auth] Magic link to ${email} (RESEND_API_KEY not set):\n  ${url}\n`);
-              return;
-            }
-
-            try {
-              const { Resend } = await import("resend");
-              const resend = new Resend(resendKey);
-              const { error } = await resend.emails.send({
-                from: fromAddr,
-                to: email,
-                subject: "Belépési link – Compliance Checker",
-                html: `
-<!doctype html>
-<html lang="hu">
-  <body style="font-family: system-ui, -apple-system, sans-serif; max-width: 480px; margin: 32px auto; padding: 0 16px; color: #161718;">
-    <h2 style="color: #7CA9D3; font-weight: 700;">M Mérnöki Iroda — Compliance Checker</h2>
-    <p>Kattints az alábbi gombra a belépéshez. A link <strong>egyszer használható</strong> és <strong>5 perc</strong> múlva lejár.</p>
-    <p style="text-align: center; margin: 32px 0;">
-      <a href="${url}" style="display: inline-block; padding: 12px 24px; background: #7CA9D3; color: white; text-decoration: none; border-radius: 8px; font-weight: 600;">Belépés</a>
-    </p>
-    <p style="font-size: 12px; color: #6b7280;">Ha nem te kérted ezt a belépést, hagyd figyelmen kívül ezt az e-mailt.</p>
-    <p style="font-size: 12px; color: #6b7280; word-break: break-all;">Vagy másold a böngésződ címsorába: ${url}</p>
-  </body>
-</html>`,
-              });
-              if (error) {
-                console.error(`[auth] Resend hiba (${email}):`, error);
-              }
-            } catch (err) {
-              console.error(`[auth] Resend kivétel (${email}):`, err);
-            }
-          },
-        }),
-      ],
-      session: {
-        expiresIn: 60 * 60 * 24 * 30, // 30 nap
-        updateAge: 60 * 60 * 24, // 1 napos session-token refresh
-      },
-    };
+    });
 
     _authInstance = betterAuth(options);
     return _authInstance;

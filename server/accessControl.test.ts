@@ -65,6 +65,7 @@ const LOGIN = [
 
 const ADMIN = [
   "admin.changeUserRole",
+  "admin.createUser",
   "admin.emptyTrash",
   "admin.listAllProjects",
   "admin.listUsers",

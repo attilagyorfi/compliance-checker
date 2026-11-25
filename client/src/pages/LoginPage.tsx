@@ -79,7 +79,6 @@ export default function LoginPage() {
         throw new Error(data?.message ?? `HTTP ${res.status}`);
       }
       setSent(true);
-      toast.success("Belépési link elküldve");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
@@ -109,8 +108,12 @@ export default function LoginPage() {
               </div>
               <p className="font-semibold text-text-strong">Ellenőrizd a postafiókodat</p>
               <p className="text-sm text-text-muted">
-                Elküldtük a belépési linket <strong>{email}</strong> címre.
-                A linkre kattintva azonnal beléphetsz.
+                Ha van fiókod a(z) <strong>{email}</strong> címmel, elküldtük rá a
+                belépési linket. A link 5 percig érvényes.
+              </p>
+              <p className="text-xs text-text-muted">
+                Nem jött levél? Nézd meg a levélszemét mappát is. Ha még nincs fiókod,
+                kérd meg a rendszer adminisztrátorát, hogy vegyen fel.
               </p>
               <Button
                 variant="outline"
@@ -138,7 +141,8 @@ export default function LoginPage() {
                   className="h-11"
                 />
                 <p className="text-xs text-text-muted">
-                  Egyszer használatos belépési linket küldünk a megadott e-mail címre.
+                  Ha van fiókod, egyszer használatos belépési linket küldünk erre a címre.
+                  Új fiókot az adminisztrátor tud létrehozni.
                 </p>
               </div>
 

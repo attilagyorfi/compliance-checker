@@ -10,6 +10,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { adminProcedure, router } from "../_core/trpc";
+import { auditLog } from "../auditLog";
 import { getDb } from "../db";
 import {
   users, projects, projectMembers, analyses,
@@ -102,6 +103,47 @@ export const adminRouter = router({
         );
       }
       return rows;
+    }),
+
+  /**
+   * Új felhasználó felvétele. Regisztráció nincs: belépni csak az tud, akit admin
+   * felvett. Az e-mail kisbetűsen tárolódik, mert a belépés is így keresi.
+   */
+  createUser: adminProcedure
+    .input(z.object({
+      email: z.string().trim().toLowerCase().max(320, "Az e-mail-cím túl hosszú.").email("Érvénytelen e-mail-cím."),
+      name: z.string().trim().min(1, "A név kötelező.").max(255, "A név túl hosszú."),
+      role: userRoleEnum.default("user"),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Adatbázis nem elérhető." });
+
+      const existing = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(sql`LOWER(${users.email})`, input.email))
+        .limit(1);
+      if (existing.length > 0) {
+        throw new TRPCError({ code: "CONFLICT", message: "Ezzel az e-mail-címmel már van felhasználó." });
+      }
+
+      const [inserted] = await db.insert(users).values({
+        email: input.email,
+        name: input.name,
+        role: input.role,
+        loginMethod: "magic-link",
+      });
+      await auditLog({
+        userId: ctx.user.id,
+        userEmail: ctx.user.email ?? undefined,
+        eventType: "user_create",
+        resourceType: "user",
+        resourceId: inserted.insertId,
+        description: `Felhasználó felvéve: ${input.email}`,
+        metadata: { email: input.email, role: input.role },
+      });
+      return { id: inserted.insertId };
     }),
 
   /**

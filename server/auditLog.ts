@@ -9,6 +9,7 @@ import { auditLogs } from "../drizzle/schema";
 export type AuditEventType =
   | "user_login"
   | "user_logout"
+  | "user_create"
   | "document_upload"
   | "document_delete"
   | "document_view"
