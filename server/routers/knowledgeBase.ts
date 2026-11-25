@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { publicProcedure, router } from "../_core/trpc";
+import { adminProcedure, protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { knowledgeBaseDocuments, chunkEmbeddings } from "../../drizzle/schema";
 import { and, eq, inArray, isNull, like, or, desc, sql } from "drizzle-orm";
@@ -12,7 +12,7 @@ import { nanoid } from "nanoid";
 export const knowledgeBaseRouter = router({
   // List all documents, optionally filtered by search query, project, and
   // (V11.7) soft-delete status. Default: only non-deleted rows.
-  list: publicProcedure
+  list: protectedProcedure
     .input(z.object({
       search: z.string().optional(),
       projectId: z.number().int().positive().optional(),
@@ -64,7 +64,7 @@ export const knowledgeBaseRouter = router({
     }),
 
   // Upload one or more documents
-  upload: publicProcedure
+  upload: adminProcedure
     .input(z.object({
       projectId: z.number().int().positive().optional(),
       documents: z.array(z.object({
@@ -136,7 +136,7 @@ export const knowledgeBaseRouter = router({
   // Soft-delete a document (V11.7). Cascades chunk_embeddings cleanup so
   // semantic search doesn't return phantom results from deleted docs — on
   // restore, the user must regenerate embeddings.
-  delete: publicProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -157,7 +157,7 @@ export const knowledgeBaseRouter = router({
     }),
 
   // Bulk soft-delete (V11.7) — atomic batch over multiple docs.
-  deleteMany: publicProcedure
+  deleteMany: adminProcedure
     .input(z.object({ ids: z.array(z.number().int().positive()).min(1).max(500) }))
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -196,7 +196,7 @@ export const knowledgeBaseRouter = router({
   /**
    * Restore a soft-deleted document. Embeddings need to be regenerated separately.
    */
-  restore: publicProcedure
+  restore: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -211,7 +211,7 @@ export const knowledgeBaseRouter = router({
   /**
    * Permanent (hard) delete — kept for an admin "empty trash" flow.
    */
-  permanentDelete: publicProcedure
+  permanentDelete: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -226,7 +226,7 @@ export const knowledgeBaseRouter = router({
   /**
    * Per-document chunk-embedding counts, mirroring regulationSources.getEmbeddingCounts.
    */
-  getEmbeddingCounts: publicProcedure.query(async () => {
+  getEmbeddingCounts: protectedProcedure.query(async () => {
     const db = await getDb();
     if (!db) return [] as Array<{ sourceId: number; chunkCount: number }>;
     try {
@@ -250,7 +250,7 @@ export const knowledgeBaseRouter = router({
    * Mirrors regulationSources.regenerateEmbeddings — same graceful fallback
    * if the embedding API is unavailable.
    */
-  regenerateEmbeddings: publicProcedure
+  regenerateEmbeddings: adminProcedure
     .input(z.object({ id: z.number().int().positive() }))
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -285,7 +285,7 @@ export const knowledgeBaseRouter = router({
     }),
 
   // Get all extracted texts for internal search (used by standardsSearch)
-  getTextsForSearch: publicProcedure
+  getTextsForSearch: protectedProcedure
     .input(z.object({ query: z.string() }))
     .query(async ({ input }) => {
       const db = await getDb();

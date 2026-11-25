@@ -4,7 +4,7 @@
  */
 
 import { z } from "zod";
-import { publicProcedure, router } from "../_core/trpc";
+import { adminProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { getDb } from "../db";
 import { platformCredentials } from "../../drizzle/schema";
@@ -48,7 +48,7 @@ export const platformCredentialsRouter = router({
   /**
    * Get info about all platforms (without passwords).
    */
-  listPlatforms: publicProcedure.query(async () => {
+  listPlatforms: adminProcedure.query(async () => {
     const db = await getDb();
     if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
 
@@ -73,7 +73,7 @@ export const platformCredentialsRouter = router({
    * Save or update credentials for a platform.
    * Password is encrypted before storage.
    */
-  saveCredentials: publicProcedure
+  saveCredentials: adminProcedure
     .input(
       z.object({
         platform: platformEnum,
@@ -121,7 +121,7 @@ export const platformCredentialsRouter = router({
   /**
    * Delete credentials for a platform.
    */
-  deleteCredentials: publicProcedure
+  deleteCredentials: adminProcedure
     .input(z.object({ platform: platformEnum }))
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -133,7 +133,7 @@ export const platformCredentialsRouter = router({
   /**
    * Test the connection to a platform using stored credentials.
    */
-  testConnection: publicProcedure
+  testConnection: adminProcedure
     .input(z.object({ platform: platformEnum }))
     .mutation(async ({ input }) => {
       const db = await getDb();

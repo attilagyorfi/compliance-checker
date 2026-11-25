@@ -12,7 +12,7 @@
  */
 
 import { z } from "zod";
-import { publicProcedure, router } from "../_core/trpc";
+import { adminProcedure, protectedProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db";
@@ -819,7 +819,7 @@ export const standardsSearchRouter = router({
   /**
    * Main search endpoint – query rewriting + hybrid search + structured answer
    */
-  search: publicProcedure
+  search: protectedProcedure
     .input(
       z.object({
         question: z.string().min(3).max(1000),
@@ -924,7 +924,7 @@ export const standardsSearchRouter = router({
    * A v2_* bizonyíték-magból ad idézhető találatokat (szakasz + oldalszám +
    * teljes bekezdés + hivatkozás). A legacy `search` érintetlen.
    */
-  searchV2: publicProcedure
+  searchV2: protectedProcedure
     .input(
       z.object({
         question: z.string().min(2).max(1000),
@@ -942,7 +942,7 @@ export const standardsSearchRouter = router({
    * Egy dokumentum ÖSSZES, a keresésre illeszkedő szakasza (oldal + bbox) — a
    * viewer "teljes PDF, kiemelésekkel" nézetéhez.
    */
-  documentHighlights: publicProcedure
+  documentHighlights: protectedProcedure
     .input(z.object({ query: z.string().min(1).max(1000), slug: z.string().min(1).max(128) }))
     .mutation(async ({ input }) => {
       const { documentHighlightsV2 } = await import("../v2/search");
@@ -952,7 +952,7 @@ export const standardsSearchRouter = router({
   /**
    * Generate extended answer for an existing search result
    */
-  extendAnswer: publicProcedure
+  extendAnswer: protectedProcedure
     .input(
       z.object({
         queryId: z.number(),
@@ -989,7 +989,7 @@ export const standardsSearchRouter = router({
   /**
    * List search history
    */
-  listHistory: publicProcedure
+  listHistory: adminProcedure
     .input(
       z.object({
         limit: z.number().min(1).max(100).default(50),
@@ -1036,7 +1036,7 @@ export const standardsSearchRouter = router({
   /**
    * Get single search query by ID
    */
-  getQuery: publicProcedure
+  getQuery: adminProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
       const db = await getDb();
@@ -1050,7 +1050,7 @@ export const standardsSearchRouter = router({
   /**
    * Delete a search query from history
    */
-  deleteQuery: publicProcedure
+  deleteQuery: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const db = await getDb();

@@ -6,7 +6,8 @@
  * mutatja (az egyetlen admin-only nézet, amire szükség van).
  */
 
-import { ShieldAlert, Shield, Loader2 } from "lucide-react";
+import { Shield, Loader2 } from "lucide-react";
+import { AccessDenied } from "@/components/AccessDenied";
 import Header from "@/components/Header";
 import SearchHistorySection from "@/components/SearchHistorySection";
 import { trpc } from "@/lib/trpc";
@@ -26,22 +27,7 @@ export default function AdminPage() {
     );
   }
 
-  if (!isAdmin) {
-    return (
-      <div className="min-h-screen flex flex-col bg-surface">
-        <Header />
-        <main className="flex-1 container py-16 flex flex-col items-center gap-3">
-          <div className="w-14 h-14 rounded-full bg-red-50 border border-red-100 flex items-center justify-center">
-            <ShieldAlert size={26} className="text-red-600" />
-          </div>
-          <p className="font-semibold text-text-strong">Hozzáférés megtagadva</p>
-          <p className="text-sm text-text-muted text-center max-w-md">
-            Ez az oldal csak admin szerepkörű felhasználóknak elérhető.
-          </p>
-        </main>
-      </div>
-    );
-  }
+  if (!isAdmin) return <AccessDenied />;
 
   return (
     <div className="min-h-screen flex flex-col bg-surface">

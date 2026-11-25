@@ -112,11 +112,31 @@ function createPublicContext(): TrpcContext {
   };
 }
 
+/** Belépett admin: a jogosultsági kapun átjut, így maga a végpont tesztelhető. */
+function createAdminContext(): TrpcContext {
+  return {
+    ...createPublicContext(),
+    user: {
+      id: 1,
+      openId: "test-admin",
+      email: "admin@example.com",
+      emailVerified: true,
+      image: null,
+      name: "Teszt Admin",
+      loginMethod: "magic-link",
+      role: "admin",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lastSignedIn: new Date(),
+    },
+  };
+}
+
 // ── Compliance router tests ───────────────────────────────────────────────────
 describe("compliance router", () => {
   it("getAnalysis returns analysis by id", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     const result = await caller.compliance.getAnalysis({ id: 42 });
     expect(result.id).toBe(42);
     expect(result.title).toBe("Test Analysis");
@@ -128,20 +148,20 @@ describe("compliance router", () => {
     vi.mocked(getAnalysisById).mockResolvedValueOnce(undefined);
 
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     await expect(caller.compliance.getAnalysis({ id: 9999 })).rejects.toThrow("Elemzés nem található");
   });
 
   it("listAnalyses returns array", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     const result = await caller.compliance.listAnalyses();
     expect(Array.isArray(result)).toBe(true);
   });
 
   it("startAnalysis creates analysis and returns id", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
 
     const fakeBase64 = Buffer.from("%PDF-1.4 fake content").toString("base64");
 
@@ -156,7 +176,7 @@ describe("compliance router", () => {
 
   it("startAnalysis accepts multiple plan documents and library source IDs", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
 
     const fakeBase64 = Buffer.from("%PDF-1.4 fake content").toString("base64");
 
@@ -173,7 +193,7 @@ describe("compliance router", () => {
 
   it("startAnalysis accepts xlsx and dwg file types", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
 
     const fakeBase64 = Buffer.from("fake xlsx content").toString("base64");
 
@@ -191,7 +211,7 @@ describe("compliance router", () => {
 describe("pdf export router", () => {
   it("exportPdf returns base64 and filename for completed analysis", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     const result = await caller.pdf.exportPdf({ id: 42 });
     expect(result.base64).toBeTruthy();
     expect(result.filename).toMatch(/\.pdf$/);
@@ -202,7 +222,7 @@ describe("pdf export router", () => {
     vi.mocked(getAnalysisById).mockResolvedValueOnce(undefined);
 
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     await expect(caller.pdf.exportPdf({ id: 9999 })).rejects.toThrow("Elemzés nem található");
   });
 
@@ -224,7 +244,7 @@ describe("pdf export router", () => {
     } as any);
 
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     await expect(caller.pdf.exportPdf({ id: 1 })).rejects.toThrow("Az elemzés még nem fejeződött be");
   });
 });
@@ -469,7 +489,7 @@ describe("regulation scraper", () => {
 describe("standardsSearch router", () => {
   it("listHistory returns empty array when no queries", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     // DB may not have entries in test env – just check it doesn't throw
     const result = await caller.standardsSearch.listHistory({ limit: 10, offset: 0 });
     expect(Array.isArray(result.items)).toBe(true);
@@ -477,20 +497,20 @@ describe("standardsSearch router", () => {
 
   it("getQuery throws NOT_FOUND for missing id", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     await expect(caller.standardsSearch.getQuery({ id: 999999 })).rejects.toThrow();
   });
 
   it("deleteQuery throws when DB unavailable (mocked)", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     // In test env getDb returns null, so it should throw INTERNAL_SERVER_ERROR
     await expect(caller.standardsSearch.deleteQuery({ id: 999999 })).rejects.toThrow();
   });
 
   it("extendAnswer throws NOT_FOUND for missing id", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     await expect(caller.standardsSearch.extendAnswer({ queryId: 999999 })).rejects.toThrow();
   });
 });
@@ -499,7 +519,7 @@ describe("standardsSearch router", () => {
 describe("projects router", () => {
   it("list returns empty array when DB unavailable", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     const result = await caller.projects.list({ includeDeleted: false });
     expect(Array.isArray(result)).toBe(true);
     expect(result.length).toBe(0);
@@ -507,7 +527,7 @@ describe("projects router", () => {
 
   it("getById throws when DB unavailable", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     await expect(caller.projects.getById({ id: 1 })).rejects.toThrow();
   });
 
@@ -572,7 +592,7 @@ describe("projects router", () => {
 describe("projectMembers router", () => {
   it("list returns empty array when DB unavailable", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     const result = await caller.projectMembers.list({ projectId: 1 });
     expect(Array.isArray(result)).toBe(true);
     expect(result.length).toBe(0);
@@ -707,70 +727,70 @@ describe("embeddings helpers", () => {
 
   it("regulationSources.getEmbeddingCounts returns array (gracefully empty when DB null)", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     const result = await caller.regulationSources.getEmbeddingCounts();
     expect(Array.isArray(result)).toBe(true);
   });
 
   it("knowledgeBase.getEmbeddingCounts returns array (gracefully empty when DB null)", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     const result = await caller.knowledgeBase.getEmbeddingCounts();
     expect(Array.isArray(result)).toBe(true);
   });
 
   it("knowledgeBase.deleteMany throws when DB unavailable (mocked)", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     // mocked getDb returns null → router throws INTERNAL_SERVER_ERROR
     await expect(caller.knowledgeBase.deleteMany({ ids: [1, 2, 3] })).rejects.toThrow();
   });
 
   it("knowledgeBase.deleteMany rejects empty id list at the schema layer", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     await expect(caller.knowledgeBase.deleteMany({ ids: [] })).rejects.toThrow();
   });
 
   it("knowledgeBase.restore is callable (mocked DB null path throws gracefully)", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     await expect(caller.knowledgeBase.restore({ id: 1 })).rejects.toThrow();
   });
 
   it("knowledgeBase.permanentDelete is callable", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     await expect(caller.knowledgeBase.permanentDelete({ id: 1 })).rejects.toThrow();
   });
 
   it("regulationSources.restore is callable", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     await expect(caller.regulationSources.restore({ id: 1 })).rejects.toThrow();
   });
 
   it("regulationSources.permanentDelete is callable", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     await expect(caller.regulationSources.permanentDelete({ id: 1 })).rejects.toThrow();
   });
 
   it("regulationSources.deleteMany throws when DB unavailable", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     await expect(caller.regulationSources.deleteMany({ ids: [1, 2] })).rejects.toThrow();
   });
 
   it("regulationSources.deleteMany rejects empty id list at the schema layer", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     await expect(caller.regulationSources.deleteMany({ ids: [] })).rejects.toThrow();
   });
 
   it("regulationSources.restoreMany throws when DB unavailable", async () => {
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller(createPublicContext());
+    const caller = appRouter.createCaller(createAdminContext());
     await expect(caller.regulationSources.restoreMany({ ids: [1, 2] })).rejects.toThrow();
   });
 

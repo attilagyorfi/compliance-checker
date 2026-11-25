@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { publicProcedure, router } from "../_core/trpc";
+import { protectedProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { getAnalysisById } from "../db";
 import { generatePdfReport } from "../pdfReport";
 
 export const pdfExportRouter = router({
-  exportPdf: publicProcedure
+  exportPdf: protectedProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input, ctx }) => {
       const analysis = await getAnalysisById(input.id);

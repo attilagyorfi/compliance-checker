@@ -61,6 +61,10 @@ describe("shouldRetryQuery", () => {
     expect(shouldRetryQuery(0, { data: { code: "NOT_FOUND" } })).toBe(false);
   });
 
+  it.each(["UNAUTHORIZED", "FORBIDDEN"])("%s hibára egyszer sem próbálkozik újra", (code) => {
+    expect(shouldRetryQuery(0, { data: { code } })).toBe(false);
+  });
+
   it("szerverhibára korlátozott számban próbálkozik újra", () => {
     const error = { data: { code: "INTERNAL_SERVER_ERROR" } };
     expect(shouldRetryQuery(0, error)).toBe(true);

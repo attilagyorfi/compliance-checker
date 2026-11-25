@@ -4,7 +4,7 @@
  */
 
 import { z } from "zod";
-import { publicProcedure, router } from "../_core/trpc";
+import { adminProcedure, protectedProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { sql, isNull } from "drizzle-orm";
 import { getDb } from "../db";
@@ -25,7 +25,7 @@ export const regulationSourcesRouter = router({
    * List regulation sources. Soft-deleted ones are excluded by default;
    * pass `includeDeleted: true` to include them (e.g. for a "Restore" UI).
    */
-  list: publicProcedure
+  list: protectedProcedure
     .input(z.object({ includeDeleted: z.boolean().default(false) }).optional())
     .query(async ({ input }) => {
       const db = await getDb();
@@ -53,7 +53,7 @@ export const regulationSourcesRouter = router({
    * if the chunk_embeddings table doesn't exist yet (db:push not run on this
    * environment) so the UI can render gracefully without semantic-search data.
    */
-  getEmbeddingCounts: publicProcedure.query(async () => {
+  getEmbeddingCounts: protectedProcedure.query(async () => {
     const db = await getDb();
     if (!db) return [] as Array<{ sourceId: number; chunkCount: number }>;
     try {
@@ -75,7 +75,7 @@ export const regulationSourcesRouter = router({
   /**
    * Get a single regulation source by ID.
    */
-  getById: publicProcedure
+  getById: protectedProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
       const db = await getDb();
@@ -88,7 +88,7 @@ export const regulationSourcesRouter = router({
   /**
    * Create a new regulation source.
    */
-  create: publicProcedure
+  create: adminProcedure
     .input(
       z.object({
         name: z.string().min(1).max(512),
@@ -119,7 +119,7 @@ export const regulationSourcesRouter = router({
    * A fájlt base64-ként kapja (az Express body-limit 50mb). A discipline-t a
    * fájlnévből + szövegből detektáljuk, a sourceType "pdf".
    */
-  createFromPdf: publicProcedure
+  createFromPdf: adminProcedure
     .input(
       z.object({
         filename: z.string().min(1),
@@ -194,7 +194,7 @@ export const regulationSourcesRouter = router({
   /**
    * Update a regulation source.
    */
-  update: publicProcedure
+  update: adminProcedure
     .input(
       z.object({
         id: z.number(),
@@ -220,7 +220,7 @@ export const regulationSourcesRouter = router({
    * chunk_embeddings cleanup so semantic search doesn't return phantom
    * results — on restore, the user must regenerate embeddings.
    */
-  delete: publicProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -246,7 +246,7 @@ export const regulationSourcesRouter = router({
    * Restore a soft-deleted regulation source. The user must regenerate
    * embeddings afterwards if they want semantic search coverage.
    */
-  restore: publicProcedure
+  restore: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -262,7 +262,7 @@ export const regulationSourcesRouter = router({
    * Bulk soft-delete (V11.8) — same semantics as `delete`, atomic over many ids.
    * Cascades chunk_embeddings cleanup.
    */
-  deleteMany: publicProcedure
+  deleteMany: adminProcedure
     .input(z.object({ ids: z.array(z.number().int().positive()).min(1).max(500) }))
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -301,7 +301,7 @@ export const regulationSourcesRouter = router({
   /**
    * Bulk restore (V11.8) — sets deletedAt = null for every id in the batch.
    */
-  restoreMany: publicProcedure
+  restoreMany: adminProcedure
     .input(z.object({ ids: z.array(z.number().int().positive()).min(1).max(500) }))
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -317,7 +317,7 @@ export const regulationSourcesRouter = router({
    * Permanently delete a regulation source (physical row removal). Use with
    * care — there's no recovery. Intended for an admin "empty trash" flow.
    */
-  permanentDelete: publicProcedure
+  permanentDelete: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -333,7 +333,7 @@ export const regulationSourcesRouter = router({
    * Fetch and cache the regulation text from the source URL.
    * For paid platforms, credentials must be provided separately.
    */
-  fetchContent: publicProcedure
+  fetchContent: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -393,7 +393,7 @@ export const regulationSourcesRouter = router({
    * UI button. NJT/netjogtar/eurlex/url sources don't need credentials; the rest
    * are skipped if no credential is configured.
    */
-  refreshAllStale: publicProcedure
+  refreshAllStale: adminProcedure
     .input(z.object({ olderThanDays: z.number().int().min(0).max(365).default(30) }).optional())
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -464,7 +464,7 @@ export const regulationSourcesRouter = router({
    * Returns the number of chunks embedded; returns `embeddingApiUnavailable: true`
    * if the embedding API isn't reachable so the UI can surface a hint.
    */
-  regenerateEmbeddings: publicProcedure
+  regenerateEmbeddings: adminProcedure
     .input(z.object({ id: z.number().int().positive() }))
     .mutation(async ({ input }) => {
       const db = await getDb();

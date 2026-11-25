@@ -10,10 +10,11 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { AccessDenied } from "@/components/AccessDenied";
 import Header from "@/components/Header";
 import { QueryErrorState } from "@/components/QueryErrorState";
 import { trpc } from "@/lib/trpc";
-import { hasQueryLoadFailed } from "@shared/analysisRoute";
+import { hasQueryLoadFailed, isForbiddenError } from "@shared/analysisRoute";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -326,6 +327,8 @@ function PlatformCard({ info }: { info: PlatformInfo }) {
 export default function PlatformConnectionsPage() {
   const platformsQuery = trpc.platformCredentials.listPlatforms.useQuery();
   const { data: platforms, isLoading, refetch } = platformsQuery;
+
+  if (isForbiddenError(platformsQuery.error)) return <AccessDenied />;
 
   const connectedCount = platforms?.filter((p) => p.status === "connected").length ?? 0;
   const configuredCount = platforms?.filter((p) => p.isConfigured).length ?? 0;

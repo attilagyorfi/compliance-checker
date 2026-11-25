@@ -2347,7 +2347,7 @@ import { z } from "zod";
 // shared/const.ts
 var ONE_YEAR_MS = 1e3 * 60 * 60 * 24 * 365;
 var UNAUTHED_ERR_MSG = "Please login (10001)";
-var NOT_ADMIN_ERR_MSG = "You do not have required permission (10002)";
+var NOT_ADMIN_ERR_MSG = "Ehhez a m\u0171velethez admin jogosults\xE1g sz\xFCks\xE9ges.";
 
 // server/_core/trpc.ts
 import { initTRPC, TRPCError } from "@trpc/server";
@@ -2373,7 +2373,10 @@ var protectedProcedure = t.procedure.use(requireUser);
 var adminProcedure = t.procedure.use(
   t.middleware(async (opts) => {
     const { ctx, next } = opts;
-    if (!ctx.user || ctx.user.role !== "admin") {
+    if (!ctx.user) {
+      throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
+    }
+    if (ctx.user.role !== "admin") {
       throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
     }
     return next({
@@ -2652,7 +2655,7 @@ var complianceRouter = router({
   /**
    * Upload a document to S3 and return its key and URL.
    */
-  uploadDocument: publicProcedure.input(
+  uploadDocument: protectedProcedure.input(
     z.object({
       filename: z.string(),
       contentType: z.string().default("application/pdf"),
@@ -2676,7 +2679,7 @@ var complianceRouter = router({
   /**
    * Start a new compliance analysis with queue + retry support.
    */
-  startAnalysis: publicProcedure.input(
+  startAnalysis: protectedProcedure.input(
     z.object({
       title: z.string().min(1).max(255),
       projectId: z.number().optional(),
@@ -2775,7 +2778,7 @@ var complianceRouter = router({
   /**
    * Get the status and results of an analysis.
    */
-  getAnalysis: publicProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+  getAnalysis: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
     const analysis = await getAnalysisById(input.id);
     if (!analysis) {
       throw new TRPCError2({ code: "NOT_FOUND", message: "Elemz\xE9s nem tal\xE1lhat\xF3" });
@@ -2785,13 +2788,13 @@ var complianceRouter = router({
   /**
    * List analyses (most recent first). Optionally filtered by project.
    */
-  listAnalyses: publicProcedure.input(z.object({ projectId: z.number().int().positive().optional() }).optional()).query(async ({ input }) => {
+  listAnalyses: protectedProcedure.input(z.object({ projectId: z.number().int().positive().optional() }).optional()).query(async ({ input }) => {
     return listAnalyses(input?.projectId ? { projectId: input.projectId } : void 0);
   }),
   /**
    * Update the workflow status of an analysis.
    */
-  updateWorkflowStatus: publicProcedure.input(z.object({
+  updateWorkflowStatus: protectedProcedure.input(z.object({
     id: z.number(),
     workflowStatus: z.enum(["uj", "elemzes_alatt", "ai_eloelenorizve", "ember_felulvizsgalva", "javitasra_visszakuldve", "lezart"])
   })).mutation(async ({ input, ctx }) => {
@@ -2814,7 +2817,7 @@ var complianceRouter = router({
   /**
    * Update the workflow status of a single finding within an analysis.
    */
-  updateFindingStatus: publicProcedure.input(z.object({
+  updateFindingStatus: protectedProcedure.input(z.object({
     analysisId: z.number(),
     findingId: z.string(),
     workflowStatus: z.enum(["nyitott", "ellenorzes_alatt", "elfogadva", "elutasitva", "javitva", "lezarva"]),
@@ -3047,7 +3050,7 @@ function generatePdfReport(analysis) {
 
 // server/routers/pdfExport.ts
 var pdfExportRouter = router({
-  exportPdf: publicProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ input, ctx }) => {
+  exportPdf: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ input, ctx }) => {
     const analysis = await getAnalysisById(input.id);
     if (!analysis) {
       throw new TRPCError3({ code: "NOT_FOUND", message: "Elemz\xE9s nem tal\xE1lhat\xF3" });
@@ -3090,7 +3093,7 @@ var regulationSourcesRouter = router({
    * List regulation sources. Soft-deleted ones are excluded by default;
    * pass `includeDeleted: true` to include them (e.g. for a "Restore" UI).
    */
-  list: publicProcedure.input(z3.object({ includeDeleted: z3.boolean().default(false) }).optional()).query(async ({ input }) => {
+  list: protectedProcedure.input(z3.object({ includeDeleted: z3.boolean().default(false) }).optional()).query(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
     const includeDeleted = input?.includeDeleted ?? false;
@@ -3109,7 +3112,7 @@ var regulationSourcesRouter = router({
    * if the chunk_embeddings table doesn't exist yet (db:push not run on this
    * environment) so the UI can render gracefully without semantic-search data.
    */
-  getEmbeddingCounts: publicProcedure.query(async () => {
+  getEmbeddingCounts: protectedProcedure.query(async () => {
     const db = await getDb();
     if (!db) return [];
     try {
@@ -3126,7 +3129,7 @@ var regulationSourcesRouter = router({
   /**
    * Get a single regulation source by ID.
    */
-  getById: publicProcedure.input(z3.object({ id: z3.number() })).query(async ({ input }) => {
+  getById: protectedProcedure.input(z3.object({ id: z3.number() })).query(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
     const result = await db.select().from(regulationSources).where(eq2(regulationSources.id, input.id)).limit(1);
@@ -3136,7 +3139,7 @@ var regulationSourcesRouter = router({
   /**
    * Create a new regulation source.
    */
-  create: publicProcedure.input(
+  create: adminProcedure.input(
     z3.object({
       name: z3.string().min(1).max(512),
       shortCode: z3.string().max(64).optional(),
@@ -3164,7 +3167,7 @@ var regulationSourcesRouter = router({
    * A fájlt base64-ként kapja (az Express body-limit 50mb). A discipline-t a
    * fájlnévből + szövegből detektáljuk, a sourceType "pdf".
    */
-  createFromPdf: publicProcedure.input(
+  createFromPdf: adminProcedure.input(
     z3.object({
       filename: z3.string().min(1),
       dataBase64: z3.string().min(1)
@@ -3225,7 +3228,7 @@ var regulationSourcesRouter = router({
   /**
    * Update a regulation source.
    */
-  update: publicProcedure.input(
+  update: adminProcedure.input(
     z3.object({
       id: z3.number(),
       name: z3.string().min(1).max(512).optional(),
@@ -3248,7 +3251,7 @@ var regulationSourcesRouter = router({
    * chunk_embeddings cleanup so semantic search doesn't return phantom
    * results — on restore, the user must regenerate embeddings.
    */
-  delete: publicProcedure.input(z3.object({ id: z3.number() })).mutation(async ({ input }) => {
+  delete: adminProcedure.input(z3.object({ id: z3.number() })).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
     try {
@@ -3264,7 +3267,7 @@ var regulationSourcesRouter = router({
    * Restore a soft-deleted regulation source. The user must regenerate
    * embeddings afterwards if they want semantic search coverage.
    */
-  restore: publicProcedure.input(z3.object({ id: z3.number() })).mutation(async ({ input }) => {
+  restore: adminProcedure.input(z3.object({ id: z3.number() })).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
     await db.update(regulationSources).set({ deletedAt: null }).where(eq2(regulationSources.id, input.id));
@@ -3274,7 +3277,7 @@ var regulationSourcesRouter = router({
    * Bulk soft-delete (V11.8) — same semantics as `delete`, atomic over many ids.
    * Cascades chunk_embeddings cleanup.
    */
-  deleteMany: publicProcedure.input(z3.object({ ids: z3.array(z3.number().int().positive()).min(1).max(500) })).mutation(async ({ input }) => {
+  deleteMany: adminProcedure.input(z3.object({ ids: z3.array(z3.number().int().positive()).min(1).max(500) })).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
     const existing = await db.select({ id: regulationSources.id }).from(regulationSources).where(inArray(regulationSources.id, input.ids));
@@ -3299,7 +3302,7 @@ var regulationSourcesRouter = router({
   /**
    * Bulk restore (V11.8) — sets deletedAt = null for every id in the batch.
    */
-  restoreMany: publicProcedure.input(z3.object({ ids: z3.array(z3.number().int().positive()).min(1).max(500) })).mutation(async ({ input }) => {
+  restoreMany: adminProcedure.input(z3.object({ ids: z3.array(z3.number().int().positive()).min(1).max(500) })).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
     await db.update(regulationSources).set({ deletedAt: null }).where(inArray(regulationSources.id, input.ids));
@@ -3309,7 +3312,7 @@ var regulationSourcesRouter = router({
    * Permanently delete a regulation source (physical row removal). Use with
    * care — there's no recovery. Intended for an admin "empty trash" flow.
    */
-  permanentDelete: publicProcedure.input(z3.object({ id: z3.number() })).mutation(async ({ input }) => {
+  permanentDelete: adminProcedure.input(z3.object({ id: z3.number() })).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
     await db.delete(regulationSources).where(eq2(regulationSources.id, input.id));
@@ -3320,7 +3323,7 @@ var regulationSourcesRouter = router({
    * Fetch and cache the regulation text from the source URL.
    * For paid platforms, credentials must be provided separately.
    */
-  fetchContent: publicProcedure.input(z3.object({ id: z3.number() })).mutation(async ({ input }) => {
+  fetchContent: adminProcedure.input(z3.object({ id: z3.number() })).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
     const rows2 = await db.select().from(regulationSources).where(eq2(regulationSources.id, input.id)).limit(1);
@@ -3366,7 +3369,7 @@ var regulationSourcesRouter = router({
    * UI button. NJT/netjogtar/eurlex/url sources don't need credentials; the rest
    * are skipped if no credential is configured.
    */
-  refreshAllStale: publicProcedure.input(z3.object({ olderThanDays: z3.number().int().min(0).max(365).default(30) }).optional()).mutation(async ({ input }) => {
+  refreshAllStale: adminProcedure.input(z3.object({ olderThanDays: z3.number().int().min(0).max(365).default(30) }).optional()).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
     const olderThanDays = input?.olderThanDays ?? 30;
@@ -3427,7 +3430,7 @@ var regulationSourcesRouter = router({
    * Returns the number of chunks embedded; returns `embeddingApiUnavailable: true`
    * if the embedding API isn't reachable so the UI can surface a hint.
    */
-  regenerateEmbeddings: publicProcedure.input(z3.object({ id: z3.number().int().positive() })).mutation(async ({ input }) => {
+  regenerateEmbeddings: adminProcedure.input(z3.object({ id: z3.number().int().positive() })).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError4({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
     const rows2 = await db.select().from(regulationSources).where(eq2(regulationSources.id, input.id)).limit(1);
@@ -3496,7 +3499,7 @@ var platformCredentialsRouter = router({
   /**
    * Get info about all platforms (without passwords).
    */
-  listPlatforms: publicProcedure.query(async () => {
+  listPlatforms: adminProcedure.query(async () => {
     const db = await getDb();
     if (!db) throw new TRPCError5({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
     const storedCreds = await db.select().from(platformCredentials);
@@ -3518,7 +3521,7 @@ var platformCredentialsRouter = router({
    * Save or update credentials for a platform.
    * Password is encrypted before storage.
    */
-  saveCredentials: publicProcedure.input(
+  saveCredentials: adminProcedure.input(
     z4.object({
       platform: platformEnum,
       username: z4.string().min(1),
@@ -3552,7 +3555,7 @@ var platformCredentialsRouter = router({
   /**
    * Delete credentials for a platform.
    */
-  deleteCredentials: publicProcedure.input(z4.object({ platform: platformEnum })).mutation(async ({ input }) => {
+  deleteCredentials: adminProcedure.input(z4.object({ platform: platformEnum })).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError5({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
     await db.delete(platformCredentials).where(eq3(platformCredentials.platform, input.platform));
@@ -3561,7 +3564,7 @@ var platformCredentialsRouter = router({
   /**
    * Test the connection to a platform using stored credentials.
    */
-  testConnection: publicProcedure.input(z4.object({ platform: platformEnum })).mutation(async ({ input }) => {
+  testConnection: adminProcedure.input(z4.object({ platform: platformEnum })).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError5({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
     const rows2 = await db.select().from(platformCredentials).where(eq3(platformCredentials.platform, input.platform)).limit(1);
@@ -4272,7 +4275,7 @@ var standardsSearchRouter = router({
   /**
    * Main search endpoint – query rewriting + hybrid search + structured answer
    */
-  search: publicProcedure.input(
+  search: protectedProcedure.input(
     z5.object({
       question: z5.string().min(3).max(1e3),
       searchMode: z5.enum(["mszt", "internal", "combined", "web", "combined_with_web"]).default("internal"),
@@ -4346,7 +4349,7 @@ var standardsSearchRouter = router({
    * A v2_* bizonyíték-magból ad idézhető találatokat (szakasz + oldalszám +
    * teljes bekezdés + hivatkozás). A legacy `search` érintetlen.
    */
-  searchV2: publicProcedure.input(
+  searchV2: protectedProcedure.input(
     z5.object({
       question: z5.string().min(2).max(1e3),
       topK: z5.number().int().min(1).max(20).default(8),
@@ -4361,14 +4364,14 @@ var standardsSearchRouter = router({
    * Egy dokumentum ÖSSZES, a keresésre illeszkedő szakasza (oldal + bbox) — a
    * viewer "teljes PDF, kiemelésekkel" nézetéhez.
    */
-  documentHighlights: publicProcedure.input(z5.object({ query: z5.string().min(1).max(1e3), slug: z5.string().min(1).max(128) })).mutation(async ({ input }) => {
+  documentHighlights: protectedProcedure.input(z5.object({ query: z5.string().min(1).max(1e3), slug: z5.string().min(1).max(128) })).mutation(async ({ input }) => {
     const { documentHighlightsV2: documentHighlightsV22 } = await Promise.resolve().then(() => (init_search(), search_exports));
     return await documentHighlightsV22(input.query, input.slug);
   }),
   /**
    * Generate extended answer for an existing search result
    */
-  extendAnswer: publicProcedure.input(
+  extendAnswer: protectedProcedure.input(
     z5.object({
       queryId: z5.number()
     })
@@ -4393,7 +4396,7 @@ var standardsSearchRouter = router({
   /**
    * List search history
    */
-  listHistory: publicProcedure.input(
+  listHistory: adminProcedure.input(
     z5.object({
       limit: z5.number().min(1).max(100).default(50),
       offset: z5.number().min(0).default(0),
@@ -4428,7 +4431,7 @@ var standardsSearchRouter = router({
   /**
    * Get single search query by ID
    */
-  getQuery: publicProcedure.input(z5.object({ id: z5.number() })).query(async ({ input }) => {
+  getQuery: adminProcedure.input(z5.object({ id: z5.number() })).query(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError6({ code: "INTERNAL_SERVER_ERROR", message: "Adatb\xE1zis nem el\xE9rhet\u0151." });
     const rows2 = await db.select().from(searchQueries).where(eq4(searchQueries.id, input.id)).limit(1);
@@ -4438,7 +4441,7 @@ var standardsSearchRouter = router({
   /**
    * Delete a search query from history
    */
-  deleteQuery: publicProcedure.input(z5.object({ id: z5.number() })).mutation(async ({ input }) => {
+  deleteQuery: adminProcedure.input(z5.object({ id: z5.number() })).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError6({ code: "INTERNAL_SERVER_ERROR", message: "Adatb\xE1zis nem el\xE9rhet\u0151." });
     await db.delete(searchQueries).where(eq4(searchQueries.id, input.id));
@@ -4459,7 +4462,7 @@ import { nanoid as nanoid2 } from "nanoid";
 var knowledgeBaseRouter = router({
   // List all documents, optionally filtered by search query, project, and
   // (V11.7) soft-delete status. Default: only non-deleted rows.
-  list: publicProcedure.input(z6.object({
+  list: protectedProcedure.input(z6.object({
     search: z6.string().optional(),
     projectId: z6.number().int().positive().optional(),
     includeDeleted: z6.boolean().default(false)
@@ -4501,7 +4504,7 @@ var knowledgeBaseRouter = router({
     }
   }),
   // Upload one or more documents
-  upload: publicProcedure.input(z6.object({
+  upload: adminProcedure.input(z6.object({
     projectId: z6.number().int().positive().optional(),
     documents: z6.array(z6.object({
       base64: z6.string(),
@@ -4558,7 +4561,7 @@ var knowledgeBaseRouter = router({
   // Soft-delete a document (V11.7). Cascades chunk_embeddings cleanup so
   // semantic search doesn't return phantom results from deleted docs — on
   // restore, the user must regenerate embeddings.
-  delete: publicProcedure.input(z6.object({ id: z6.number() })).mutation(async ({ input }) => {
+  delete: adminProcedure.input(z6.object({ id: z6.number() })).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new Error("Adatb\xE1zis nem el\xE9rhet\u0151");
     try {
@@ -4571,7 +4574,7 @@ var knowledgeBaseRouter = router({
     return { success: true };
   }),
   // Bulk soft-delete (V11.7) — atomic batch over multiple docs.
-  deleteMany: publicProcedure.input(z6.object({ ids: z6.array(z6.number().int().positive()).min(1).max(500) })).mutation(async ({ input }) => {
+  deleteMany: adminProcedure.input(z6.object({ ids: z6.array(z6.number().int().positive()).min(1).max(500) })).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError7({ code: "INTERNAL_SERVER_ERROR", message: "Adatb\xE1zis nem el\xE9rhet\u0151" });
     const existing = await db.select({ id: knowledgeBaseDocuments.id }).from(knowledgeBaseDocuments).where(inArray2(knowledgeBaseDocuments.id, input.ids));
@@ -4596,7 +4599,7 @@ var knowledgeBaseRouter = router({
   /**
    * Restore a soft-deleted document. Embeddings need to be regenerated separately.
    */
-  restore: publicProcedure.input(z6.object({ id: z6.number() })).mutation(async ({ input }) => {
+  restore: adminProcedure.input(z6.object({ id: z6.number() })).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError7({ code: "INTERNAL_SERVER_ERROR", message: "Adatb\xE1zis nem el\xE9rhet\u0151" });
     await db.update(knowledgeBaseDocuments).set({ deletedAt: null }).where(eq5(knowledgeBaseDocuments.id, input.id));
@@ -4605,7 +4608,7 @@ var knowledgeBaseRouter = router({
   /**
    * Permanent (hard) delete — kept for an admin "empty trash" flow.
    */
-  permanentDelete: publicProcedure.input(z6.object({ id: z6.number() })).mutation(async ({ input }) => {
+  permanentDelete: adminProcedure.input(z6.object({ id: z6.number() })).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError7({ code: "INTERNAL_SERVER_ERROR", message: "Adatb\xE1zis nem el\xE9rhet\u0151" });
     await db.delete(knowledgeBaseDocuments).where(eq5(knowledgeBaseDocuments.id, input.id));
@@ -4615,7 +4618,7 @@ var knowledgeBaseRouter = router({
   /**
    * Per-document chunk-embedding counts, mirroring regulationSources.getEmbeddingCounts.
    */
-  getEmbeddingCounts: publicProcedure.query(async () => {
+  getEmbeddingCounts: protectedProcedure.query(async () => {
     const db = await getDb();
     if (!db) return [];
     try {
@@ -4634,7 +4637,7 @@ var knowledgeBaseRouter = router({
    * Mirrors regulationSources.regenerateEmbeddings — same graceful fallback
    * if the embedding API is unavailable.
    */
-  regenerateEmbeddings: publicProcedure.input(z6.object({ id: z6.number().int().positive() })).mutation(async ({ input }) => {
+  regenerateEmbeddings: adminProcedure.input(z6.object({ id: z6.number().int().positive() })).mutation(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError7({ code: "INTERNAL_SERVER_ERROR", message: "Adatb\xE1zis nem el\xE9rhet\u0151" });
     const rows2 = await db.select().from(knowledgeBaseDocuments).where(eq5(knowledgeBaseDocuments.id, input.id)).limit(1);
@@ -4660,7 +4663,7 @@ var knowledgeBaseRouter = router({
     return { chunkCount: embedded.length, embeddingApiUnavailable: false, message: null };
   }),
   // Get all extracted texts for internal search (used by standardsSearch)
-  getTextsForSearch: publicProcedure.input(z6.object({ query: z6.string() })).query(async ({ input }) => {
+  getTextsForSearch: protectedProcedure.input(z6.object({ query: z6.string() })).query(async ({ input }) => {
     const db = await getDb();
     if (!db) return [];
     const docs = await db.select({
@@ -4726,7 +4729,7 @@ var projectMembersRouter = router({
   /**
    * List members of a project (with user info joined).
    */
-  list: publicProcedure.input(z7.object({ projectId: z7.number().int().positive() })).query(async ({ input }) => {
+  list: protectedProcedure.input(z7.object({ projectId: z7.number().int().positive() })).query(async ({ input }) => {
     const db = await getDb();
     if (!db) return [];
     const rows2 = await db.select({
@@ -4861,7 +4864,7 @@ var projectsRouter = router({
   /**
    * List all non-deleted projects, newest first.
    */
-  list: publicProcedure.input(
+  list: protectedProcedure.input(
     z8.object({
       includeDeleted: z8.boolean().default(false)
     }).optional()
@@ -4876,7 +4879,7 @@ var projectsRouter = router({
   /**
    * Get a single project by id.
    */
-  getById: publicProcedure.input(z8.object({ id: z8.number().int().positive() })).query(async ({ input }) => {
+  getById: protectedProcedure.input(z8.object({ id: z8.number().int().positive() })).query(async ({ input }) => {
     const db = await getDb();
     if (!db) throw new TRPCError9({ code: "INTERNAL_SERVER_ERROR", message: "Adatb\xE1zis nem el\xE9rhet\u0151." });
     const rows2 = await db.select().from(projects).where(eq7(projects.id, input.id)).limit(1);
